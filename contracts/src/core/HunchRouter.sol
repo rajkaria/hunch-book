@@ -301,16 +301,17 @@ contract HunchRouter is IHunchRouter, IFlashLoanReceiver {
         uint256 sP = p.sizePrecision;
         uint256 gross = _ceilDiv(baseOut * BPS, BPS - p.takerFeeBps);
 
-        uint32 levels = ASK_LEVELS_FIRST;
-        while (true) {
-            // At most three reads: 16 levels, 256 levels, then the whole ask side.
+        // At most three reads: 16 levels, 256 levels, then the whole ask side. Stop early once a read
+        // returns fewer levels than asked for: the side has no more.
+        uint32[3] memory reads = [ASK_LEVELS_FIRST, ASK_LEVELS_MORE, type(uint32).max];
+        for (uint256 r; r < 3; ++r) {
             // forge-lint: disable-next-line(calls-loop)
-            bytes memory l2 = IKuruOrderBook(book).getL2Book(0, levels);
+            bytes memory l2 = IKuruOrderBook(book).getL2Book(0, reads[r]);
             (bool covered, uint256 quote, uint256 askLevels) = _quoteFromAsks(l2, gross, sP);
             if (covered) return quote;
-            if (askLevels < levels || levels == type(uint32).max) revert InsufficientLiquidity();
-            levels = levels == ASK_LEVELS_FIRST ? ASK_LEVELS_MORE : type(uint32).max;
+            if (askLevels < reads[r]) break;
         }
+        revert InsufficientLiquidity();
     }
 
     /// Parses Kuru's L2 encoding ([block] [bid price, size]... [0] [ask price, size]...) and applies the
