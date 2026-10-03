@@ -95,9 +95,18 @@ contract GraduatorTest is Test {
         return _kuruBook(caller, address(yes), address(usdc), _params(), uint96(POOL_CAP));
     }
 
+    /// External so `vm.expectRevert` covers exactly this deployment and the test carries on after it
+    /// (an expected revert on a bare `new` ends the test function in this Foundry version).
+    function deployGraduator(address f, address r, address m, address u, IGraduator.BookParams memory p)
+        external
+        returns (Graduator)
+    {
+        return new Graduator(IHunchBookFactory(f), IKuruRouter(r), IKuruMarginAccount(m), u, true, p);
+    }
+
     function _expectConstructorRevert(IGraduator.BookParams memory p) internal {
         vm.expectRevert(Graduator.InvalidBookParams.selector);
-        _graduator(true, p);
+        this.deployGraduator(address(factory), address(kuru), address(ma), address(usdc), p);
     }
 
     // ---------------------------------------------------------------- constructor
@@ -126,54 +135,23 @@ contract GraduatorTest is Test {
     function test_constructor_revertsZeroAddresses() public {
         IGraduator.BookParams memory p = _params();
         vm.expectRevert(Graduator.ZeroAddress.selector);
-        new Graduator(
-            IHunchBookFactory(address(0)),
-            IKuruRouter(address(kuru)),
-            IKuruMarginAccount(address(ma)),
-            address(usdc),
-            true,
-            p
-        );
+        this.deployGraduator(address(0), address(kuru), address(ma), address(usdc), p);
         vm.expectRevert(Graduator.ZeroAddress.selector);
-        new Graduator(
-            IHunchBookFactory(address(factory)),
-            IKuruRouter(address(0)),
-            IKuruMarginAccount(address(ma)),
-            address(usdc),
-            true,
-            p
-        );
+        this.deployGraduator(address(factory), address(0), address(ma), address(usdc), p);
         vm.expectRevert(Graduator.ZeroAddress.selector);
-        new Graduator(
-            IHunchBookFactory(address(factory)),
-            IKuruRouter(address(kuru)),
-            IKuruMarginAccount(address(0)),
-            address(usdc),
-            true,
-            p
-        );
+        this.deployGraduator(address(factory), address(kuru), address(0), address(usdc), p);
         vm.expectRevert(Graduator.ZeroAddress.selector);
-        new Graduator(
-            IHunchBookFactory(address(factory)),
-            IKuruRouter(address(kuru)),
-            IKuruMarginAccount(address(ma)),
-            address(0),
-            true,
-            p
+        this.deployGraduator(address(factory), address(kuru), address(ma), address(0), p);
+        // Control: the same call with every address set deploys.
+        assertEq(
+            this.deployGraduator(address(factory), address(kuru), address(ma), address(usdc), p).usdc(), address(usdc)
         );
     }
 
     function test_constructor_revertsCollateralMismatch() public {
         MockTokenForRouter other = new MockTokenForRouter("Other", "OTH", 6);
         vm.expectRevert(Graduator.CollateralMismatch.selector);
-        new Graduator(
-            IHunchBookFactory(address(factory)),
-            IKuruRouter(address(kuru)),
-            IKuruMarginAccount(address(ma)),
-            address(other),
-            true,
-            _params()
-        );
+        this.deployGraduator(address(factory), address(kuru), address(ma), address(other), _params());
     }
 
     function test_constructor_revertsBadPrecisions() public {

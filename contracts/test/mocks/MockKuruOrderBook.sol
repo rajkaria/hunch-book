@@ -67,6 +67,15 @@ contract MockKuruOrderBook {
         MockTokenForRouter(_p.quoteAsset).mint(address(this), quote * 10 ** _p.quoteAssetDecimals / _p.pricePrecision);
     }
 
+    /// Appends `count` ask levels above the current ones (prices firstPrice, firstPrice + step, ...).
+    function pushAsks(uint32 firstPrice, uint32 step, uint96 size, uint256 count) external {
+        for (uint256 i; i < count; ++i) {
+            _asks.push(Level(uint32(firstPrice + i * step), size));
+        }
+        MockTokenForRouter(_p.baseAsset)
+            .mint(address(this), count * size * 10 ** _p.baseAssetDecimals / _p.sizePrecision);
+    }
+
     function clear() external {
         delete _asks;
         delete _bids;
@@ -226,9 +235,17 @@ contract MockKuruOrderBook {
 
     /// Base a market buy with `quoteSize` would credit right now, without executing (reference model).
     function previewMarketBuy(uint256 quoteSize) external view returns (uint256 credit, uint256 refund) {
+        (credit, refund,) = previewMarketBuyFull(quoteSize);
+    }
+
+    /// Same, also returning the gross size filled (in sizePrecision units, before the fee).
+    function previewMarketBuyFull(uint256 quoteSize)
+        public
+        view
+        returns (uint256 credit, uint256 refund, uint256 filled)
+    {
         uint256 sP = _p.sizePrecision;
         uint256 q = quoteSize;
-        uint256 filled;
         for (uint256 i = _askHead; q > 0 && i < _asks.length; ++i) {
             Level memory l = _asks[i];
             uint256 fillable = q * sP / l.price;
