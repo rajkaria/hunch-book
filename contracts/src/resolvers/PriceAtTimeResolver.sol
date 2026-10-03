@@ -22,6 +22,14 @@ import {ResolverText} from "./ResolverText.sol";
 ///           with [T, T + 60 s] returns only the first update published at or after T.
 /// @dev A pure reader: no owner, no funds between calls. The feed and Pyth-id allowlists are written
 ///      once in the constructor and can never change; a new feed ships as a new resolver (template).
+///      A failed read of round r + 1 only ever yields `Unresolved`; every other failure reverts.
+///      A round is scaled with the decimals of the phase aggregator that wrote it.
+///
+///      evidenceHash, for the settlement verifier:
+///      - Chainlink: keccak256(abi.encode(uint8 0, address feed, uint80 r, int256 answer,
+///        uint256 updatedAt(r), uint256 updatedAt(r + 1), uint256 T))
+///      - Pyth: keccak256(abi.encode(uint8 1, address pyth, bytes32 id,
+///        (int64 price, uint64 conf, int32 expo, uint256 publishTime), uint64 T))
 contract PriceAtTimeResolver is IResolver {
     uint8 public constant SOURCE_CHAINLINK = 0;
     uint8 public constant SOURCE_PYTH = 1;

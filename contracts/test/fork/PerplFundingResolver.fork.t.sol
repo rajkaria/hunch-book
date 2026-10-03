@@ -134,6 +134,8 @@ contract PerplFundingResolverForkTest is Test {
 
     function test_mainnet_unresolvedUntilAfterEndBlock() public {
         _forkMainnet();
+        // Captured on purpose before the roll below: the window ends at the fork head.
+        // forge-lint: disable-next-line(environment-read-across-mutation)
         uint256 end = block.number;
         (Outcome o,) = resolver.resolve(_p(1, end - 5 * INTERVAL, end, 0, 0), "");
         assertEq(uint8(o), uint8(Outcome.Unresolved));

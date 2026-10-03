@@ -34,6 +34,10 @@ import {ResolverText} from "./ResolverText.sol";
 ///      The check also covers the time from creation to settlement, which is wider than the
 ///      observation window, so a version change after `endBlock` but before settlement voids the
 ///      market too. The keeper settles right after `endBlock` to keep that gap short.
+///
+///      evidenceHash, for the settlement verifier: keccak256(abi.encode(address exchange,
+///      uint256 perpId, uint64 startBlock, uint64 endBlock, int48 F(start), int48 F(end),
+///      uint256 eventBlock(start), uint256 eventBlock(end))).
 contract PerplFundingResolver is IResolver {
     /// Settlement stays open this long after the estimated close (docs/PROTOCOL.md §2).
     uint256 public constant SETTLEMENT_WINDOW = 7 days;
