@@ -2,7 +2,7 @@
 
 > Prediction markets on Monad that start as pools, move to Kuru's onchain order book once people show up, and pay out by reading the chain. No one decides the answer by hand.
 
-**Status (2026-10-03): design stage.** The protocol spec and roadmap are written. Nothing is deployed yet. Contracts go to Monad testnet next. This page will list every live address and transaction as each piece ships.
+**Status (2026-10-03): live on Monad testnet, building toward mainnet.** The contracts are deployed on Monad testnet and the first market has graduated into its own Kuru order book. Nothing is on mainnet yet. Every claim below links to an address or a transaction.
 
 ## The problem
 
@@ -37,21 +37,36 @@ Markets whose pool never reaches the graduation rule stay pools and settle as po
 
 | Path | What |
 |---|---|
+| [contracts/](./contracts) | Foundry: the vault, outcome tokens, market, factory, resolvers, graduator and router, with unit, fuzz, invariant and fork tests |
+| [apps/web/](./apps/web) | The Next.js app at [book.playhunch.xyz](https://book.playhunch.xyz) |
+| [packages/shared/](./packages/shared) | ABIs generated from the contracts, the address loader, chain configs, payout math |
+| [deployments/](./deployments) | The only source of addresses: `monad-testnet.json`, `monad-mainnet.json` |
 | [docs/PROTOCOL.md](./docs/PROTOCOL.md) | Full protocol and product spec: lifecycle, contracts, settlement, fees, risks |
 | [docs/ROADMAP.md](./docs/ROADMAP.md) | Phased roadmap with deliverable IDs and exit criteria |
 | [SECURITY.md](./SECURITY.md) | Trust model, invariants, how to report a vulnerability |
 | [CLAUDE.md](./CLAUDE.md) | Working rules for contributors and coding agents |
 
-Code directories (`contracts/`, `apps/web/`, `services/`, `indexer/`, `packages/`) appear as each part lands.
+## Run it yourself
+
+```bash
+git clone --recurse-submodules https://github.com/rajkaria/hunch-book && cd hunch-book
+cd contracts && forge test                      # unit, fuzz and invariant tests (Foundry 1.8 or later)
+FOUNDRY_PROFILE=fork forge test                 # fork tests against live Monad testnet and mainnet
+cd .. && pnpm install && pnpm test && pnpm build  # shared package and app (Node 22, pnpm 10)
+```
+
+The fork tests read real Perpl funding, real Chainlink rounds and a real Pyth update, and run the whole lifecycle (create, stake, graduate into a new Kuru book, trade all four ways, settle, redeem) against Kuru's live testnet contracts.
 
 ## What's live
 
-| Piece | Status |
-|---|---|
-| Contracts on Monad testnet | planned |
-| Contracts on Monad mainnet (USDC) | planned |
-| Graduation to Kuru | planned (on mainnet, Kuru creates each book; market creation there is owner-only) |
-| App | planned |
+| Piece | Status | Proof |
+|---|---|---|
+| Contracts on Monad testnet | live | [factory](https://testnet.monadscan.com/address/0x2c30da53F8C384D6eD6603E3138a98fd15E4928A), [vault](https://testnet.monadscan.com/address/0x81b04B3567dcaDaE6a859394248C47ddc403ba37), [router](https://testnet.monadscan.com/address/0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6); all addresses and deploy transactions in [deployments/monad-testnet.json](./deployments/monad-testnet.json); source verified on Sourcify |
+| Graduation into a Kuru book (testnet) | live | market #1 [graduated](https://testnet.monadscan.com/tx/0xbc9524391134b6a3cba94f33daba323075ff0db030a8d51563d89ee94fcf8d01) into Kuru book [0xdFd0…104a](https://testnet.monadscan.com/address/0xdFd060ac7d3b129261EaB2E3DDd6F76A877D104a). Its pool was filled by our own wallets to meet the rule. |
+| Trading YES and NO through the router (testnet) | building | proven on a fork of Kuru's live testnet contracts; onchain trades next |
+| Open-source maker bot | building | |
+| App | building | [book.playhunch.xyz](https://book.playhunch.xyz) lists testnet markets and can stake; trading in the app comes next |
+| Contracts on Monad mainnet (USDC) | planned | on mainnet, Kuru creates each book (its market creation is owner-only) |
 
 ## Prior work and disclosure
 
