@@ -320,6 +320,28 @@ export function voidTerms(m: Pick<MarketView, "graduated" | "window">): string[]
       ];
 }
 
+// ---------- lifecycle track ----------
+
+export type StageState = "done" | "current" | "todo" | "skipped";
+
+export const STAGES = ["Pool", "Graduate", "Trade", "Settle"] as const;
+
+/** Where a market is in Pool, Graduate, Trade, Settle. A pool that locks without graduating skips two. */
+export function lifecycleStages(m: Pick<MarketView, "phase" | "graduated">): StageState[] {
+  switch (m.phase) {
+    case Phase.Pool:
+      return ["current", "todo", "todo", "todo"];
+    case Phase.PoolLocked:
+      return ["done", "skipped", "skipped", "current"];
+    case Phase.Graduated:
+      return ["done", "done", "current", "todo"];
+    case Phase.Closed:
+      return ["done", "done", "done", "current"];
+    default:
+      return m.graduated ? ["done", "done", "done", "done"] : ["done", "skipped", "skipped", "done"];
+  }
+}
+
 /** The big number and its caption for a market's chance. */
 export function chanceDisplay(chance: Chance): { value: string; caption: string } {
   if (chance.source === "settled") return { value: chance.bps === BPS ? "YES" : "NO", caption: "won" };

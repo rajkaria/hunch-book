@@ -45,3 +45,6 @@ export function usdcOf(deployment: Deployment): Address | undefined {
 }
 
 export const REPO_URL = "https://github.com/rajkaria/hunch-book";
+
+/** The production domain (passkey accounts are bound to one domain, PROTOCOL.md §9.5). */
+export const SITE_URL = "https://book.playhunch.xyz";

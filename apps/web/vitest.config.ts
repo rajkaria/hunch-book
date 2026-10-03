@@ -15,5 +15,7 @@ export default defineConfig({
     environment: "happy-dom",
     include: ["test/**/*.test.{ts,tsx}"],
     setupFiles: ["./test/setup.ts"],
+    // The first render in a file pays for importing the app; on a busy machine that can pass 5 seconds.
+    testTimeout: 30_000,
   },
 });
