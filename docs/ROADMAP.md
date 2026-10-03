@@ -10,7 +10,7 @@ Nothing in this file is live yet. The protocol design is in [PROTOCOL.md](./PROT
 
 ## What we are building, in one paragraph
 
-Anyone can start a yes/no market from a template whose answer can be read on the Monad blockchain, such as funding on Perpl or a Pyth price. A new market starts as a **pool**: people stake USDC on YES or NO, with no market maker needed. Once a pool has proven demand, it **graduates**: in one transaction the pool's USDC becomes fully backed YES and NO tokens, split between the people who staked, and the YES token opens as a spot market on **Kuru's onchain order book**. From then on, anyone can sell before the answer is known. When the observation window closes, the market **settles itself** by reading the source contract, and winning tokens redeem for $1.
+Anyone can start a yes/no market from a template whose answer can be read on the Monad blockchain, such as funding on Perpl or a Chainlink price. A new market starts as a **pool**: people stake USDC on YES or NO, with no market maker needed. Once a pool has proven demand, it **graduates**: in one transaction the pool's USDC becomes fully backed YES and NO tokens, split between the people who staked, and the YES token opens as a spot market on **Kuru's onchain order book**. From then on, anyone can sell before the answer is known. When the observation window closes, the market **settles itself** by reading the source contract, and winning tokens redeem for $1.
 
 ## Phases at a glance
 
@@ -51,8 +51,8 @@ The order below is the build order. A later item never blocks an earlier one.
 | C-2 | `OutcomeToken`: minimal ERC-20 clone per side per market, mint and burn by the vault only | planned |
 | C-3 | `Market` (clone per market): state machine (Pool → Graduated → Closed → Settled or Voided), pool stakes, pool settlement and claims | planned |
 | C-4 | `HunchBookFactory`: create a market from a template id and parameters, one canonical market per (template, parameters) hash, creator's first stake required | planned |
-| S-1 | `PerplFundingResolver`: settles "funding paid by longs between block A and block B is above X" by reading Perpl's historical funding accumulator | planned |
-| S-2 | `PythPriceResolver`: settles "price at or above K at time T" from a signed Pyth update published in [T, T + tolerance] | planned |
+| S-1 | `PerplFundingResolver`: settles "net funding paid by longs between block A and block B is above X" by reading Perpl's historical funding accumulator, after every funding event in the window is final | planned |
+| S-2 | `PriceAtTimeResolver`: settles "price at or above K at time T" from the Chainlink round that brackets T (Pyth's first update at or after T where Chainlink has no feed) | planned |
 | O-1 | Foundry project, CI (build, unit, fuzz, invariant tests), `deployments/monad-testnet.json` as the single address source | planned |
 
 Tests that must pass before anything deploys:
@@ -100,9 +100,9 @@ Graduation rules (v0 values, set per template and visible on every market):
 |---|---|---|
 | A-4 | **Settlement verifier**: every settled market shows the exact read (contract, function, block, returned value) and a button that re-runs that read from your browser, no wallet needed | planned |
 | A-5 | **Proof page**: live counts of markets, wallets, trades and volume, and the share of book fills taken by Hunch's own maker | planned |
-| S-3 | **Touch markets** ("will funding turn negative before block B?", "will MON trade above K before T?"): anyone proves YES by pointing at the block or signed price where it happened; NO settles after a 24h window with no proof | planned |
+| S-3 | **Touch markets** ("will MON reach K at any time before T?"): anyone proves YES by pointing at the Chainlink round where it happened; NO settles after a 24h window with no proof | planned |
 | A-6 | **Hedge assistant v0**: for a wallet with a Perpl position, show the funding it is paying and a market and size that pays out if funding stays high (needs Perpl position reads confirmed) | planned |
-| A-7 | Passkey accounts (Mera) next to regular wallets; USDC approval and trade in one confirmation where supported | planned |
+| A-7 | Passkey accounts (Mera): a wallet derived from your passkey, no seed phrase or extension; first transactions covered by a capped MON drip, and stakes accepted as signed USDC authorisations a relayer submits | planned |
 | A-8 | Live trade tape: each fill with its block number and the time from signature to inclusion | planned |
 
 ### 0.6 Hardening (target 2026-10-11 → 2026-10-13)
@@ -124,7 +124,7 @@ Goal: run it with real users and no surprises. Code changes only fix things user
 | K-2 | **Recurring series**: weekly and daily markets that create themselves (e.g. "BTC funding this week") from a schedule anyone can trigger | A market list that is never empty without manual work |
 | K-3 | **Auto-redeem** (opt in): the keeper redeems winning tokens to your wallet after settlement | Winners get paid without coming back to click |
 | V-4 | **Maker kit v1**: the maker bot as a package anyone can run with their own capital and model; docs and a test mode | Outside liquidity, so users trade with other people, not with Hunch |
-| S-4 | More templates: Perpl open interest and mark price (if historical reads are confirmed), Pyth ranges (between K1 and K2) | More questions traders care about |
+| S-4 | More templates: price ranges (between K1 and K2), single-interval funding spikes on Perpl, ETH and SOL funding. (Perpl open interest and mark price are current-state only, so they wait for snapshot settlement, S-6) | More questions traders care about |
 | O-8 | Bug bounty with a published scope and payout table | Outside eyes on the money paths |
 | O-9 | Status page: contract balances, invariants, keeper and maker health, incident log | Users can see it is solvent at any moment |
 | A-9 | Notifications: graduation, big price moves, settlement, redemption ready (Telegram first) | People come back when something happens |

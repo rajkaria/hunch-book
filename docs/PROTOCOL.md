@@ -8,7 +8,7 @@ Hunch Book runs yes/no prediction markets on Monad in USDC. Every market goes th
 
 1. **Pool.** People stake USDC on YES or NO. The split of the pool is the market's chance. No market maker is needed, so a market works from its first dollar.
 2. **Book.** If the pool proves demand before it locks, it **graduates**. In one transaction the pool's USDC becomes fully backed YES and NO tokens, split between the stakers so that each staker's payout is exactly what the pool would have paid, fees included. The YES token opens as a YES/USDC spot market on Kuru, Monad's onchain order book, at the pool's price. From then on anyone can buy or sell either side at any time.
-3. **Settlement.** When the observation window ends, anyone can settle the market. A resolver contract reads the answer from onchain data: Perpl's historical funding accumulator, or a Pyth price signed by Pyth's publishers. No person, including the Hunch team, can set an outcome.
+3. **Settlement.** When the observation window ends, anyone can settle the market. A resolver contract reads the answer from onchain data: Perpl's historical funding accumulator, or a price from Chainlink's onchain feeds (or a Pyth price signed by Pyth's publishers). No person, including the Hunch team, can set an outcome.
 
 Pools that never graduate settle as pools.
 
@@ -169,30 +169,41 @@ A market voids only if its resolver cannot produce an answer before the settleme
 
 ## 6. Settlement and templates
 
-### 6.1 Template S-1: Perpl funding threshold
+### 6.1 Template S-1: Perpl net funding
 
-**Question shape:** "Will funding paid by longs on Perpl's {asset} market between block {A} and block {B} be above {X}?"
+**Question shapes:** "Will BTC longs pay shorts on net on Perpl between block {A} and block {B}?" and "Will BTC longs pay more than ${X} per BTC in funding on Perpl between block {A} and block {B}?"
 
-- Source: the Perpl Exchange contract on Monad (`0x34B6552d57a35a1D042CcAe1951BD1C370112a6F` on mainnet), function `getFundingSumAtBlock(marketId, block)`, which returns the cumulative funding at a past block. Exact units, sign convention and retention are recorded in §8.2.
-- Rule: `ΔF = F(B) − F(A)`. YES if `ΔF > X`; NO otherwise (equal is NO).
-- Timing: these markets are defined in **blocks**, so the rule is exact. The app shows an estimated clock time next to each block. Lock is at block `A`; close is at block `B`.
-- Settlement: callable by anyone once `block.number > B`. Because the read is historical, settling late reads the same value.
+- **Source.** Perpl's Exchange contract (mainnet `0x34B6552d57a35a1D042CcAe1951BD1C370112a6F`, testnet `0x1964C32f0bE608E7D29302AFF5E61268E72080cc`):
 
-### 6.2 Template S-2: Pyth price threshold
+  ```solidity
+  function getFundingSumAtBlock(uint256 perpId, uint256 blockNumber)
+      external view returns (int48 fundingSum, uint256 fundingEventBlock);
+  ```
+
+  It returns cumulative funding as of the last funding event at or before `blockNumber`. A rising sum means longs paid shorts. Dividing by `10^(priceDecimals + fundingSumScalingExp)` (both from `getPerpetualInfoV2`) gives USD per one unit of the base asset. History is kept in contract storage, so old blocks stay readable without an archive node.
+- **Cadence.** Funding events sit on a fixed grid, one every 8,571 blocks (about 43 minutes at today's block times), about 234 a week.
+- **Rule.** `ΔF = F(B) − F(A)`. YES if `ΔF > X`; NO otherwise (equal is NO). `X` is stored in Perpl's raw units at creation; the app shows it in USD per unit.
+- **Finality.** Perpl can overwrite a scheduled funding value until its event block passes. Settlement therefore requires `block.number > B`, at which point every event at or before `B` is final. The resolver never reads a block at or after the current one.
+- **Timing.** Lock is block `A`; close is block `B`. These markets are defined in blocks, so the rule is exact; the app shows estimated clock times.
+- **When the resolver refuses to answer** (the market then voids at its deadline): the read reverts (perp removed); the last event at or before `B` is more than two intervals older than `B` (perp paused); `fundingSumScalingExp` differs from the value recorded at creation; or the Exchange's implementation address changed during the window.
+- **Who you trust.** Perpl's funding rates are set by Perpl's own price administrator within a per-market clamp and a tolerance against Chainlink prices, and Perpl's contracts can be upgraded by a 3-of-7 multisig. A Hunch Book market on Perpl funding pays out on what Perpl records. Every Perpl market page says so.
+
+### 6.2 Template S-2: price at a time
 
 **Question shape:** "Will {asset}/USD be at or above {K} at {T} UTC?"
 
-- Source: Pyth's onchain contract on Monad. The settler submits a signed price update; the resolver accepts only the **first** update published at or after `T`, within a tolerance of 60 seconds (Pyth's "unique" parse), so nobody can choose a convenient update.
-- Rule: YES if the price is at or above `K` (exponent-normalised); NO otherwise.
-- Timing: lock is a set time before `T` (v0: 24 hours for daily markets, 1 hour for intraday); close is `T`.
-- Settlement: anyone, once `now ≥ T`, by submitting the update fetched from Pyth's public service, plus Pyth's update fee.
+- **Default source: Chainlink price feeds on Monad**, read with `getRoundData`. The settler passes a round id `r`. The resolver accepts it only if rounds `r` and `r + 1` are in the same phase, `updatedAt(r) ≤ T < updatedAt(r + 1)`, and `T − updatedAt(r) ≤ 1 hour`. Exactly one round brackets `T`, so nobody can pick a convenient price, and no API key is needed. If no round after `T` exists yet, settlement waits; if the feed has stopped, the market voids at its deadline.
+- **Alternative source: Pyth**, for assets without a Chainlink feed. The settler submits a signed update and the resolver accepts only the first update published at or after `T`, within 60 seconds (`parsePriceFeedUpdatesUnique`). Fetching historical updates from Pyth's Hermes service needs a Pyth API key.
+- **Rule.** YES if the price is at or above `K` (decimals normalised); NO otherwise.
+- **Timing.** Lock is a set time before `T` (v0: 24 hours for daily markets, 1 hour for intraday); close is `T`.
 
 ### 6.3 Touch markets (S-3, proof by pointer)
 
-**Question shapes:** "Will {asset} funding on Perpl be negative over any 1-hour stretch before block {B}?" and "Will {asset}/USD trade at or above {K} at any time before {T}?"
+**Question shapes:** "Will MON/USD reach {K} at any time between {T1} and {T2}, per Chainlink's MON/USD feed?" and (later) "Will any single BTC funding event on Perpl this week charge longs more than {X}?"
 
-- **YES is proved by pointing at the moment it happened.** For Perpl: a block `b` in the window where `F(b) − F(b − h) < 0`. For Pyth: any signed update in the window with price at or above `K`. The resolver checks the pointer onchain and settles YES immediately.
-- **NO** settles after the window closes plus a 24-hour challenge period during which nobody submitted a valid YES proof. Hunch's keeper watches every touch market and submits proofs, and so can anyone else. The assumption is that at least one honest party submits a proof if one exists.
+- **YES is proved by pointing at the moment it happened.** Price: a Chainlink round `r` with `T1 ≤ updatedAt(r) ≤ T2` and an answer at or above `K`. Funding: a grid event block `e` in the window where `getFundingSumAtBlock(e)` reports `e` as its event block and `F(e) − F(e − 8571) > X`. The resolver checks the pointer onchain and settles YES at once.
+- **NO** settles after the window closes plus a 24-hour challenge period in which nobody submitted a valid proof. Hunch's keeper watches every touch market and submits proofs, and so can anyone. The assumption is that at least one honest party submits a proof if one exists.
+- A touch question only ships if it is genuinely uncertain. "Will BTC funding turn negative this week?" is rejected: on recent history it resolves YES almost every week.
 
 ### 6.4 What makes a template acceptable
 
@@ -288,6 +299,8 @@ interface IMarket {
 
     function stake(Side side, uint256 amount) external;
     function stakeFor(address user, Side side, uint256 amount) external;
+    function stakeWithAuthorization(address user, Side side, uint256 amount, uint256 validAfter,
+        uint256 validBefore, bytes32 nonce, bytes calldata signature) external;   // EIP-3009, relayed
     function graduate() external;
     function claimTokens() external;
     function claimTokensFor(address[] calldata users) external;
@@ -345,12 +358,24 @@ interface IHunchRouter {
 
 ### 8.2 Perpl
 
-- `getFundingSumAtBlock(marketId, block)` on the Exchange contract is read at the window's start and end blocks. Units, sign and history depth are confirmed by fork tests before the template ships; a read that reverts makes the resolver return `Unresolved`, never a guess.
+| Item | Mainnet | Testnet |
+|---|---|---|
+| Exchange (ERC-1967 proxy) | `0x34B6552d57a35a1D042CcAe1951BD1C370112a6F` | `0x1964C32f0bE608E7D29302AFF5E61268E72080cc` |
+| Perp ids | BTC 1, MON 10, ETH 20, SOL 31 | BTC 16, ETH 32, SOL 48, MON 64 |
+| Funding interval | 8,571 blocks | 8,571 blocks |
 
-### 8.3 Pyth
+Perp ids are enumerated onchain with `getPerpetualExistsBitmap()` and described by `getPerpetualInfoV2(id)`. `getFundingSumAtBlock` is Perpl's only by-block historical getter; mark price, oracle price and open interest are current-state only, so they are not used for settlement.
 
-- Price feeds: MON/USD, BTC/USD, ETH/USD, SOL/USD (feed ids recorded in `deployments/<network>.json`).
-- Evidence: signed updates fetched from Pyth's public Hermes service for the exact publish time; the resolver pays Pyth's update fee from the value sent by the settler.
+### 8.3 Price feeds
+
+| Feed | Chainlink proxy (mainnet) | Pyth feed id |
+|---|---|---|
+| BTC/USD | `0xc1d4C3331635184fA4C3c22fb92211B2Ac9E0546` | `e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43` |
+| ETH/USD | `0x1B1414782B859871781bA3E4B0979b9ca57A0A04` | `ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace` |
+| MON/USD | `0xBcD78f76005B7515837af6b50c7C52BCf73822fb` | `31491744e2dbf6df7fcf4ac0820d18a609b49076d45066d3568424e62f686cd1` |
+| SOL/USD | none found | `ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d` |
+
+Pyth contracts: mainnet `0x2880aB155794e7179c9eE2e38200202908C17B43`, testnet `0xFC6bd9F9f0c6481c6Af3A7Eb46b296A5B85ed379`. All addresses are also kept in `deployments/<network>.json`, which is the copy the code reads.
 
 ## 9. Offchain components
 
@@ -379,6 +404,9 @@ None of these hold user funds or decide outcomes. If all of them stop, users can
 
 ### 9.3 Indexer (Envio HyperIndex)
 
+Public Monad RPCs cap `eth_getLogs` at 100 blocks (about 30 seconds of chain), so the indexer reads through Envio HyperSync. Markets are registered dynamically from the factory's `MarketCreated` event.
+
+
 Entities: `Market`, `Stake`, `Staker`, `Graduation`, `TokenClaim`, `Trade` (Kuru fills on registered books), `Position`, `Settlement`, `Redemption`, `Creator`, `DailyStats`. The proof page's metrics (wallets, trades, volume, maker share) come only from these entities.
 
 ### 9.4 App
@@ -394,6 +422,12 @@ Entities: `Market`, `Stake`, `Staker`, `Graduation`, `TokenClaim`, `Trade` (Kuru
 | Hedge (Phase 0.5/2) | reads a Perpl position and proposes a matching market and size |
 
 Every transaction the app sends is shown with an explorer link.
+
+### 9.5 Accounts and gas
+
+- **Wallets.** Regular browser wallets, plus passkey accounts through Mera: the passkey derives an ordinary Monad account in the browser, with no seed phrase, extension or custody server. Passkey accounts are tied to one domain, so the app is served from a single production domain.
+- **Gas.** Monad charges for the gas limit, not the gas used, and new accounts hold no MON. Two paths, both capped per account: a small MON drip on first use, and stakes submitted by a relayer from a signed USDC authorisation (native USDC on Monad supports EIP-2612 `permit` and EIP-3009 `receiveWithAuthorization`, so `stakeWithAuthorization` moves the user's USDC and stakes in one call).
+- **No EIP-7702 delegation for user accounts**: on Monad a delegated account cannot drop below a 10 MON reserve through transfers.
 
 ## 10. Security
 
@@ -413,8 +447,8 @@ Every transaction the app sends is shown with an explorer link.
 | Re-entrancy through tokens or Kuru calls | Checks-effects-interactions; reentrancy guards on every state-changing entry; the router holds no balance between transactions |
 | Flash-staking to force graduation | Stakes cannot be withdrawn, so a flash loan cannot be repaid |
 | Blocking graduation by skewing a side | Costs real stake that stays at risk; the market still settles as a pool |
-| Choosing a convenient Pyth price | Only the first update at or after `T` is accepted |
-| Moving Perpl funding to win | Per-market caps keep markets small next to the cost of moving funding; disclosed per market |
+| Choosing a convenient price | Chainlink: only the round that brackets `T` is accepted. Pyth: only the first update at or after `T` |
+| Perpl's operators change funding or upgrade the Exchange | Outside our control and disclosed on every Perpl market; an implementation change during the window makes the resolver refuse to answer, so the market voids instead of paying on rewritten data |
 | Resting orders filled after the answer is known | Router and maker stop at close; app warns makers; settlement can be triggered immediately |
 | Withholding touch proofs | Anyone can prove; the keeper watches every touch market; 24-hour challenge before NO |
 | Guardian key compromise | Can only pause creation and graduation |
@@ -437,6 +471,7 @@ Limits apply to markets created after a change; existing markets keep the limits
 - Mainnet graduation depends on Kuru authorising the Graduator.
 - After graduation, a void pays 0.50 per token, which is not a refund for someone who bought at another price.
 - Thin books are likely at first. Until outside makers join, a large share of book fills will be against Hunch's labelled maker; the proof page shows that share.
+- Perpl funding markets inherit Perpl's trust model: a permissioned price administrator sets funding rates and a 3-of-7 multisig can upgrade the Exchange.
 - Only questions whose answers are onchain and stay readable can be markets. Creator-resolved questions are on the roadmap as pool-only markets (S-7).
 
 ## 12. Parameters (v0)
@@ -450,7 +485,8 @@ Limits apply to markets created after a change; existing markets keep the limits
 | Graduation rule | T ≥ 500 USDC, ≥ 10 stakers, both sides, 3% ≤ p ≤ 97% |
 | Settlement deadline | close + 7 days |
 | Touch challenge period | 24 hours |
-| Pyth tolerance | 60 seconds after `T` |
+| Price source | Chainlink round that brackets `T` (staleness ≤ 1 hour); Pyth (60 seconds after `T`) where no Chainlink feed exists |
+| Perpl settlement | `block.number > B`; void if paused, rescaled or upgraded during the window |
 | Kuru book | tick 0.001 USDC; prices 0.01 to 0.99 (to confirm against Kuru's precision rules) |
 
 ## 13. Open items before deployment
@@ -458,6 +494,6 @@ Limits apply to markets created after a change; existing markets keep the limits
 | Item | Resolved by |
 |---|---|
 | Kuru `deployProxy` parameters and the router's market-order calls | fork tests on Kuru testnet |
-| Perpl funding units, sign convention and history depth | mainnet fork tests |
-| Pyth contract address and feed ids on Monad testnet and mainnet | onchain checks |
-| Hermes history depth for touch proofs | test fetch of old updates |
+| Chainlink feeds on Monad testnet (for testnet price markets) | onchain checks; otherwise price markets are tested on a mainnet fork |
+| Pyth Hermes API access for historical updates | API key, then a fork test with a real update |
+| How often Perpl upgrades its Exchange (affects how often the upgrade rule voids markets) | watch the implementation slot during the beta |

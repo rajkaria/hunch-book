@@ -19,11 +19,11 @@ A trader on Perpl (Monad's perpetuals exchange) who holds a BTC long and pays fu
 
 ## How it works
 
-1. **Start a market from a template.** The question is one the chain can answer, for example: "Will funding paid by BTC longs on Perpl between these two blocks be above 0.05%?" or "Will MON be at or above $0.05 at 12:00 UTC on Friday?" The creator makes the first stake.
+1. **Start a market from a template.** The question is one the chain can answer, for example: "Will BTC longs pay shorts on net on Perpl this week?" or "Will MON be at or above $0.035 at 12:00 UTC on Friday?" The creator makes the first stake.
 2. **Pool phase.** People stake USDC on YES or NO. The pool's split is the market's chance. No market maker needed.
 3. **Graduation.** When a pool has proven demand (v0 rule: at least $500 from at least 10 wallets), one transaction turns it into fully backed YES and NO tokens (1 YES + 1 NO is always backed by 1 USDC) and splits them between the people who staked, so each staker's payout is exactly what the pool would have paid. The YES token then opens as a YES/USDC market on Kuru's order book at the pool's price.
 4. **Trade.** Buy or sell YES or NO at any time on the book. Buying NO mints a pair and sells the YES; selling NO buys YES and redeems the pair. One transaction each.
-5. **Settlement.** When the observation window ends, anyone can trigger settlement. The resolver reads the answer from the source contract (Perpl's historical funding accumulator, or a signed Pyth price). Winning tokens redeem for 1 USDC.
+5. **Settlement.** When the observation window ends, anyone can trigger settlement. The resolver reads the answer from the source contract (Perpl's historical funding accumulator, or Chainlink's onchain price feed). Winning tokens redeem for 1 USDC.
 
 Markets whose pool never reaches the graduation rule stay pools and settle as pools.
 
@@ -31,7 +31,7 @@ Markets whose pool never reaches the graduation rule stay pools and settle as po
 
 - **Kuru** is a fully onchain order book on Monad. A market can graduate into a real book that anyone can quote, not into an offchain matching engine.
 - **Perpl** keeps its funding history onchain, readable by block, so a market can settle from it without an oracle committee or a keeper we run.
-- Sub-second blocks and low fees make it affordable to give a $500 market its own order book and to re-quote it every block.
+- Blocks every ~0.3 seconds and low fees make it affordable to give a $500 market its own order book and to re-quote it every block.
 
 ## What's in this repo
 

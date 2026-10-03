@@ -14,7 +14,7 @@ bounty with a published scope is planned for the live beta (see docs/ROADMAP.md,
 | Question | Answer |
 |---|---|
 | Who holds the money? | The `CollateralVault` contract. Every YES/NO pair in existence is backed by exactly 1 USDC. |
-| Who decides outcomes? | Nobody. A resolver contract reads the source (Perpl, Pyth) and anyone can trigger settlement. |
+| Who decides outcomes? | Nobody. A resolver contract reads the source (Perpl, Chainlink or Pyth) and anyone can trigger settlement. |
 | What can the team do? | A guardian address can pause new markets and graduations. It cannot pause settlement or redemption, move funds or set outcomes. |
 | Can contracts be upgraded? | Market, vault, token and resolver contracts are not upgradeable. A fix ships as a new factory; existing markets finish under the code they started with. |
 | What if a source fails? | Each market has a settlement deadline. If the source cannot be read by then, the market voids: pool stakes are refunded in full; after graduation each YES and NO token redeems for 0.50 USDC. |
