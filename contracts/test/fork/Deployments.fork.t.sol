@@ -16,6 +16,8 @@ contract DeploymentsForkTest is Test {
         _assertCode(json, ".external.perpl.exchange");
         _assertCode(json, ".external.pyth.contract");
         _assertCode(json, ".external.circleUsdc");
+        _assertCode(json, ".external.chainlink['BTC/USD']");
+        _assertCode(json, ".external.chainlink['ETH/USD']");
     }
 
     function test_mainnetExternalAddressesHaveCode() public {
@@ -31,6 +33,7 @@ contract DeploymentsForkTest is Test {
         _assertCode(json, ".external.chainlink['BTC/USD']");
         _assertCode(json, ".external.chainlink['ETH/USD']");
         _assertCode(json, ".external.chainlink['MON/USD']");
+        _assertCode(json, ".external.chainlink['SOL/USD']");
     }
 
     function _assertCode(string memory json, string memory key) internal view {

@@ -227,11 +227,17 @@ contract FactoryTest is BaseTest {
         assertEq(f2.graduator(), users[0]);
     }
 
+    /// Deploys through an external call, so `vm.expectRevert` checks the deployment itself.
+    function deployFactory(address u, address g) external returns (address) {
+        return address(new HunchBookFactory(u, address(marketImpl), g, feeRecipient, _caps(), COLLATERAL_CAP));
+    }
+
     function test_constructorRejectsZeroAddresses() public {
         vm.expectRevert(IHunchBookFactory.ZeroAddress.selector);
-        new HunchBookFactory(address(0), address(marketImpl), guardian, feeRecipient, _caps(), COLLATERAL_CAP);
+        this.deployFactory(address(0), guardian);
         vm.expectRevert(IHunchBookFactory.ZeroAddress.selector);
-        new HunchBookFactory(address(usdc), address(marketImpl), address(0), feeRecipient, _caps(), COLLATERAL_CAP);
+        this.deployFactory(address(usdc), address(0));
+        assertTrue(this.deployFactory(address(usdc), guardian) != address(0));
     }
 
     /// PROTOCOL.md §7.3 and invariant 6: with every pause on, existing markets still settle,

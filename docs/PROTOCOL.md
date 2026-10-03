@@ -187,7 +187,7 @@ A market voids only if its resolver cannot produce an answer before the settleme
 - **Rule.** `ΔF = F(B) − F(A)`. YES if `ΔF > X`; NO otherwise (equal is NO). `X` is stored in Perpl's raw units at creation; the app shows it in USD per unit.
 - **Finality.** Perpl can overwrite a scheduled funding value until its event block passes. Settlement therefore requires `block.number > B`, at which point every event at or before `B` is final. The resolver never reads a block at or after the current one.
 - **Timing.** Lock is block `A`; close is block `B`. These markets are defined in blocks, so the rule is exact; the app shows estimated clock times.
-- **When the resolver refuses to answer** (the market then voids at its deadline): the read reverts (perp removed); the last event at or before `B` is more than two intervals older than `B` (perp paused); `fundingSumScalingExp` differs from the value recorded at creation; or the Exchange's implementation address changed during the window.
+- **When the resolver refuses to answer** (the market then voids at its deadline): the read reverts (perp removed); the last event at or before `B` is more than two intervals older than `B` (perp paused); `fundingSumScalingExp` differs from the value recorded at creation; or Perpl's contract version (`getContractVersion()`) differs from the one the resolver pinned when it was deployed. A contract cannot read Perpl's proxy implementation slot, so an upgrade that keeps the same version number is not visible onchain; the keeper watches the slot offchain and reports it.
 - **Who you trust.** Perpl's funding rates are set by Perpl's own price administrator within a per-market clamp and a tolerance against Chainlink prices, and Perpl's contracts can be upgraded by a 3-of-7 multisig. A Hunch Book market on Perpl funding pays out on what Perpl records. Every Perpl market page says so.
 
 ### 6.2 Template S-2: price at a time
@@ -336,7 +336,7 @@ Perp ids are enumerated onchain with `getPerpetualExistsBitmap()` and described 
 | BTC/USD | `0xc1d4C3331635184fA4C3c22fb92211B2Ac9E0546` | `e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43` |
 | ETH/USD | `0x1B1414782B859871781bA3E4B0979b9ca57A0A04` | `ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace` |
 | MON/USD | `0xBcD78f76005B7515837af6b50c7C52BCf73822fb` | `31491744e2dbf6df7fcf4ac0820d18a609b49076d45066d3568424e62f686cd1` |
-| SOL/USD | none found | `ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d` |
+| SOL/USD | `0x16F8008c3e89f62e5e2b909Ce70999370D38F4F2` | `ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d` |
 
 Pyth contracts: mainnet `0x2880aB155794e7179c9eE2e38200202908C17B43`, testnet `0xFC6bd9F9f0c6481c6Af3A7Eb46b296A5B85ed379`. All addresses are also kept in `deployments/<network>.json`, which is the copy the code reads.
 
@@ -458,6 +458,6 @@ Limits apply to markets created after a change; existing markets keep the limits
 | Item | Resolved by |
 |---|---|
 | Kuru: turnaround for creating mainnet books, soft-pausing books at close, legacy vs new exchange contracts | Kuru team |
-| Chainlink feeds on Monad testnet (for testnet price markets) | onchain checks; otherwise price markets are tested on a mainnet fork |
+| Chainlink feeds on Monad testnet | Found: BTC/USD and ETH/USD (in `deployments/monad-testnet.json`). They update about once a day, so testnet price markets often fail the one-hour staleness rule and void; testnet demos use Perpl funding markets, and price markets are tested on a mainnet fork |
 | Pyth Hermes API access for historical updates (only needed for assets with no Chainlink feed, such as SOL) | API key, then a fork test with a real update |
 | How often Perpl upgrades its Exchange (affects how often the upgrade rule voids markets) | watch the implementation slot during the beta |

@@ -15,9 +15,17 @@
     },
     "perpl": {
       "exchange": "0x1964C32f0bE608E7D29302AFF5E61268E72080cc",
-      "perps": { "BTC": 16, "ETH": 32, "SOL": 48, "MON": 64 }
+      "perps": {
+        "BTC": 16,
+        "ETH": 32,
+        "SOL": 48,
+        "MON": 64
+      }
     },
-    "chainlink": {},
+    "chainlink": {
+      "BTC/USD": "0x12C0F44368a02081ce58a936d1C1F606BB301715",
+      "ETH/USD": "0x5c8c8482f064049248F86D9F4aFa4B1f2F5b6d31"
+    },
     "pyth": {
       "contract": "0xFC6bd9F9f0c6481c6Af3A7Eb46b296A5B85ed379",
       "ids": {

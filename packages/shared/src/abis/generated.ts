@@ -3919,3 +3919,347 @@ export const testUsdcAbi = [
     "inputs": []
   }
 ] as const;
+
+export const perplExchangeAbi = [
+  {
+    "type": "function",
+    "name": "getContractVersion",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "major",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "minor",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "patch",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getFundingInterval",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "fundingInterval",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getFundingSumAtBlock",
+    "inputs": [
+      {
+        "name": "perpId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "blockNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "fundingSumPNS",
+        "type": "int48",
+        "internalType": "int48"
+      },
+      {
+        "name": "fundingEventBlock",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getPerpetualExistsBitmap",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "bitmap",
+        "type": "uint256[4]",
+        "internalType": "uint256[4]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getPerpetualInfoV2",
+    "inputs": [
+      {
+        "name": "perpId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "perpetualInfo",
+        "type": "tuple",
+        "internalType": "struct IPerplExchange.PerpetualInfoV2",
+        "components": [
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "priceDecimals",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "lotDecimals",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "linkFeedId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "priceTolPer100K",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "marginTol",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "marginTolDecimals",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "refPriceMaxAgeSec",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "positionBalanceCNS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "insuranceBalanceCNS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "markPNS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "markTimestamp",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "lastPNS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "lastTimestamp",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "oraclePNS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "oracleTimestampSec",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "longOpenInterestLNS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "shortOpenInterestLNS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "fundingStartBlock",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "fundingRatePct100k",
+            "type": "int16",
+            "internalType": "int16"
+          },
+          {
+            "name": "absFundingClampPctPer100K",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "status",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "basePricePNS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "maxBidPriceONS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "minBidPriceONS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "maxAskPriceONS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "minAskPriceONS",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "numOrders",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ignOracle",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "fundingSumScalingExp",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  }
+] as const;
+
+export const chainlinkAggregatorAbi = [
+  {
+    "type": "function",
+    "name": "decimals",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "description",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRoundData",
+    "inputs": [
+      {
+        "name": "roundId",
+        "type": "uint80",
+        "internalType": "uint80"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "roundId_",
+        "type": "uint80",
+        "internalType": "uint80"
+      },
+      {
+        "name": "answer",
+        "type": "int256",
+        "internalType": "int256"
+      },
+      {
+        "name": "startedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "updatedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "answeredInRound",
+        "type": "uint80",
+        "internalType": "uint80"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "phaseAggregators",
+    "inputs": [
+      {
+        "name": "phaseId",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  }
+] as const;
