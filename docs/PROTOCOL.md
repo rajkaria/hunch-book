@@ -23,7 +23,7 @@ Pools that never graduate settle as pools.
 | Implied chance | Pool phase: `p = Y / T`. Book phase: the mid price of the YES/USDC book. |
 | Lock | The moment staking stops. Set at or before the start of the observation window, so nobody can stake after information arrives. |
 | Close | The end of the observation window. Trading through Hunch's router stops; settlement becomes possible. |
-| Settlement deadline | Close + 7 days. If the resolver cannot produce an answer by then, the market voids. |
+| Settlement deadline | Close + 7 days. Settlement is possible from close up to the deadline; after it, the only action is void. So the answer never depends on who calls first. |
 
 ## 3. Users and the jobs they hire it for
 
@@ -57,8 +57,8 @@ Pools that never graduate settle as pools.
 | POOL_LOCKED | settle (after close), void (after deadline) | stake, graduate |
 | GRADUATED | claim tokens, trade (router + Kuru), mint, merge | stake |
 | CLOSED | settle, merge, claim tokens | router trades, mint |
-| SETTLED | redeem winning tokens, claim pool payout, merge | everything else |
-| VOIDED | refund pool stakes, redeem tokens at 0.50 each | everything else |
+| SETTLED | redeem winning tokens, claim tokens, claim pool payout | merge (it would let a winner skip the redemption fee by buying a worthless losing token), everything else |
+| VOIDED | refund pool stakes, claim tokens, redeem tokens at 0.50 each, merge | everything else |
 
 Notes:
 - Touch markets (§6.3) can settle YES before close, as soon as anyone proves the event happened.
@@ -74,12 +74,12 @@ The `CollateralVault` holds every USDC in the protocol and keeps per-market book
 
 - `poolCollateral[m]`: USDC staked in market `m` while it is a pool
 - `sets[m]`: complete sets outstanding (= YES supply = NO supply until settlement)
-- `fees[m]`: fees owed but not yet withdrawn (protocol and creator)
+- `fees`: fees owed but not yet withdrawn, kept as one protocol balance and one balance per creator
 
 Solvency invariant, checked by tests after every action and by the vault after every flash loan:
 
 ```
-USDC.balanceOf(vault) ≥ Σ_m ( poolCollateral[m] + sets[m] + fees[m] )      (before settlement)
+USDC.balanceOf(vault) ≥ Σ_m ( poolCollateral[m] + sets[m] ) + protocolFees + Σ_c creatorFees[c]
 ```
 
 After settlement, `sets[m]` is replaced by the winning side's outstanding supply.
@@ -249,101 +249,33 @@ A template ships only if:
 | `HunchRouter` | no | never between transactions | approvals set per call and reset |
 | Resolvers | no | no | pure readers of their source |
 
-### 7.2 Interfaces (v0, frozen before parallel build starts)
+### 7.2 Interfaces (v0, frozen)
 
-```solidity
-enum Phase   { Pool, PoolLocked, Graduated, Closed, Settled, Voided }
-enum Side    { Yes, No }
-enum Outcome { Unresolved, Yes, No }
+The interfaces live in [`contracts/src/interfaces/`](../contracts/src/interfaces/) and are the source of truth; TypeScript reads them through ABIs generated into `packages/shared`. They were frozen on 2026-10-03 before the parallel build started; a change ships in its own commit.
 
-struct Window {
-    bool    blockClock;      // true: lock/close are block numbers; false: unix seconds
-    uint64  lock;            // staking and graduation stop
-    uint64  close;           // observation ends, settlement opens
-    uint64  settleDeadline;  // void allowed after this (unix seconds)
-}
+| File | What it defines |
+|---|---|
+| `IHunchBookTypes.sol` | `Phase`, `Side`, `Outcome`, `Window`, `GraduationRule`, `MarketCaps` |
+| `IResolver.sol` | `validate`, `describe`, `resolve` (payable, returns `Unresolved` rather than guessing), `earlyYes` |
+| `ITemplates.sol` | parameter structs for S-1 (`PerplFundingParams`) and S-2 (`PriceAtTimeParams`), and the evidence formats |
+| `IHunchBookFactory.sol` | `createMarket`, the template registry, canonical market keys, guardian and fee-recipient actions |
+| `IMarket.sol` | staking (direct, on behalf of, relayed EIP-3009), `graduate`, token claims, `settle`, `proveYes`, `voidIfExpired`, pool claims, views |
+| `ICollateralVault.sol` | `mintSets`, `mergeSets`, `redeem(market, side, amount, to)`, `flashLoan`, `surplus`, fee withdrawals, and the market-only ledger hooks |
+| `IOutcomeToken.sol` | the 6-decimal YES/NO token (with permit), minted and burned only by the vault |
+| `IGraduator.sol` | `createBook` (testnet), `registerBook` (mainnet), `bookOf` |
+| `IHunchRouter.sol` | `buyYes`, `sellYes`, `buyNo`, `sellNo`, each with a limit and a deadline |
+| `IFlashLoanReceiver.sol` | the vault's flash-loan callback |
 
-struct GraduationRule {
-    uint128 minPool;         // USDC base units
-    uint32  minStakers;
-    uint16  minChanceBps;    // 300 = 3%
-    uint16  maxChanceBps;    // 9700 = 97%
-}
+Decisions made at the freeze:
 
-interface IResolver {
-    /// Reverts if params are invalid. Returns the market's window.
-    function validate(bytes calldata params) external view returns (Window memory);
-    /// One plain-English sentence describing the exact rule.
-    function describe(bytes calldata params) external view returns (string memory);
-    /// Unresolved if the answer cannot be determined yet. Never returns a guess.
-    function resolve(bytes calldata params, bytes calldata evidence)
-        external payable returns (Outcome outcome, bytes32 evidenceHash);
-    /// True for touch templates that can settle YES before close.
-    function earlyYes() external view returns (bool);
-}
-
-interface IHunchBookFactory {
-    event MarketCreated(address indexed market, uint32 indexed templateId, bytes32 indexed key,
-                        address creator, bytes params);
-    function createMarket(uint32 templateId, bytes calldata params, Side firstSide, uint256 firstStake)
-        external returns (address market);
-    function marketOf(bytes32 key) external view returns (address);   // key = keccak256(templateId, params)
-    function resolverOf(uint32 templateId) external view returns (IResolver);
-}
-
-interface IMarket {
-    event Staked(address indexed user, Side side, uint256 amount, uint256 yesTotal, uint256 noTotal);
-    event Graduated(uint256 total, uint256 yesTotal, uint256 noTotal, uint256 openingPriceE6, address book);
-    event TokensClaimed(address indexed user, Side side, uint256 amount);
-    event Settled(Outcome outcome, bytes32 evidenceHash, address settler);
-    event Voided();
-    event PoolClaimed(address indexed user, uint256 paid, uint256 fee);
-
-    function stake(Side side, uint256 amount) external;
-    function stakeFor(address user, Side side, uint256 amount) external;
-    function stakeWithAuthorization(address user, Side side, uint256 amount, uint256 validAfter,
-        uint256 validBefore, bytes32 nonce, bytes calldata signature) external;   // EIP-3009, relayed
-    function graduate() external;
-    function claimTokens() external;
-    function claimTokensFor(address[] calldata users) external;
-    function settle(bytes calldata evidence) external payable;
-    function proveYes(bytes calldata proof) external payable;      // touch templates only
-    function voidIfExpired() external;
-    function claimPool() external;                                   // pool-only payout or refund
-
-    function phase() external view returns (Phase);
-    function poolTotals() external view returns (uint256 yesTotal, uint256 noTotal, uint32 stakers);
-    function outcome() external view returns (Outcome);
-    function tokens() external view returns (address yes, address no);
-    function book() external view returns (address);
-    function feePerToken(Side side) external view returns (uint256);
-    function window() external view returns (Window memory);
-}
-
-interface ICollateralVault {
-    function mintSets(address market, uint256 amount, address to) external;
-    function mergeSets(address market, uint256 amount, address to) external;
-    function redeem(address market, uint256 amount, address to) external returns (uint256 paid);
-    function flashLoan(address receiver, uint256 amount, bytes calldata data) external;
-    function surplus() external view returns (int256);   // balance minus obligations; must be ≥ 0
-}
-
-interface IGraduator {
-    /// Testnet: calls Kuru Router.deployProxy (permissionless there).
-    function createBook(address market) external returns (address book);
-    /// Mainnet: anyone registers a book Kuru created; it must be a Kuru-registered market
-    /// with base = the market's YES token, quote = USDC and the expected precisions.
-    function registerBook(address market, address book) external;
-    function bookOf(address market) external view returns (address);
-}
-
-interface IHunchRouter {
-    function buyYes (address market, uint256 usdcIn, uint256 minYesOut, uint256 deadline) external returns (uint256);
-    function sellYes(address market, uint256 yesIn,  uint256 minUsdcOut, uint256 deadline) external returns (uint256);
-    function buyNo  (address market, uint256 noOut,  uint256 maxUsdcIn, uint256 deadline) external returns (uint256);
-    function sellNo (address market, uint256 noIn,   uint256 minUsdcOut, uint256 deadline) external returns (uint256);
-}
-```
+- **One approval.** Stakers approve the vault once; markets ask the vault to pull a stake from the caller. Only markets the factory created can do this, and they only pull from the caller (or, for `stakeFor`, from the payer who called).
+- **The factory deploys the vault.** The vault trusts exactly one factory. A fixed factory ships with a new vault; existing markets keep theirs.
+- **Relayed stakes are bound to a side.** `stakeWithAuthorization` takes a salt, and the EIP-3009 nonce the user signs must equal `keccak256(chainid, market, user, side, salt)`, so a relayer cannot move the signed USDC to the other side.
+- **`redeem` names the side.** After settlement only the winning side redeems (1 − fee per token); after a void either side redeems at 0.50.
+- **No merge after settlement.** See the phase table in §4.
+- **Settle up to the deadline, void after it.** See §2.
+- **Rounding dust** from token claims is sent to the protocol fee recipient as tokens once the last staker on that side has claimed. Pool-claim dust moves to protocol fees once the last winner has claimed.
+- **Flash loans are open to anyone and free**, because the vault checks that its surplus did not fall across the call.
 
 ### 7.3 Access control
 
