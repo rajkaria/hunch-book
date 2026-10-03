@@ -30,8 +30,11 @@ async function ready(url: string, deadline: number): Promise<boolean> {
   return false;
 }
 
-export async function startAnvilFork(forkUrl: string, timeoutMs = 60_000): Promise<Anvil | null> {
-  if (!anvilInstalled()) return null;
+export async function startAnvilFork(forkUrl: string, timeoutMs = 90_000): Promise<Anvil | null> {
+  if (!anvilInstalled()) {
+    console.warn("anvil is not installed: skipping the fork tests");
+    return null;
+  }
   const port = 20_000 + Math.floor(Math.random() * 20_000);
   const child: ChildProcess = spawn(
     "anvil",
@@ -44,6 +47,7 @@ export async function startAnvilFork(forkUrl: string, timeoutMs = 60_000): Promi
   };
   if (!(await ready(url, Date.now() + timeoutMs))) {
     stop();
+    console.warn(`anvil could not fork ${forkUrl} within ${timeoutMs / 1000} s: skipping the fork tests`);
     return null;
   }
   return { url, stop };
