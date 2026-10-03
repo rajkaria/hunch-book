@@ -251,12 +251,22 @@ contract PriceAtTimeResolver is IResolver {
 
         // Safe: a uint8 always fits in int256.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 priceE8 = PriceScale.toE8(b.answer, -int256(uint256(feed.decimals())));
+        int256 priceE8 = PriceScale.toE8(b.answer, -int256(uint256(_roundDecimals(feed, b.roundId))));
         Outcome outcome = priceE8 >= p.strikeE8 ? Outcome.Yes : Outcome.No;
         bytes32 evidenceHash = keccak256(
             abi.encode(SOURCE_CHAINLINK, p.feed, b.roundId, b.answer, b.updatedAt, b.nextUpdatedAt, b.target)
         );
         return (outcome, evidenceHash);
+    }
+
+    /// The decimals of the aggregator that wrote round `roundId`. The proxy's own `decimals()` is the
+    /// current phase's; a round from an earlier phase is scaled with its own phase's decimals.
+    function _roundDecimals(IChainlinkAggregator feed, uint80 roundId) internal view returns (uint8) {
+        // Safe: a uint80 shifted right by 64 has 16 bits left.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        address aggregator = feed.phaseAggregators(uint16(roundId >> 64));
+        if (aggregator == address(0)) revert RoundNotFound(roundId);
+        return IChainlinkAggregator(aggregator).decimals();
     }
 
     function _resolvePyth(PriceAtTimeParams memory p, bytes calldata evidence)

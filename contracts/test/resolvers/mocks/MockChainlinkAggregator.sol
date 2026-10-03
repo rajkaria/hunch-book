@@ -19,6 +19,9 @@ contract MockChainlinkAggregator is IChainlinkAggregator {
     mapping(uint80 roundId => bool) public reverts;
     /// When set, getRoundData echoes a different round id than the one asked for.
     bool public echoWrongId;
+    /// Phase aggregators; an unset phase answers with this contract itself.
+    mapping(uint16 phaseId => address) internal _phaseAggregator;
+    mapping(uint16 phaseId => bool) internal _phaseMissing;
 
     constructor(uint8 decimals_, string memory description_) {
         decimals = decimals_;
@@ -39,6 +42,17 @@ contract MockChainlinkAggregator is IChainlinkAggregator {
 
     function setDecimals(uint8 d) external {
         decimals = d;
+    }
+
+    function setPhaseAggregator(uint16 phaseId, address aggregator, bool missing) external {
+        _phaseAggregator[phaseId] = aggregator;
+        _phaseMissing[phaseId] = missing;
+    }
+
+    function phaseAggregators(uint16 phaseId) external view returns (address) {
+        if (_phaseMissing[phaseId]) return address(0);
+        address a = _phaseAggregator[phaseId];
+        return a == address(0) ? address(this) : a;
     }
 
     function getRoundData(uint80 roundId) external view returns (uint80, int256, uint256, uint256, uint80) {

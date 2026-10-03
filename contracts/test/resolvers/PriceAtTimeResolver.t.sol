@@ -424,6 +424,26 @@ contract PriceAtTimeResolverTest is Test {
         assertEq(uint8(o), uint8(Outcome.No));
     }
 
+    /// A round from an earlier phase is scaled with that phase's aggregator's decimals, not the
+    /// proxy's current ones.
+    function test_cl_usesTheRoundsOwnPhaseDecimals() public {
+        MockChainlinkAggregator f = _freshFeed(); // current decimals: 8
+        MockChainlinkAggregator old18 = new MockChainlinkAggregator(18, "old");
+        f.setPhaseAggregator(1, address(old18), false);
+        f.setRound(PHASE1 + 1, 2e18, T - 10); // 2 USD in 18 decimals
+        f.setRound(PHASE1 + 2, 3e18, T + 10);
+        PriceAtTimeResolver r = _resolverFor(address(f));
+        vm.warp(T + 1 hours);
+        (Outcome o,) = r.resolve(_cl(address(f), 2e8), _round(PHASE1 + 1));
+        assertEq(uint8(o), uint8(Outcome.Yes));
+        (o,) = r.resolve(_cl(address(f), 2e8 + 1), _round(PHASE1 + 1));
+        assertEq(uint8(o), uint8(Outcome.No));
+
+        f.setPhaseAggregator(1, address(0), true);
+        vm.expectRevert(abi.encodeWithSelector(PriceAtTimeResolver.RoundNotFound.selector, PHASE1 + 1));
+        r.resolve(_cl(address(f), 2e8), _round(PHASE1 + 1));
+    }
+
     function test_cl_evidenceHashAndRefund() public {
         vm.warp(T + 1 hours);
         vm.deal(address(this), 1 ether);
