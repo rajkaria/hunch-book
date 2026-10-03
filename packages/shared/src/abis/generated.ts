@@ -4263,3 +4263,755 @@ export const chainlinkAggregatorAbi = [
     "stateMutability": "view"
   }
 ] as const;
+
+export const kuruOrderBookAbi = [
+  {
+    "type": "function",
+    "name": "addBuyOrder",
+    "inputs": [
+      {
+        "name": "_price",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "size",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "_postOnly",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "addSellOrder",
+    "inputs": [
+      {
+        "name": "_price",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "size",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "_postOnly",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "batchUpdate",
+    "inputs": [
+      {
+        "name": "buyPrices",
+        "type": "uint32[]",
+        "internalType": "uint32[]"
+      },
+      {
+        "name": "buySizes",
+        "type": "uint96[]",
+        "internalType": "uint96[]"
+      },
+      {
+        "name": "sellPrices",
+        "type": "uint32[]",
+        "internalType": "uint32[]"
+      },
+      {
+        "name": "sellSizes",
+        "type": "uint96[]",
+        "internalType": "uint96[]"
+      },
+      {
+        "name": "orderIdsToCancel",
+        "type": "uint40[]",
+        "internalType": "uint40[]"
+      },
+      {
+        "name": "postOnly",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "bestBidAsk",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getL2Book",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getL2Book",
+    "inputs": [
+      {
+        "name": "_bidPricePoints",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "_askPricePoints",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getMarketParams",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getVaultParams",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "",
+        "type": "uint96",
+        "internalType": "uint96"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "placeAndExecuteMarketBuy",
+    "inputs": [
+      {
+        "name": "_quoteSize",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "_minAmountOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_isMargin",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "_isFillOrKill",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "placeAndExecuteMarketSell",
+    "inputs": [
+      {
+        "name": "_size",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "_minAmountOut",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_isMargin",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "_isFillOrKill",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "s_orderIdCounter",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint40",
+        "internalType": "uint40"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "OrderCreated",
+    "inputs": [
+      {
+        "name": "orderId",
+        "type": "uint40",
+        "indexed": false,
+        "internalType": "uint40"
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "size",
+        "type": "uint96",
+        "indexed": false,
+        "internalType": "uint96"
+      },
+      {
+        "name": "price",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "isBuy",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OrdersCanceled",
+    "inputs": [
+      {
+        "name": "orderId",
+        "type": "uint40[]",
+        "indexed": false,
+        "internalType": "uint40[]"
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Trade",
+    "inputs": [
+      {
+        "name": "orderId",
+        "type": "uint40",
+        "indexed": false,
+        "internalType": "uint40"
+      },
+      {
+        "name": "makerAddress",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "isBuy",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      },
+      {
+        "name": "price",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "updatedSize",
+        "type": "uint96",
+        "indexed": false,
+        "internalType": "uint96"
+      },
+      {
+        "name": "takerAddress",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "txOrigin",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "filledSize",
+        "type": "uint96",
+        "indexed": false,
+        "internalType": "uint96"
+      }
+    ],
+    "anonymous": false
+  }
+] as const;
+
+export const kuruMarginAccountAbi = [
+  {
+    "type": "function",
+    "name": "batchWithdrawMaxTokens",
+    "inputs": [
+      {
+        "name": "_tokens",
+        "type": "address[]",
+        "internalType": "address[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "deposit",
+    "inputs": [
+      {
+        "name": "_user",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "getBalance",
+    "inputs": [
+      {
+        "name": "_user",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "verifiedMarket",
+    "inputs": [
+      {
+        "name": "market",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  }
+] as const;
+
+export const kuruRouterAbi = [
+  {
+    "type": "function",
+    "name": "computeAddress",
+    "inputs": [
+      {
+        "name": "_baseAssetAddress",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_quoteAssetAddress",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_sizePrecision",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "_pricePrecision",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "_tickSize",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "_minSize",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "_maxSize",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "_takerFeeBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_makerFeeBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_kuruAmmSpread",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "oldImplementation",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "old",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "proxy",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "deployProxy",
+    "inputs": [
+      {
+        "name": "_type",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "_baseAssetAddress",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_quoteAssetAddress",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_sizePrecision",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "_pricePrecision",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "_tickSize",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "_minSize",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "_maxSize",
+        "type": "uint96",
+        "internalType": "uint96"
+      },
+      {
+        "name": "_takerFeeBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_makerFeeBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_kuruAmmSpread",
+        "type": "uint96",
+        "internalType": "uint96"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "proxy",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "MarketRegistered",
+    "inputs": [
+      {
+        "name": "baseAsset",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "quoteAsset",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "market",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "vaultAddress",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "pricePrecision",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "sizePrecision",
+        "type": "uint96",
+        "indexed": false,
+        "internalType": "uint96"
+      },
+      {
+        "name": "tickSize",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "minSize",
+        "type": "uint96",
+        "indexed": false,
+        "internalType": "uint96"
+      },
+      {
+        "name": "maxSize",
+        "type": "uint96",
+        "indexed": false,
+        "internalType": "uint96"
+      },
+      {
+        "name": "takerFeeBps",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "makerFeeBps",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "kuruAmmSpread",
+        "type": "uint96",
+        "indexed": false,
+        "internalType": "uint96"
+      }
+    ],
+    "anonymous": false
+  }
+] as const;
