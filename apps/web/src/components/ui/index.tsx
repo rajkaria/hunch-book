@@ -41,14 +41,24 @@ export function ButtonLink({
   children,
   variant = "default",
   size = "md",
+  external,
+  className,
 }: {
   href: string;
   children: ReactNode;
   variant?: Variant;
   size?: "md" | "sm";
+  /** Opens another site in a new tab. */
+  external?: boolean;
+  className?: string;
 }) {
-  return (
-    <Link href={href} className={cx(s.button, variantClass[variant], size === "sm" && s.small)}>
+  const classes = cx(s.button, variantClass[variant], size === "sm" && s.small, className);
+  return external ? (
+    <a href={href} className={classes} target="_blank" rel="noreferrer">
+      {children}
+    </a>
+  ) : (
+    <Link href={href} className={classes}>
       {children}
     </Link>
   );

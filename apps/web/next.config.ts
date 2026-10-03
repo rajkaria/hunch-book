@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // next dev would otherwise write AGENTS.md and CLAUDE.md into apps/web; the repo keeps its own at the root.
+  agentRules: false,
   transpilePackages: ["@hunch-book/shared"],
   async headers() {
     return [
