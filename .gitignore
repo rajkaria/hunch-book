@@ -61,6 +61,8 @@ docs/hackathon/
 .claude/worktrees/
 .claude/settings.local.json
 CLAUDE.local.md
+# Per-feature session context for agents: local only, like internal/.
+/docs/context/
 
 # ---- Build outputs: Next.js / Node ---------------------------------------------
 node_modules/
