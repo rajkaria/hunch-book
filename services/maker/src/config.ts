@@ -16,6 +16,8 @@ export interface MakerConfig {
   enabled: boolean;
   privateKey: Hex | undefined;
   rpcUrl: string;
+  /** Requests per second the bot allows itself on the RPC. */
+  rpcRequestsPerSecond: number;
   quote: QuoteParams;
   requoteThreshold: number;
   heartbeatSeconds: number;
@@ -91,6 +93,7 @@ export function parseConfig(env: Env): MakerConfig {
     enabled,
     privateKey,
     rpcUrl,
+    rpcRequestsPerSecond: num(env, "MAKER_RPC_RPS", 10, positive, "above zero"),
     quote: {
       halfSpread,
       minSpread: MIN_TOTAL_SPREAD,

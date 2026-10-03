@@ -22,7 +22,10 @@ export function errorMessage(error: unknown): string {
     "shortMessage" in error &&
     typeof error.shortMessage === "string"
   ) {
-    return error.shortMessage;
+    const details = "details" in error && typeof error.details === "string" ? error.details : "";
+    return details && !error.shortMessage.includes(details)
+      ? `${error.shortMessage} ${details}`
+      : error.shortMessage;
   }
   return error instanceof Error ? error.message : String(error);
 }

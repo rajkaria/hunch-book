@@ -40,6 +40,7 @@ import {
   unwindMarket,
 } from "./maker.js";
 import { widenFactor } from "./quotes.js";
+import { rateLimitedFetch } from "./rpc.js";
 import { accountAddress, sendTx, type TxContext } from "./tx.js";
 
 // The long-running bot: discovers markets, prices them, quotes graduated ones, and leaves each market
@@ -67,7 +68,12 @@ export class Maker {
   ) {
     this.deployment = deployment;
     const chain = chainsByNetwork[config.network];
-    const transport = http(config.rpcUrl, { retryCount: 3, timeout: 20_000 });
+    const transport = http(config.rpcUrl, {
+      retryCount: 5,
+      retryDelay: 500,
+      timeout: 20_000,
+      fetchFn: rateLimitedFetch(config.rpcRequestsPerSecond),
+    });
     this.client = createPublicClient({ chain, transport }) as PublicClient;
     const account: Account | Address = config.privateKey
       ? privateKeyToAccount(config.privateKey)
