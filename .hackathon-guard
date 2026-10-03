@@ -1,0 +1,18 @@
+# Extra paths the pre-commit guard and CI must never let into this public repo.
+# Internal docs live in ../hunch-book-internal/ (not a git repo).
+event-contract*
+battle-clock*
+judge-log*
+field-teardown*
+research-facts*
+candidates*
+blockers*
+*pre-mortem*
+*outreach*
+form-draft*
+shot-list*
+sessions.md
+build-spec*
+/hackathon/
+/submission/
+/video/

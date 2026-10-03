@@ -1,0 +1,11 @@
+name: public-boundary
+on:
+  push:
+  pull_request:
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No internal docs in the public repo
+        run: bash scripts/check-public-boundary.sh
