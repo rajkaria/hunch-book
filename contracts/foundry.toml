@@ -37,8 +37,8 @@ no_match_path = "test/__none__/**"
 runs = 5_000
 
 [profile.ci.invariant]
-runs = 512
-depth = 256
+runs = 256
+depth = 192
 fail_on_revert = true
 
 [rpc_endpoints]

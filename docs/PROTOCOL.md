@@ -274,7 +274,7 @@ Decisions made at the freeze:
 - **`redeem` names the side.** After settlement only the winning side redeems (1 − fee per token); after a void either side redeems at 0.50.
 - **No merge after settlement.** See the phase table in §4.
 - **Settle up to the deadline, void after it.** See §2.
-- **Rounding dust** from token claims is sent to the protocol fee recipient as tokens once the last staker on that side has claimed. Pool-claim dust moves to protocol fees once the last winner has claimed.
+- **Rounding dust** from token claims is sent to the protocol fee recipient as tokens once the last staker on that side has claimed. Pool-claim dust moves to the fee balances (split like any fee) once the last winner has claimed.
 - **Flash loans are open to anyone and free**, because the vault checks that its surplus did not fall across the call.
 
 ### 7.3 Access control
