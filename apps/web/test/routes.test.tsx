@@ -41,6 +41,17 @@ vi.mock("@/lib/config", async (importOriginal) => {
   };
 });
 
+// The landing page reads the chain on the server; here it gets the not-deployed answer without a network call.
+vi.mock("@/lib/chain/landing", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/chain/landing")>();
+  return {
+    ...actual,
+    readLandingSnapshot: vi.fn(async () =>
+      state.deployed ? { status: "error" } : { status: "not-deployed" },
+    ),
+  };
+});
+
 vi.mock("@/lib/hooks", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/hooks")>();
   const query = (q: QueryState) => ({
@@ -75,14 +86,14 @@ beforeEach(() => {
 });
 
 describe("with no contracts deployed", () => {
-  it("/ shows the status and links to markets", async () => {
-    await renderWithProviders(<Home />);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveProperty(
-      "textContent",
-      "Markets that start as pools and graduate to an order book",
+  it("/ is the landing page, and says plainly that nothing is deployed", async () => {
+    await renderWithProviders(await Home());
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      "Prediction markets that start as pools and graduate to an onchain order book.",
     );
-    expect(screen.getByText("not deployed yet")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Go to markets" }).getAttribute("href")).toBe("/markets");
+    expect(screen.getByText("Monad testnet: not deployed yet")).toBeTruthy();
+    expect(screen.getByText("The contracts are not deployed on Monad testnet yet.")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: "Open markets" })[0]?.getAttribute("href")).toBe("/markets");
   });
 
   it("/markets explains what will appear", async () => {
