@@ -6,6 +6,7 @@ import {
   deployments,
   encodePerplFundingParams,
   monadTestnet,
+  Outcome,
   Phase,
   TemplateId,
 } from "@hunch-book/shared";
@@ -58,6 +59,7 @@ let client: PublicClient;
 let deployer: Signer;
 let bot: Maker;
 let market: Address;
+let vault: Address;
 let book: Address;
 let tokens: { yes: Address; no: Address; usdc: Address };
 let healthFile: string;
@@ -109,7 +111,7 @@ beforeAll(async () => {
     no: await deployMockToken(deployer, "Mock NO", "mNO"),
     usdc: await deployMockToken(deployer, "Mock USDC", "mUSDC"),
   };
-  const vault = await deploy(mockVaultAbi, mockVaultBytecode, [tokens.usdc]);
+  vault = await deploy(mockVaultAbi, mockVaultBytecode, [tokens.usdc]);
   const factory = await deploy(mockFactoryAbi, mockFactoryBytecode, []);
 
   // A real Perpl question on testnet: will BTC longs pay shorts on net over the next ~50 intervals?
@@ -167,7 +169,7 @@ beforeAll(async () => {
   });
   const deployment: Deployment = { ...testnet, hunchBook: { factory, vault, usdc: tokens.usdc } };
   bot = new Maker(config, deployment);
-}, 240_000);
+}, 360_000);
 
 afterAll(() => {
   setLogSink((line) => console.log(line));
@@ -231,5 +233,21 @@ describe("the maker loop on a fork of Monad testnet", () => {
     const l2 = await readL2Book(client, book);
     expect(await findOwnOrders(client, book, bot.maker, l2)).toEqual([]);
     expect(health().openOrders).toBe(0);
+  });
+
+  it("redeems the winning side once the market settles", async (ctx) => {
+    if (!anvil) return ctx.skip();
+    await mintMock(deployer, tokens.usdc, vault, 100n * USDC);
+    await call(market, mockMarketAbi, "setOutcome", [Outcome.Yes]);
+    await call(market, mockMarketAbi, "setPhase", [Phase.Settled]);
+    const margin = testnet.external.kuru.marginAccount;
+    const before = await readBalances(client, bot.maker, tokens, margin);
+    expect(before.walletYes).toBeGreaterThan(0n);
+    await bot.cycle();
+    const after = await readBalances(client, bot.maker, tokens, margin);
+    expect(after.walletYes).toBe(0n);
+    expect(after.walletNo).toBe(before.walletNo);
+    expect(after.walletUsdc - before.walletUsdc).toBe(before.walletYes);
+    expect(lines.some((l) => l.event === "tx" && l.action === "redeem" && l.side === "yes")).toBe(true);
   });
 });

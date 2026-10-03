@@ -55,6 +55,10 @@ contract MockHunchMarket {
     function setBook(address book_) external {
         book = book_;
     }
+
+    function setOutcome(uint8 outcome_) external {
+        outcome = outcome_;
+    }
 }
 
 contract MockHunchFactory {
@@ -86,6 +90,14 @@ contract MockHunchVault {
         (address y, address n) = MockHunchMarket(market).tokens();
         IMockToken(y).mint(to, amount);
         IMockToken(n).mint(to, amount);
+    }
+
+    /// Burns `amount` of one side and pays 1 USDC each (no fee, no outcome check: a stand-in only).
+    function redeem(address market, uint8 side, uint256 amount, address to) external returns (uint256 paid) {
+        (address y, address n) = MockHunchMarket(market).tokens();
+        IMockToken(side == 0 ? y : n).burn(msg.sender, amount);
+        IMockToken(usdc).transfer(to, amount);
+        return amount;
     }
 
     /// 1 YES + 1 NO in, 1 USDC out, as CollateralVault.mergeSets.

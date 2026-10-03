@@ -11,7 +11,7 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
     testTimeout: 60_000,
-    hookTimeout: 240_000,
+    hookTimeout: 360_000,
     // The fork suites each start an anvil fork of Monad testnet; one at a time keeps the public RPC happy.
     fileParallelism: false,
   },

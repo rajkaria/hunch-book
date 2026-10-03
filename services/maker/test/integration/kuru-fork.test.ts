@@ -138,7 +138,7 @@ beforeAll(async () => {
     dustTokens: 1,
   };
   rt = createRuntime({ market: book, book, info, no: tokens.no, sets: mockSetOps(maker, tokens) });
-}, 240_000);
+}, 360_000);
 
 afterAll(() => {
   setLogSink((line) => console.log(line));
