@@ -62,7 +62,7 @@ Pools that never graduate settle as pools.
 
 Notes:
 - Touch markets (§6.3) can settle YES before close, as soon as anyone proves the event happened.
-- Kuru's book is not ours to halt. After close, Hunch's router refuses trades and Hunch's maker cancels all its orders, but orders other people left on the book can still fill. The app warns makers about this.
+- Kuru's book is not ours to halt; only Kuru can pause a market. After close, Hunch's router refuses trades and Hunch's maker cancels all its orders, but orders other people left on the book can still fill, and so can any liquidity someone deposited in the book's built-in AMM vault. The app warns makers about this, and we ask Kuru to soft-pause each book at close.
 
 ## 5. Economics
 
@@ -108,7 +108,7 @@ and symmetrically for NO. Total fees are `φ · N`, which can never exceed the l
 | Distinct stakers | ≥ 10 |
 | Both sides staked | `Y > 0` and `N > 0` |
 | Implied chance `p = Y / T` | between 3% and 97% |
-| Kuru book can be created | the Graduator is authorised by Kuru on this network (§8.1) |
+| Kuru book ready | a verified Kuru YES/USDC book is registered for the market, or the Graduator can create one on this network (§8.1) |
 
 The rule values are copied from the template into each market at creation and never change for that market.
 
@@ -122,7 +122,9 @@ The rule values are copied from the template into each market at creation and ne
 f_YES = φ · N / T          f_NO = φ · Y / T          (at most 0.02 × 0.97 = 0.0194 USDC per token)
 ```
 
-4. The Graduator creates the YES/USDC market on Kuru. The opening reference price is `p = Y / T`.
+4. The market's Kuru YES/USDC book goes live for it: on testnet the Graduator creates it in this transaction; on mainnet Kuru creates it beforehand and it has already been registered (§8.1). The opening reference price is `p = Y / T`.
+
+The YES and NO token contracts are created with the market, not at graduation, so a book can be prepared while the pool is still filling.
 
 **Payoff identity.** Graduation changes nothing for a staker who holds to the end. If YES wins, YES staker `i` redeems:
 
@@ -243,7 +245,7 @@ A template ships only if:
 | `OutcomeToken` | no (minimal clones) | no | mint/burn only by the vault |
 | `Market` | no (minimal clones) | no (funds are in the vault) | state machine, pool ledger, claims |
 | `HunchBookFactory` | no (a fix ships as a new factory) | no | canonical market keys, template registry, caps |
-| `Graduator` | no | no | the only address Kuru needs to authorise |
+| `Graduator` | no | no | creates (testnet) or verifies and registers (mainnet) each market's Kuru book |
 | `HunchRouter` | no | never between transactions | approvals set per call and reset |
 | Resolvers | no | no | pure readers of their source |
 
@@ -327,7 +329,11 @@ interface ICollateralVault {
 }
 
 interface IGraduator {
+    /// Testnet: calls Kuru Router.deployProxy (permissionless there).
     function createBook(address market) external returns (address book);
+    /// Mainnet: anyone registers a book Kuru created; it must be a Kuru-registered market
+    /// with base = the market's YES token, quote = USDC and the expected precisions.
+    function registerBook(address market, address book) external;
     function bookOf(address market) external view returns (address);
 }
 
@@ -352,9 +358,34 @@ interface IHunchRouter {
 
 ### 8.1 Kuru
 
-- **Market creation.** The Graduator calls Kuru's Router `deployProxy` to create a spot market with base = the YES token and quote = USDC. On Monad testnet market creation is open to anyone. On mainnet it is restricted to Kuru's owner (verified: calls from other addresses revert with `Unauthorized()`), so mainnet graduation needs Kuru to authorise the Graduator, or to create each market on request. Until then, mainnet markets run as pools only.
-- **Market parameters** for a token that always trades between 0.01 and 0.99 USDC: see §12; exact values are confirmed against Kuru's contracts before deployment.
-- **Trading.** The router places market orders on the Kuru book within one transaction. The maker bot places and cancels limit orders directly.
+**Book creation.** Kuru's Router creates a spot market and its AMM vault in one call:
+
+```solidity
+deployProxy(uint8 _type, address base, address quote, uint96 sizePrecision, uint32 pricePrecision,
+            uint32 tickSize, uint96 minSize, uint96 maxSize, uint256 takerFeeBps, uint256 makerFeeBps,
+            uint96 kuruAmmSpread) returns (address market)
+```
+
+| Network | Router | Who can create markets | Hunch Book flow |
+|---|---|---|---|
+| Testnet | `0x7EFbE105Ca7415dE98F96622173458ac1c054630` | anyone | the Graduator calls `deployProxy` inside `graduate()` |
+| Mainnet | `0xd651346d7c789536ebf06dc72aE3C8502cd695CC` | Kuru's owner only (verified: other callers get `Unauthorized()`; there is no whitelist) | when a pool nears its graduation rule, the keeper asks Kuru to create the book; anyone then calls `registerBook`, which checks it is a Kuru-registered market for this YES token and USDC with the expected parameters |
+
+**Book parameters** for every Hunch Book market:
+
+| Parameter | Value | Why |
+|---|---|---|
+| `_type` | 0 (no native token) | both sides are ERC-20 |
+| base / quote | YES token / USDC | |
+| `sizePrecision` / `pricePrecision` | 1e6 / 1e6 | YES and USDC both have 6 decimals, so every conversion is exact and no dust is left |
+| `tickSize` | 1,000 (0.001 USDC) | 980 price levels between 0.01 and 0.99 |
+| `minSize` / `maxSize` | 1 YES / pool cap | |
+| fees | Kuru's choice (Kuru's own mainnet markets charge 0/0) | |
+| AMM vault | left empty by Hunch | its constant-product curve has no 1 USDC cap, so it is not a fit for a token that ends at 0 or 1 |
+
+**Trading.** The router uses Kuru's wallet path (`isMargin = false`): it approves the market contract for the exact amount, calls `placeAndExecuteMarketBuy` or `placeAndExecuteMarketSell` with a minimum output, and receives the output directly. A buy then a sell in one transaction was tested on a fork of Kuru's testnet. Limit orders (the maker bot) always settle through Kuru's MarginAccount, so the bot withdraws its fills from there.
+
+**Reading the book.** `getL2Book()` and `bestBidAsk()` onchain are the source of truth; an empty bid reads as `type(uint256).max` and an empty ask as 0.
 
 ### 8.2 Perpl
 
@@ -454,6 +485,7 @@ Every transaction the app sends is shown with an explorer link.
 | Guardian key compromise | Can only pause creation and graduation |
 | USDC issuer freezes the vault | Out of our control; disclosed |
 | Kuru outage | Book trading stops; mint, merge, settle and redeem do not depend on Kuru |
+| A fake "book" registered for a market | `registerBook` accepts only markets registered in Kuru's MarginAccount with this YES token, USDC and the expected precisions |
 
 ### 10.3 Beta limits (v0)
 
@@ -468,7 +500,7 @@ Limits apply to markets created after a change; existing markets keep the limits
 
 ## 11. Known limitations
 
-- Mainnet graduation depends on Kuru authorising the Graduator.
+- Mainnet graduation depends on Kuru creating each book (Kuru's mainnet market creation is owner-only).
 - After graduation, a void pays 0.50 per token, which is not a refund for someone who bought at another price.
 - Thin books are likely at first. Until outside makers join, a large share of book fills will be against Hunch's labelled maker; the proof page shows that share.
 - Perpl funding markets inherit Perpl's trust model: a permissioned price administrator sets funding rates and a 3-of-7 multisig can upgrade the Exchange.
@@ -487,13 +519,13 @@ Limits apply to markets created after a change; existing markets keep the limits
 | Touch challenge period | 24 hours |
 | Price source | Chainlink round that brackets `T` (staleness ≤ 1 hour); Pyth (60 seconds after `T`) where no Chainlink feed exists |
 | Perpl settlement | `block.number > B`; void if paused, rescaled or upgraded during the window |
-| Kuru book | tick 0.001 USDC; prices 0.01 to 0.99 (to confirm against Kuru's precision rules) |
+| Kuru book | precisions 1e6/1e6, tick 0.001 USDC, AMM vault empty (§8.1) |
 
 ## 13. Open items before deployment
 
 | Item | Resolved by |
 |---|---|
-| Kuru `deployProxy` parameters and the router's market-order calls | fork tests on Kuru testnet |
+| Kuru: turnaround for creating mainnet books, soft-pausing books at close, legacy vs new exchange contracts | Kuru team |
 | Chainlink feeds on Monad testnet (for testnet price markets) | onchain checks; otherwise price markets are tested on a mainnet fork |
 | Pyth Hermes API access for historical updates | API key, then a fork test with a real update |
 | How often Perpl upgrades its Exchange (affects how often the upgrade rule voids markets) | watch the implementation slot during the beta |

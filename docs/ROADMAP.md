@@ -91,7 +91,7 @@ Graduation rules (v0 values, set per template and visible on every market):
 |---|---|---|
 | O-3 | Contracts on Monad mainnet with native USDC; addresses in `deployments/monad-mainnet.json` and the README | planned |
 | O-4 | Beta caps: per-market pool cap, per-wallet stake cap, total collateral cap; guardian can pause creation and graduation only (never redemption, never outcomes) | planned |
-| V-3 | Graduation to Kuru mainnet. Kuru mainnet market creation is permissioned, so this needs Kuru to authorise the Graduator contract. Until then, mainnet markets run as pools and graduation is shown on testnet | planned |
+| V-3 | Graduation to Kuru mainnet. Kuru's mainnet market creation is owner-only, so Kuru creates each YES/USDC book on request and anyone registers it (the Graduator verifies it). Until Kuru does, mainnet markets run as pools and graduation is shown on testnet | planned |
 | A-3 | Mainnet app with explorer links on every action | planned |
 
 ### 0.5 Proof and utility (target 2026-10-09 → 2026-10-10)
@@ -197,7 +197,7 @@ Published on the proof page once live, computed from chain data by the indexer:
 
 | Risk | Effect | Plan |
 |---|---|---|
-| Kuru does not authorise mainnet market creation for the Graduator | No mainnet books | Mainnet runs pool-only markets; graduation runs on testnet; ask again with live pool data |
+| Kuru does not create mainnet books for us in time | No mainnet books | Mainnet runs pool-only markets; graduation runs on testnet; ask again with live pool data |
 | A source contract changes or stops answering | Markets on that template cannot settle | Each template has a settlement deadline after which the market voids; new markets on that template are paused |
 | Thin books after graduation | Wide spreads | Maker bot quotes with published limits; maker kit for outside makers; rewards in Phase 3 |
 | A bug in the money path | Loss of user funds | Beta caps, invariant tests, pause of creation and graduation (never of redemption), bug bounty, audit before caps rise |

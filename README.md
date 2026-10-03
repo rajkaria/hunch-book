@@ -50,7 +50,7 @@ Code directories (`contracts/`, `apps/web/`, `services/`, `indexer/`, `packages/
 |---|---|
 | Contracts on Monad testnet | planned |
 | Contracts on Monad mainnet (USDC) | planned |
-| Graduation to Kuru | planned (mainnet market creation on Kuru needs Kuru's authorisation) |
+| Graduation to Kuru | planned (on mainnet, Kuru creates each book; market creation there is owner-only) |
 | App | planned |
 
 ## Prior work and disclosure
