@@ -204,7 +204,7 @@ export function lifecycleSteps(rule: GraduationRule | null): Step[] {
       title: "Trade on Kuru",
       body: "YES opens on its own Kuru order book at the pool's price. Buy or sell YES or NO at any time, each in one transaction.",
       facts: ["1 YES + 1 NO = 1 USDC", "sell before the answer"],
-      status: "building",
+      status: "live",
     },
     {
       title: "Settle from the chain",
