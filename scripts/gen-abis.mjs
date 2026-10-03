@@ -10,6 +10,9 @@ const out = join(root, "contracts", "out");
 const target = join(root, "packages", "shared", "src", "abis", "generated.ts");
 
 // [exported name, source file, contract name, required]
+// Kuru's ABIs are not generated here: the Solidity interfaces only hold what the contracts call,
+// and packages/shared/src/kuru/abis.ts holds the fuller set (events, errors) checked against Kuru's
+// deployed contracts.
 const ABIS = [
   ["hunchBookFactoryAbi", "IHunchBookFactory.sol", "IHunchBookFactory", true],
   ["marketAbi", "IMarket.sol", "IMarket", true],
@@ -22,9 +25,6 @@ const ABIS = [
   ["testUsdcAbi", "TestUSDC.sol", "TestUSDC", false],
   ["perplExchangeAbi", "IPerplExchange.sol", "IPerplExchange", false],
   ["chainlinkAggregatorAbi", "IChainlinkAggregator.sol", "IChainlinkAggregator", false],
-  ["kuruOrderBookAbi", "IKuruOrderBook.sol", "IKuruOrderBook", false],
-  ["kuruMarginAccountAbi", "IKuruMarginAccount.sol", "IKuruMarginAccount", false],
-  ["kuruRouterAbi", "IKuruRouter.sol", "IKuruRouter", false],
 ];
 
 const parts = [

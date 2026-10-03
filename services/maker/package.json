@@ -1,0 +1,28 @@
+{
+  "name": "@hunch-book/maker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hunch Book's open-source maker bot: quotes graduated markets on Kuru's order book.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts run",
+    "once": "tsx src/main.ts once",
+    "cancel-all": "tsx src/main.ts cancel-all",
+    "capture-fixtures": "tsx scripts/capture-fixtures.ts",
+    "smoke:testnet": "tsx scripts/smoke-testnet.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hunch-book/shared": "workspace:*",
+    "viem": "2.57.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  }
+}
