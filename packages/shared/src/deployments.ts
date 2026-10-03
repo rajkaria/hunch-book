@@ -10,9 +10,13 @@ export interface HunchBookContracts {
   graduator?: Address;
   router?: Address;
   usdc?: Address;
-  resolvers?: Record<string, Address>;
+  resolvers?: { perplFunding?: Address; priceAtTime?: Address };
+  guardian?: Address;
+  feeRecipient?: Address;
+  /** Block of the first deployment transaction: indexers start here. */
   deployBlock?: number;
-  deployTx?: Hex;
+  /** Deployment and wiring transactions, by contract or action, for explorer links. */
+  deployTxs?: Record<string, Hex>;
 }
 
 export interface Deployment {

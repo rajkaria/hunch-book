@@ -3,7 +3,33 @@
   "chainId": 10143,
   "rpc": "https://testnet-rpc.monad.xyz",
   "explorer": "https://testnet.monadscan.com",
-  "hunchBook": {},
+  "hunchBook": {
+    "usdc": "0x13c5B2e982F437566991c4d9aC0a30F9f9aC15Ed",
+    "marketImplementation": "0xAEf7f97A739C8ea93D4F5Fc497B0181Cf92d8cE6",
+    "factory": "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A",
+    "vault": "0x81b04B3567dcaDaE6a859394248C47ddc403ba37",
+    "resolvers": {
+      "perplFunding": "0x4ec0077e30EA8B626C5AA087C586E60542150951",
+      "priceAtTime": "0x5582e5Aeb12e15EAda88402E2903Bc628Cc28B3C"
+    },
+    "graduator": "0x7DC80DB34762A996aae6Ce516F562B2e6142fFE3",
+    "router": "0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6",
+    "guardian": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+    "feeRecipient": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+    "deployBlock": 67856277,
+    "deployTxs": {
+      "usdc": "0xc70c4a608176ac51317bbb376df39d5d4734409321fa7965bdb73ef30e57afeb",
+      "marketImplementation": "0x85f8eae1b4e9ebfcfd67e08b9a75d4b0e251ba9a41268edd049881a6f0b295b1",
+      "factory": "0xd4a1377cd9bfcb7e4dec75df8ca5d9012fcab4d1727beaa22f2f639d843b95da",
+      "perplFunding": "0x183d1a49d7869f8c818e717e3c27f59be8cebea785b30847de2f71dc6ce0f65d",
+      "priceAtTime": "0xc160e598b6bfc64fcbb9a16a1d67d709e8971375b46e626f5f081be897964e02",
+      "graduator": "0x324177ad58ae8c84625a229d29cfe12554b9fa0555f021bb2ed13b200ec07685",
+      "setGraduator": "0x6d2b2d9d26598534488dd11d1e5edac1015d9b7d466136a498c4d68f5cfa6c38",
+      "router": "0x705350f88e67467b5d9c02a66c7917a64a01245feab9b8ffd309f1f49df5167f",
+      "addTemplate1": "0x969c2c931e77450300d16618986d7e7b0557d3743bf9b1d2f2857070108c3327",
+      "addTemplate2": "0x07c1d9bf205d6911da2f9e0ebc8ce8fb4509c456386960416eeb597ac5df3cbb"
+    }
+  },
   "wallets": {
     "maker": "0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A",
     "keeper": "0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569"
