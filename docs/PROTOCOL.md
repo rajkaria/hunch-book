@@ -428,7 +428,7 @@ None of these hold user funds or decide outcomes. If all of them stop, users can
 
 - Fair value per template:
   - Funding threshold: funding accrued so far in the window plus the expected remainder (current rate × blocks left), with uncertainty estimated from Perpl's historical funding changes; `p = P(ΔF > X)`.
-  - Price threshold: probability that a lognormal price ends above the strike, using recent realised volatility from Pyth history.
+  - Price threshold: probability that a lognormal price ends above the strike, using recent realised volatility from the Chainlink feed's own round history (read onchain with `getRoundData`, no API key). Assets with no Chainlink feed use Pyth history instead.
 - Quotes `p ± spread/2`, skewed by inventory, clamped to [0.01, 0.99], with a minimum spread of 2 cents and per-market inventory caps. It widens near close and cancels everything at close.
 - It mints and merges complete sets to manage inventory.
 - Its address is published, and every fill against it is counted separately on the proof page.
@@ -527,5 +527,5 @@ Limits apply to markets created after a change; existing markets keep the limits
 |---|---|
 | Kuru: turnaround for creating mainnet books, soft-pausing books at close, legacy vs new exchange contracts | Kuru team |
 | Chainlink feeds on Monad testnet (for testnet price markets) | onchain checks; otherwise price markets are tested on a mainnet fork |
-| Pyth Hermes API access for historical updates | API key, then a fork test with a real update |
+| Pyth Hermes API access for historical updates (only needed for assets with no Chainlink feed, such as SOL) | API key, then a fork test with a real update |
 | How often Perpl upgrades its Exchange (affects how often the upgrade rule voids markets) | watch the implementation slot during the beta |
