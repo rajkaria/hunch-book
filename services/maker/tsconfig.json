@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@hunch-book/shared": ["../../packages/shared/src/index.ts"]
+    }
+  },
+  "include": ["src", "scripts", "test", "vitest.config.ts"]
+}
