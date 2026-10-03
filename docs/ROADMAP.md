@@ -6,7 +6,7 @@ Last updated: 2026-10-03. Status words used below:
 - **building**: in progress
 - **live**: deployed and usable (a link or contract address will sit next to it)
 
-Nothing in this file is live yet. The protocol design is in [PROTOCOL.md](./PROTOCOL.md).
+Live items link their proof in the [README](../README.md#whats-live); every address is in [deployments/](../deployments). The protocol design is in [PROTOCOL.md](./PROTOCOL.md).
 
 ## What we are building, in one paragraph
 
@@ -47,13 +47,13 @@ The order below is the build order. A later item never blocks an earlier one.
 
 | ID | Deliverable | Status |
 |---|---|---|
-| C-1 | `CollateralVault`: holds USDC, mints and merges complete sets (1 YES + 1 NO = 1 USDC), redeems after settlement, per-market accounting | planned |
-| C-2 | `OutcomeToken`: minimal ERC-20 clone per side per market, mint and burn by the vault only | planned |
-| C-3 | `Market` (clone per market): state machine (Pool → Graduated → Closed → Settled or Voided), pool stakes, pool settlement and claims | planned |
-| C-4 | `HunchBookFactory`: create a market from a template id and parameters, one canonical market per (template, parameters) hash, creator's first stake required | planned |
-| S-1 | `PerplFundingResolver`: settles "net funding paid by longs between block A and block B is above X" by reading Perpl's historical funding accumulator, after every funding event in the window is final | planned |
-| S-2 | `PriceAtTimeResolver`: settles "price at or above K at time T" from the Chainlink round that brackets T (Pyth's first update at or after T where Chainlink has no feed) | planned |
-| O-1 | Foundry project, CI (build, unit, fuzz, invariant tests), `deployments/monad-testnet.json` as the single address source | planned |
+| C-1 | `CollateralVault`: holds USDC, mints and merges complete sets (1 YES + 1 NO = 1 USDC), redeems after settlement, per-market accounting | live on testnet |
+| C-2 | `OutcomeToken`: minimal ERC-20 clone per side per market, mint and burn by the vault only | live on testnet |
+| C-3 | `Market` (clone per market): state machine (Pool → Graduated → Closed → Settled or Voided), pool stakes, pool settlement and claims | live on testnet |
+| C-4 | `HunchBookFactory`: create a market from a template id and parameters, one canonical market per (template, parameters) hash, creator's first stake required | live on testnet |
+| S-1 | `PerplFundingResolver`: settles "net funding paid by longs between block A and block B is above X" by reading Perpl's historical funding accumulator, after every funding event in the window is final | live on testnet |
+| S-2 | `PriceAtTimeResolver`: settles "price at or above K at time T" from the Chainlink round that brackets T (Pyth's first update at or after T where Chainlink has no feed) | live on testnet |
+| O-1 | Foundry project, CI (build, unit, fuzz, invariant tests), `deployments/monad-testnet.json` as the single address source | live on testnet |
 
 Tests that must pass before anything deploys:
 - Solvency: for every market, USDC held ≥ complete sets outstanding (+ accrued fees), after every action and under fuzzing.
@@ -65,10 +65,10 @@ Tests that must pass before anything deploys:
 
 | ID | Deliverable | Status |
 |---|---|---|
-| C-5 | `Graduator`: when a pool meets the graduation rules, converts it into complete sets, records each staker's token claim, creates the YES/USDC market on Kuru | planned |
-| C-6 | `HunchRouter`: buy YES, sell YES, buy NO (mint a pair, sell YES), sell NO (buy YES, merge), all atomic with slippage limits and deadlines; uses a vault flash loan guarded by the solvency invariant | planned |
-| V-1 | Kuru integration on testnet: market creation parameters for $0.01–$0.99 outcome tokens, router order calls, fork tests | planned |
-| V-2 | Maker bot v0 (open source, address published): quotes both sides of the YES book from a pricing model, inventory limits, cancels everything at close | planned |
+| C-5 | `Graduator`: when a pool meets the graduation rules, converts it into complete sets, records each staker's token claim, creates the YES/USDC market on Kuru | live on testnet |
+| C-6 | `HunchRouter`: buy YES, sell YES, buy NO (mint a pair, sell YES), sell NO (buy YES, merge), all atomic with slippage limits and deadlines; uses a vault flash loan guarded by the solvency invariant | live on testnet |
+| V-1 | Kuru integration on testnet: market creation parameters for $0.01–$0.99 outcome tokens, router order calls, fork tests | live on testnet |
+| V-2 | Maker bot v0 (open source, address published): quotes both sides of the YES book from a pricing model, inventory limits, cancels everything at close | live on testnet |
 
 Graduation rules (v0 values, set per template and visible on every market):
 - pool total at least $500 and at least 10 distinct stakers

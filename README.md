@@ -40,6 +40,7 @@ Markets whose pool never reaches the graduation rule stay pools and settle as po
 | [contracts/](./contracts) | Foundry: the vault, outcome tokens, market, factory, resolvers, graduator and router, with unit, fuzz, invariant and fork tests |
 | [apps/web/](./apps/web) | The Next.js app at [book.playhunch.xyz](https://book.playhunch.xyz) |
 | [packages/shared/](./packages/shared) | ABIs generated from the contracts, the address loader, chain configs, payout math |
+| [services/maker/](./services/maker) | The open-source maker bot that quotes graduated markets on Kuru |
 | [deployments/](./deployments) | The only source of addresses: `monad-testnet.json`, `monad-mainnet.json` |
 | [docs/PROTOCOL.md](./docs/PROTOCOL.md) | Full protocol and product spec: lifecycle, contracts, settlement, fees, risks |
 | [docs/ROADMAP.md](./docs/ROADMAP.md) | Phased roadmap with deliverable IDs and exit criteria |
@@ -63,8 +64,8 @@ The fork tests read real Perpl funding, real Chainlink rounds and a real Pyth up
 |---|---|---|
 | Contracts on Monad testnet | live | [factory](https://testnet.monadscan.com/address/0x2c30da53F8C384D6eD6603E3138a98fd15E4928A), [vault](https://testnet.monadscan.com/address/0x81b04B3567dcaDaE6a859394248C47ddc403ba37), [router](https://testnet.monadscan.com/address/0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6); all addresses and deploy transactions in [deployments/monad-testnet.json](./deployments/monad-testnet.json); source verified on Sourcify |
 | Graduation into a Kuru book (testnet) | live | market #1 [graduated](https://testnet.monadscan.com/tx/0xbc9524391134b6a3cba94f33daba323075ff0db030a8d51563d89ee94fcf8d01) into Kuru book [0xdFd0…104a](https://testnet.monadscan.com/address/0xdFd060ac7d3b129261EaB2E3DDd6F76A877D104a). Its pool was filled by our own wallets to meet the rule. |
-| Trading YES and NO through the router (testnet) | building | proven on a fork of Kuru's live testnet contracts; onchain trades next |
-| Open-source maker bot | building | |
+| Trading YES and NO through the router (testnet) | live | on market #1: [buy YES](https://testnet.monadscan.com/tx/0x64e40cdb81d82301412c84b15586791a59fe21dd291503877054ce0977846ced), [sell YES](https://testnet.monadscan.com/tx/0xd812065e5e64bf2faf44d7111219a56cc0cbcb95f2f03fee6a30da83d3b2cb69), [buy NO](https://testnet.monadscan.com/tx/0xa23645f27ee8cc3bf51ccd6f65bbb545824e3555a4bec957b45be2870cb9ecab), [sell NO](https://testnet.monadscan.com/tx/0xafbee312a270e29d2218bf89890f0d8bc55658e1a9df07b4713113e30b14c72d). These trades came from our own wallet. |
+| Open-source maker bot ([services/maker](./services/maker)) | live, not yet running all the time | its first quotes on market #1 rest on the book ([tx](https://testnet.monadscan.com/tx/0xc484a70a81232b5b4e61ad8fe201e308638278bd25c204f008d3be5c4f909757)); its address [0x0f11…232A](https://testnet.monadscan.com/address/0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A) is ours and every fill against it counts as ours |
 | App | building | [book.playhunch.xyz](https://book.playhunch.xyz) lists testnet markets and can stake; trading in the app comes next |
 | Contracts on Monad mainnet (USDC) | planned | on mainnet, Kuru creates each book (its market creation is owner-only) |
 
