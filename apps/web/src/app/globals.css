@@ -1,0 +1,31 @@
+:root {
+  --bg: #0e0f0c;
+  --surface: #171914;
+  --line: #2a2d25;
+  --text: #ecefe6;
+  --muted: #9ba090;
+  --accent: #c6f432;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}

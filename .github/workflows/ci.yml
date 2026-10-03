@@ -1,0 +1,70 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FOUNDRY_VERSION: v1.8.4
+
+jobs:
+  contracts:
+    name: contracts (build, unit, fuzz, invariant)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - name: Format
+        working-directory: contracts
+        run: forge fmt --check
+      - name: Build
+        working-directory: contracts
+        run: forge build --sizes
+      - name: Test
+        working-directory: contracts
+        run: FOUNDRY_PROFILE=ci forge test -vvv
+      - name: ABIs in packages/shared match the contracts
+        run: node scripts/gen-abis.mjs --check
+
+  fork:
+    name: contracts (fork tests against live Monad)
+    runs-on: ubuntu-latest
+    env:
+      MONAD_TESTNET_RPC: https://testnet-rpc.monad.xyz
+      MONAD_MAINNET_RPC: https://rpc.monad.xyz
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ env.FOUNDRY_VERSION }}
+      - name: Fork tests
+        working-directory: contracts
+        run: FOUNDRY_PROFILE=fork forge test -vvv
+
+  typescript:
+    name: typescript (typecheck, lint, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build shared package (other packages import its output)
+        run: pnpm --filter @hunch-book/shared build
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build

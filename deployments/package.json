@@ -1,0 +1,11 @@
+{
+  "name": "@hunch-book/deployments",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The only source of Hunch Book contract addresses. Every reader loads from these files.",
+  "license": "MIT",
+  "exports": {
+    "./monad-testnet.json": "./monad-testnet.json",
+    "./monad-mainnet.json": "./monad-mainnet.json"
+  }
+}

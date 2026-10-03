@@ -1,0 +1,37 @@
+{
+  "network": "monad-mainnet",
+  "chainId": 143,
+  "rpc": "https://rpc.monad.xyz",
+  "explorer": "https://monadscan.com",
+  "hunchBook": {},
+  "wallets": {
+    "maker": "0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A",
+    "keeper": "0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569"
+  },
+  "external": {
+    "usdc": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+    "kuru": {
+      "router": "0xd651346d7c789536ebf06dc72aE3C8502cd695CC",
+      "marginAccount": "0x2A68ba1833cDf93fa9Da1EEbd7F46242aD8E90c5"
+    },
+    "perpl": {
+      "exchange": "0x34B6552d57a35a1D042CcAe1951BD1C370112a6F",
+      "perps": { "BTC": 1, "MON": 10, "ETH": 20, "SOL": 31 }
+    },
+    "chainlink": {
+      "BTC/USD": "0xc1d4C3331635184fA4C3c22fb92211B2Ac9E0546",
+      "ETH/USD": "0x1B1414782B859871781bA3E4B0979b9ca57A0A04",
+      "MON/USD": "0xBcD78f76005B7515837af6b50c7C52BCf73822fb"
+    },
+    "pyth": {
+      "contract": "0x2880aB155794e7179c9eE2e38200202908C17B43",
+      "ids": {
+        "BTC/USD": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+        "ETH/USD": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+        "SOL/USD": "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+        "MON/USD": "0x31491744e2dbf6df7fcf4ac0820d18a609b49076d45066d3568424e62f686cd1"
+      }
+    }
+  },
+  "notes": "Kuru mainnet market creation is owner-only, so Kuru creates each YES/USDC book and anyone registers it with the Graduator."
+}

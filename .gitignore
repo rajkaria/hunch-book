@@ -103,3 +103,6 @@ venv/
 # ---- Foundry -------------------------------------------------------------------
 contracts/cache/
 contracts/broadcast/
+
+# Next.js generates this on dev/build
+apps/web/next-env.d.ts

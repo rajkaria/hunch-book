@@ -1,0 +1,33 @@
+{
+  "network": "monad-testnet",
+  "chainId": 10143,
+  "rpc": "https://testnet-rpc.monad.xyz",
+  "explorer": "https://testnet.monadscan.com",
+  "hunchBook": {},
+  "wallets": {
+    "maker": "0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A",
+    "keeper": "0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569"
+  },
+  "external": {
+    "kuru": {
+      "router": "0x7EFbE105Ca7415dE98F96622173458ac1c054630",
+      "marginAccount": "0xd029C2D98ff85D8F64799017fE00a59B1159CE02"
+    },
+    "perpl": {
+      "exchange": "0x1964C32f0bE608E7D29302AFF5E61268E72080cc",
+      "perps": { "BTC": 16, "ETH": 32, "SOL": 48, "MON": 64 }
+    },
+    "chainlink": {},
+    "pyth": {
+      "contract": "0xFC6bd9F9f0c6481c6Af3A7Eb46b296A5B85ed379",
+      "ids": {
+        "BTC/USD": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+        "ETH/USD": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+        "SOL/USD": "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+        "MON/USD": "0x31491744e2dbf6df7fcf4ac0820d18a609b49076d45066d3568424e62f686cd1"
+      }
+    },
+    "circleUsdc": "0x534b2f3A21130d7a60830c2Df862319e593943A3"
+  },
+  "notes": "Testnet collateral is Hunch Book's own mintable test USDC (deployed with the protocol), because Kuru's testnet USDC cannot be minted. Kuru market creation is permissionless on testnet."
+}
