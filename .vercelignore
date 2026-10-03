@@ -1,0 +1,8 @@
+# Files a `vercel deploy` from this checkout must never upload.
+# Git-based deploys only see tracked files; this covers CLI deploys from a local checkout.
+/internal/
+.env
+.env.*
+!.env.example
+.claude/
+.ocean/

@@ -54,7 +54,9 @@ commit, an issue, a log line or a chat message. Code reads variable names (`DEPL
 
 - Lanes own directories (see the workstreams table in docs/ROADMAP.md). Do not edit another lane's
   directory; change a shared interface only by agreement, in its own commit.
-- Commit each completed task when it lands, with a real message. No same-minute bursts, no history
+- Commit each completed task when it lands, with a real message, and push it once the gate below
+  passes, so the public repo always shows the current state of the work. Only public material is
+  pushed: plans, notes and session summaries stay in `internal/`. No same-minute bursts, no history
   rewrites, no force pushes to `main`.
 - Gate before every push: `forge build && forge test` for contracts; `pnpm typecheck && pnpm lint &&
   pnpm test && pnpm build` for TypeScript packages once they exist; `bash scripts/check-public-boundary.sh`.
