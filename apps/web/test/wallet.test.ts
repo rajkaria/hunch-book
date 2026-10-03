@@ -1,9 +1,25 @@
 import { deployments, marketAbi, monadMainnet, monadTestnet } from "@hunch-book/shared";
 import { BaseError, ContractFunctionRevertedError, encodeErrorResult, UserRejectedRequestError } from "viem";
 import { describe, expect, it, vi } from "vitest";
+import type { Connector } from "wagmi";
+import { pickConnectors } from "../src/components/wallet/ConnectButton";
 import { DEFAULT_NETWORK, isDeployed, NETWORK_LABEL, resolveNetwork } from "../src/lib/config";
 import { describeTxError } from "../src/lib/wallet/errors";
 import { addChainParameters, addThenSwitch, isUserRejection } from "../src/lib/wallet/network";
+
+describe("wallet list", () => {
+  const generic = { id: "injected", name: "Injected" } as Connector;
+  const rabby = { id: "io.rabby", name: "Rabby Wallet" } as Connector;
+
+  it("prefers wallets that announce themselves (EIP-6963)", () => {
+    expect(pickConnectors([generic, rabby], true)).toEqual([rabby]);
+  });
+
+  it("falls back to the plain injected provider only when one exists", () => {
+    expect(pickConnectors([generic], true)).toEqual([generic]);
+    expect(pickConnectors([generic], false)).toEqual([]);
+  });
+});
 
 describe("network config", () => {
   it("reads NEXT_PUBLIC_HUNCH_NETWORK and falls back to testnet", () => {

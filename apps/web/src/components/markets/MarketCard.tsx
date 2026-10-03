@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { appDeployment } from "@/lib/config";
-import { formatDuration, formatUsdc } from "@/lib/format";
-import { chanceDisplay, marketChance, nextMilestone, phaseLabel, phaseTone } from "@/lib/market/logic";
+import { formatUsdc } from "@/lib/format";
+import {
+  chanceDisplay,
+  marketChance,
+  milestoneText,
+  nextMilestone,
+  phaseLabel,
+  phaseTone,
+} from "@/lib/market/logic";
 import { fallbackHeadline, templateLabel } from "@/lib/market/params";
 import type { ChainClock, MarketView } from "@/lib/market/types";
 import { Badge, ChanceBar } from "../ui";
@@ -24,11 +31,7 @@ export function Countdown({
   if (now === null) return null;
   const milestone = nextMilestone(m, clock, now);
   if (!milestone) return null;
-  const left = milestone.moment.time - now;
-  const about = milestone.moment.estimated ? "about " : "";
-  return (
-    <span>{left > 0 ? `${milestone.label} ${about}${formatDuration(left)}` : `${milestone.label} now`}</span>
-  );
+  return <span>{milestoneText(milestone, now)}</span>;
 }
 
 export function MarketCard({

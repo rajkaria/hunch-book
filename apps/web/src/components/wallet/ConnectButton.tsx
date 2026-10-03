@@ -12,11 +12,17 @@ import { Button } from "../ui";
 
 /**
  * Browser wallets found by EIP-6963, plus the plain injected provider when nothing announced itself.
- * Wagmi lists both, so the generic entry is dropped once a named wallet is present.
+ * Wagmi lists both, so the generic entry is dropped once a named wallet is present, and also when
+ * the page has no injected provider at all (it could only fail).
  */
-export function pickConnectors(connectors: readonly Connector[]): Connector[] {
+export function pickConnectors(connectors: readonly Connector[], hasInjectedProvider: boolean): Connector[] {
   const named = connectors.filter((c) => c.id !== "injected");
-  return named.length > 0 ? [...named] : [...connectors];
+  if (named.length > 0) return named;
+  return hasInjectedProvider ? [...connectors] : [];
+}
+
+function hasInjectedProvider(): boolean {
+  return typeof window !== "undefined" && Boolean((window as { ethereum?: unknown }).ethereum);
 }
 
 function WalletIcon({ connector }: { connector: Connector }) {
@@ -31,7 +37,7 @@ function WalletIcon({ connector }: { connector: Connector }) {
 
 export function ConnectButton() {
   const chain = useAppChain();
-  const connectors = pickConnectors(useConnectors());
+  const connectors = pickConnectors(useConnectors(), hasInjectedProvider());
   const connect = useConnect();
   const disconnect = useDisconnect();
   const [open, setOpen] = useState(false);

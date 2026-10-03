@@ -19,17 +19,19 @@ export function ChancePanel({ m }: { m: MarketView }) {
     <Panel
       title="Implied chance"
       labelledBy="chance-title"
-      aside={<span className="subtle">{chance.note}</span>}
+      aside={shown.caption === chance.note ? undefined : <span className="subtle">{chance.note}</span>}
     >
       <div className={s.chanceRow}>
         <span className={s.chanceBig}>{shown.value}</span>
         <span className={s.chanceCaption}>{shown.caption}</span>
       </div>
       <ChanceBar bps={chance.bps} />
-      <div className={s.split}>
-        <span className={s.yesText}>YES {formatUsdc(m.pool.yes)} USDC</span>
-        <span className={s.noText}>NO {formatUsdc(m.pool.no)} USDC</span>
-      </div>
+      {onBook ? null : (
+        <div className={s.split}>
+          <span className={s.yesText}>YES {formatUsdc(m.pool.yes)} USDC</span>
+          <span className={s.noText}>NO {formatUsdc(m.pool.no)} USDC</span>
+        </div>
+      )}
       {onBook ? (
         <div className={s.bookQuote}>
           <Stat label="Best bid (Kuru)" value={priceE18(m.quote?.bid ?? null)} />

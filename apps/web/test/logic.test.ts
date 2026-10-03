@@ -7,6 +7,7 @@ import {
   estimateBlockTime,
   graduationProgress,
   marketChance,
+  milestoneText,
   nextMilestone,
   parseBestBidAsk,
   parsePhaseGroup,
@@ -149,6 +150,19 @@ describe("time", () => {
     const withClock = nextMilestone(m, clock, clock.timestamp);
     expect(withClock?.moment).toEqual({ block: 1_000_000n, time: clock.timestamp + 400, estimated: true });
   });
+
+  it("words the countdown, and what it means once the time has passed", () => {
+    const at = (time: number, estimated = false) => ({ time, estimated });
+    expect(milestoneText({ label: "Locks in", moment: at(1_000 + 3_660) }, 1_000)).toBe("Locks in 1h 1m");
+    expect(milestoneText({ label: "Closes in", moment: at(1_400, true) }, 1_000)).toBe(
+      "Closes in about 6m 40s",
+    );
+    expect(milestoneText({ label: "Locks in", moment: at(900) }, 1_000)).toBe("Locking now");
+    expect(milestoneText({ label: "Closes in", moment: at(1_000) }, 1_000)).toBe("Closing now");
+    expect(milestoneText({ label: "Settle within", moment: at(1) }, 1_000)).toBe(
+      "Past the settlement deadline",
+    );
+  });
 });
 
 describe("stake input and preview", () => {
@@ -257,7 +271,7 @@ describe("void terms", () => {
 
   it("never uses em dashes", () => {
     for (const line of [...voidTerms(makeMarket()), ...voidTerms(makeMarket({ graduated: true }))]) {
-      expect(line).not.toMatch(/—/);
+      expect(line.includes(String.fromCharCode(0x2014))).toBe(false);
     }
   });
 });

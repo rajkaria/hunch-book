@@ -41,17 +41,39 @@
   }
 }
 
+/* Phones: chance, then the ticket, then the details. Wide screens: the ticket sits in a sticky column. */
 .grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "chance"
+    "side"
+    "rest";
   gap: var(--space-4);
   align-items: start;
+}
+
+.chanceArea {
+  grid-area: chance;
+  min-width: 0;
+}
+
+.main {
+  grid-area: rest;
+}
+
+.sideCol {
+  grid-area: side;
 }
 
 @media (min-width: 960px) {
   .grid {
     grid-template-columns: minmax(0, 1fr) 360px;
-    gap: var(--space-5);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "chance side"
+      "rest side";
+    gap: var(--space-4) var(--space-5);
   }
 
   .sideCol {

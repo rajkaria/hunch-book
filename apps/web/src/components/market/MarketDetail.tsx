@@ -64,8 +64,10 @@ export function MarketBody({
         ) : null}
       </header>
       <div className={s.grid}>
-        <div className={s.main}>
+        <div className={s.chanceArea}>
           <ChancePanel m={m} />
+        </div>
+        <div className={s.main}>
           <GraduationPanel m={m} />
           <TimelinePanel m={m} clock={clock} now={now} />
           <SourcePanel m={m} />

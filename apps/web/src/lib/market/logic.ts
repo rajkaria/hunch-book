@@ -11,7 +11,7 @@ import {
   type Window,
 } from "@hunch-book/shared";
 import { maxUint256 } from "viem";
-import { formatBpsPercent, formatChance, formatUsdc, formatUtc } from "../format";
+import { formatBpsPercent, formatChance, formatDuration, formatUsdc, formatUtc } from "../format";
 import type { BookQuote, ChainClock, MarketView } from "./types";
 
 // ---------- phases ----------
@@ -140,6 +140,19 @@ export function windowMoment(window: Window, value: bigint, clock: ChainClock | 
 export interface Milestone {
   label: string;
   moment: Moment;
+}
+
+const PASSED: Record<string, string> = {
+  "Locks in": "Locking now",
+  "Closes in": "Closing now",
+  "Settle within": "Past the settlement deadline",
+};
+
+/** "Locks in 2d 4h", "Closes in about 3h 12m" (block clock), or what it means once the time has passed. */
+export function milestoneText(milestone: Milestone, nowSeconds: number): string {
+  const left = milestone.moment.time - nowSeconds;
+  if (left <= 0) return PASSED[milestone.label] ?? milestone.label;
+  return `${milestone.label} ${milestone.moment.estimated ? "about " : ""}${formatDuration(left)}`;
 }
 
 /** The next deadline that matters for this phase, for countdowns. */
