@@ -1,5 +1,5 @@
 # Extra paths the pre-commit guard and CI must never let into this public repo.
-# Internal docs live in ../hunch-book-internal/ (not a git repo).
+# Internal docs live in the gitignored internal/ folder of this checkout.
 event-contract*
 battle-clock*
 judge-log*

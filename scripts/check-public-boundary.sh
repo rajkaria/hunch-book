@@ -47,7 +47,7 @@ if [ -n "$hits" ]; then
 fi
 
 if [ "$fail" -ne 0 ]; then
-  echo "public-boundary check FAILED: move these files to ../hunch-book-internal/ and remove them from git." >&2
+  echo "public-boundary check FAILED: move these files under internal/ (gitignored) and remove them from git." >&2
   exit 1
 fi
 echo "public-boundary check passed ($(git ls-files | wc -l | tr -d ' ') tracked files)."

@@ -9,18 +9,22 @@ Plan: [docs/ROADMAP.md](./docs/ROADMAP.md).
 This repository is public from its first commit. Every file and every commit message can be read
 by anyone, forever.
 
-- Internal material lives in the sibling folder `../hunch-book-internal/`, which is **not** a git
-  repository. That includes plans, task lists, ownership maps, handoffs, strategy, outreach drafts,
-  notes about other teams, event notes, form answers, video scripts and pitch drafts.
-- Write internal material **there, from the start**. Never draft it here and move it later.
-- Never copy, quote or summarise an internal file into this repo. Read it by absolute path when you
-  need it.
-- Never create top-level `internal/`, `notes/`, `private/`, `scratch/`, `hackathon/`, `submission/`
-  or `video/` folders here.
+- Internal material lives in `internal/` at the root of this checkout. That folder is gitignored and
+  is never committed or pushed. It holds plans, task lists, ownership maps, handoffs, strategy,
+  outreach drafts, notes about other teams, event notes, form answers, video scripts and pitch drafts.
+- Write internal material **there, from the start**. Never draft it in a tracked file and move it later.
+- Never copy, quote or summarise an internal file into a tracked file.
+- Git worktrees do not contain `internal/` (ignored files are not checked out). Agents working in a
+  worktree read it by absolute path: `~/Projects/hunch-book/internal/`.
+- Never run `git clean -x`, `git clean -X` or `git clean -fdx` in the main checkout: they delete
+  ignored files, including `internal/`. Never `git add -f` anything under `internal/`.
+- Never create top-level `notes/`, `private/`, `scratch/`, `hackathon/`, `submission/` or `video/`
+  folders; internal material goes under `internal/`.
 - If you are unsure whether something is public, it is internal.
 - Enforcement: the pre-commit hook (`.git/hooks/pre-commit`, installed by the setup script) and CI
-  (`.github/workflows/boundary.yml` → `scripts/check-public-boundary.sh`) block internal paths, the
-  internal marker line, `.env` files and token-shaped strings. Do not bypass them.
+  (`.github/workflows/boundary.yml` → `scripts/check-public-boundary.sh`) block `internal/` and other
+  internal paths, the internal marker line, `.env` files and token-shaped strings. Do not bypass them.
+  Deploy configs must exclude it too (for example `internal/` in `.vercelignore`).
 
 ## Rule 2: secrets
 
