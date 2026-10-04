@@ -39,6 +39,21 @@ export const ARTIFACTS = {
   mockResolver: artifact("MockResolver.sol", "MockResolver"),
   mockKuruRouter: artifact("MockKuruRouter.sol", "MockKuruRouter"),
   mockKuruMarginAccount: artifact("MockKuruMarginAccount.sol", "MockKuruMarginAccount"),
+  // Templates 3, 4 and 6, with stand-ins for Chainlink and Perpl (the resolvers' own test mocks).
+  touchResolver: artifact("ChainlinkTouchResolver.sol", "ChainlinkTouchResolver"),
+  spikeResolver: artifact("PerplFundingSpikeResolver.sol", "PerplFundingSpikeResolver"),
+  parlayResolver: artifact("MarketOutcomeResolver.sol", "MarketOutcomeResolver"),
+  mockFeed: artifact("MockChainlinkAggregator.sol", "MockChainlinkAggregator"),
+  mockPerpl: artifact("MockPerplExchange.sol", "MockPerplExchange"),
+  // Template 7, with the snapshot tests' stand-in source.
+  snapshotResolver: artifact("SnapshotResolver.sol", "SnapshotResolver"),
+  mockSnapshotSource: artifact("SnapshotMocks.sol", "MockSnapshotSource"),
+  // The periphery, the router and the periphery tests' Kuru book stand-in.
+  router: artifact("HunchRouter.sol", "HunchRouter"),
+  autoRedeemer: artifact("AutoRedeemer.sol", "AutoRedeemer"),
+  conditionalOrders: artifact("ConditionalOrders.sol", "ConditionalOrders"),
+  oracle: artifact("ImpliedProbabilityOracle.sol", "ImpliedProbabilityOracle"),
+  peripheryBook: artifact("PeripheryBook.sol", "PeripheryBook"),
 };
 export type ArtifactName = keyof typeof ARTIFACTS;
 

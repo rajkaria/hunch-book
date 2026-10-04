@@ -5,8 +5,9 @@
 # - Every USDC and outcome-token amount is in base units (6 decimals) as a BigInt: 1 USDC = 1000000.
 # - Prices ending in E6 are USDC base units per whole YES token (0.416 USDC = 416000).
 # - Timestamps are unix seconds. Block numbers and timestamps are BigInt.
-# - Activity by Hunch Book's own wallets (maker bot, keeper, guardian, fee recipient) and by wallets
-#   our wallets paid to seed is labelled as ours: see Wallet.ourRole and the *Ours / *OurMaker fields.
+# - Activity by Hunch Book's own wallets (maker bot, keeper, guardian, fee recipient, reward funder,
+#   timelock proposer) and by wallets our wallets paid to seed is labelled as ours: see Wallet.ourRole
+#   and the *Ours / *OurMaker / *IsOurs / *ByUs fields.
 
 enum MarketStage {
   "Staking open or locked, never graduated. Lock and close are derived from the clock by readers."
@@ -35,8 +36,75 @@ enum OurRole {
   Keeper
   Guardian
   FeeRecipient
+  "Funds and sweeps the MerkleDistributor's reward epochs (periphery.distributorFunder)."
+  DistributorFunder
+  "Queues template and limit changes on the TemplateTimelock (periphery.timelockProposer)."
+  TimelockProposer
   "A wallet whose stake one of our wallets paid for (for example the testnet seed stakers)."
   Seeded
+}
+
+"Template 7: how a snapshot's value is compared with the market's threshold."
+enum SnapshotComparator {
+  Above
+  AtOrAbove
+  Below
+  AtOrBelow
+}
+
+"ConditionalOrders: the book price must be at or above, or at or below, the trigger."
+enum OrderCondition {
+  AtOrAbove
+  AtOrBelow
+}
+
+"An order is open until it is executed or cancelled. Readers compare expiry with the time: an expired order stays Open here."
+enum ConditionalOrderStatus {
+  Open
+  Executed
+  Cancelled
+}
+
+enum AutoRedeemSettingKind {
+  "setOptIn(true) or optInWithPermit: auto-redeem on for every market."
+  OptIn
+  "setOptIn(false)."
+  OptOut
+  "setMarketOptOut(market, true): one market excluded."
+  MarketOptOut
+  "setMarketOptOut(market, false): the market included again."
+  MarketOptIn
+}
+
+"The fee-paying events a referral credit is computed from (docs/PERIPHERY.md, the referral formula)."
+enum ReferralFeeKind {
+  "The vault's Redeemed; the user is its `to`, so auto-redeemed holders count too."
+  Redemption
+  "A market's PoolClaimed; the user is the claimer."
+  PoolClaim
+}
+
+"The factory call a TemplateTimelock operation runs, from the first four bytes of its calldata."
+enum TimelockOperationKind {
+  AddTemplate
+  SetCaps
+  SetCollateralCap
+  TransferGuardian
+  Unknown
+}
+
+enum TimelockOperationStatus {
+  "Waiting for readyAt, or ready to execute until readyAt plus the 14-day grace period."
+  Queued
+  Executed
+  Cancelled
+}
+
+"TemplateTimelock actions that take effect at once."
+enum TimelockActionKind {
+  CreationPause
+  GraduationPause
+  GuardianAccepted
 }
 
 enum RouterTradeKind {
@@ -126,12 +194,29 @@ type Market {
   feed: String
   pythId: String
   strikeE8: BigInt
+  "Template 5: the range, USD with 8 decimals. The lower bound counts, the upper one does not."
+  lowerE8: BigInt
+  upperE8: BigInt
+  "Template 6: the parlay's legs, market addresses in the resolver's order."
+  legs: [String!]
   "True when lock and close are block numbers (Perpl markets), false for unix seconds."
   blockClock: Boolean
+  "Templates 3 and 4: where the window a touch can happen in starts (template 3: unix seconds; template 4: funding events strictly after this block)."
+  windowStart: BigInt
   lockAt: BigInt
   closeAt: BigInt
   "Unix seconds. Known from the parameters for price markets; read Market.window() for block-clock markets."
   settleDeadline: BigInt
+  "Template 7: the snapshot this market answers from. Set from the parameters at creation; it resolves once someone takes the snapshot."
+  snapshot: Snapshot
+  "Template 7: SnapshotStore.snapshotKey(sourceId, closeTime, snapshotWindow), shared by every market on the same observation."
+  snapshotKey: String @index
+  "Template 7: the source's index in the resolver's source list. The threshold is in that source's raw units."
+  snapshotSourceId: Int
+  "Template 7: the window's length in seconds; the window is [closeAt, closeAt + snapshotWindow]."
+  snapshotWindow: Int
+  "Template 7: how the snapshot is compared with the threshold. Template 3: which side of the strike is a touch (AtOrAbove or AtOrBelow)."
+  comparator: SnapshotComparator
   creator: Creator!
   creatorIsOurs: Boolean!
   yesToken: String!
@@ -196,6 +281,15 @@ type Market {
   createdAt: BigInt!
   createdAtBlock: BigInt!
   createdTx: String!
+  "ConditionalOrders on this market: placed, not yet executed or cancelled (expired ones included), executed."
+  conditionalOrderCount: Int!
+  conditionalOrdersOpen: Int!
+  conditionalOrdersExecuted: Int!
+  "Redemptions the AutoRedeemer made for holders, and the USDC they paid."
+  autoRedemptionCount: Int!
+  autoRedeemedUsdc: BigInt!
+  "The ImpliedProbabilityOracle's latest poke for this market, once it has one."
+  oracle: OracleFeed
   stakes: [Stake!]! @derivedFrom(field: "market")
   stakers: [Staker!]! @derivedFrom(field: "market")
   positions: [Position!]! @derivedFrom(field: "market")
@@ -206,6 +300,9 @@ type Market {
   redemptions: [Redemption!]! @derivedFrom(field: "market")
   setFlows: [SetFlow!]! @derivedFrom(field: "market")
   vaultEvents: [VaultEvent!]! @derivedFrom(field: "market")
+  conditionalOrders: [ConditionalOrder!]! @derivedFrom(field: "market")
+  autoRedemptions: [AutoRedemption!]! @derivedFrom(field: "market")
+  priceAdapters: [PriceAdapter!]! @derivedFrom(field: "market")
 }
 
 type OutcomeToken {
@@ -237,8 +334,12 @@ type Wallet {
   marketsCreated: Int!
   redemptionCount: Int!
   redeemedUsdc: BigInt!
+  "This wallet's latest referral binding, active or not (compare expiresAt with the time)."
+  referral: Referral
   stakes: [Stake!]! @derivedFrom(field: "wallet")
   positions: [Position!]! @derivedFrom(field: "wallet")
+  conditionalOrders: [ConditionalOrder!]! @derivedFrom(field: "owner")
+  referrals: [Referral!]! @derivedFrom(field: "user")
 }
 
 type Stake {
@@ -391,6 +492,8 @@ type RouterTrade {
   "Average USDC per whole token of the traded side (YES for BuyYes and SellYes, NO for BuyNo and SellNo)."
   priceE6: BigInt!
   book: String!
+  "Set when ConditionalOrders made this trade: `user` is then the order's owner, not the contract."
+  conditionalOrder: ConditionalOrder
   userIsOurs: Boolean!
   block: BigInt!
   timestamp: BigInt! @index
@@ -469,8 +572,11 @@ type Settlement {
 type Redemption {
   id: ID!
   market: Market!
+  "The tokens' owner: the vault's holder, or for an auto-redemption the holder the AutoRedeemer paid (`to`)."
   wallet: Wallet!
   to: String!
+  "The AutoRedeemer redeemed these tokens for the holder (the vault's event names the AutoRedeemer as holder)."
+  viaAutoRedeemer: Boolean!
   side: Side!
   amount: BigInt!
   paid: BigInt!
@@ -622,6 +728,43 @@ type ProtocolStats {
   vaultUsdcBalance: BigInt!
   "vaultUsdcBalance - vaultObligations. Must never be negative (PROTOCOL.md section 5.1)."
   solvencyMargin: BigInt!
+  "Template 7 snapshots taken, and how many of them one of our wallets sent."
+  snapshotsTaken: Int!
+  snapshotsTakenOurs: Int!
+  "AutoRedeemer: holders opted in now, redemptions made, USDC paid, those called by our wallets, and failures."
+  autoRedeemHolders: Int!
+  autoRedemptionCount: Int!
+  autoRedeemedUsdc: BigInt!
+  autoRedemptionCountOurCaller: Int!
+  autoRedeemFailures: Int!
+  "ConditionalOrders: placed, open now (expired ones included), executed, cancelled, and executed by our wallets."
+  conditionalOrdersPlaced: Int!
+  conditionalOrdersOpen: Int!
+  conditionalOrdersExecuted: Int!
+  conditionalOrdersCancelled: Int!
+  conditionalOrdersExecutedByUs: Int!
+  "ReferralRegistry: bindings, those a wallet of ours relayed, distinct referrers, and referred users' fees while bound."
+  referralBindings: Int!
+  referralBindingsRelayedByUs: Int!
+  referrers: Int!
+  referredFeeCount: Int!
+  referredFees: BigInt!
+  "The protocol's share of referred users' fees: the base referral credits are computed from."
+  referredProtocolShare: BigInt!
+  "MerkleDistributor epochs and claims. Amounts are per token, in RewardToken."
+  rewardEpochs: Int!
+  rewardClaimCount: Int!
+  "ImpliedProbabilityOracle pokes, those our wallets sent, and the checkpoints they stored."
+  oraclePokes: Int!
+  oraclePokesOurs: Int!
+  oracleCheckpoints: Int!
+  "OutcomeTokenPriceAdapter contracts created."
+  priceAdapters: Int!
+  "TemplateTimelock operations: queued, executed, cancelled, and still queued now."
+  timelockQueued: Int!
+  timelockExecuted: Int!
+  timelockCancelled: Int!
+  timelockPending: Int!
   updatedAt: BigInt!
   updatedAtBlock: BigInt!
 }
@@ -653,6 +796,19 @@ type DailyStats {
   newWallets: Int!
   vaultUsdcIn: BigInt!
   vaultUsdcOut: BigInt!
+  "Periphery activity that day (see ProtocolStats for each one's meaning)."
+  snapshotsTaken: Int!
+  autoRedemptionCount: Int!
+  autoRedeemedUsdc: BigInt!
+  conditionalOrdersPlaced: Int!
+  conditionalOrdersExecuted: Int!
+  conditionalOrdersCancelled: Int!
+  referralBindings: Int!
+  referredFeeCount: Int!
+  referredProtocolShare: BigInt!
+  rewardClaimCount: Int!
+  oraclePokes: Int!
+  oraclePokesOurs: Int!
 }
 
 "Marks a wallet as active on a day, so DailyStats counts it once. Id: <date>-<wallet>."
@@ -660,4 +816,425 @@ type WalletDay {
   id: ID!
   date: String!
   wallet: String!
+}
+
+# ---- template 7 ---------------------------------------------------------------------------------
+
+"""
+Template 7: the first and only snapshot of one observation, a source read once in
+[closeTime, closeTime + snapshotWindow] (SnapshotResolver's SnapshotTaken). Every market on the same
+observation answers from it. Id: <resolver>-<key>.
+"""
+type Snapshot {
+  id: ID!
+  key: String! @index
+  resolver: String!
+  sourceId: Int!
+  closeTime: BigInt!
+  snapshotWindow: Int!
+  "The value read, in the source's raw units (the resolver's source(sourceId) gives its decimals and unit)."
+  value: BigInt!
+  "Block and time of the snapshot transaction, as the resolver stored them."
+  block: BigInt!
+  timestamp: BigInt!
+  "Seconds from closeTime to the snapshot."
+  secondsAfterClose: BigInt!
+  "The account that called the resolver: a market when its settle() took the snapshot, otherwise whoever called snapshot()."
+  taker: String!
+  takenInSettle: Boolean!
+  "The transaction sender."
+  sender: String!
+  senderIsOurs: Boolean!
+  tx: String!
+  markets: [Market!]! @derivedFrom(field: "snapshot")
+}
+
+# ---- AutoRedeemer -------------------------------------------------------------------------------
+
+"A holder's auto-redeem setting and what the AutoRedeemer did for them. Id: the holder."
+type AutoRedeemOptIn {
+  id: ID!
+  holder: Wallet!
+  holderIsOurs: Boolean!
+  "On for every market, apart from the ones in marketOptOuts that are still opted out."
+  optedIn: Boolean! @index
+  "How many times the holder turned it on."
+  optInCount: Int!
+  firstOptedInAt: BigInt
+  "Markets excluded now."
+  marketsOptedOut: Int!
+  redemptionCount: Int!
+  redeemedUsdc: BigInt!
+  failureCount: Int!
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+  updatedTx: String!
+  marketOptOuts: [AutoRedeemMarketOptOut!]! @derivedFrom(field: "optIn")
+}
+
+"One holder's exclusion of one market (MarketOptOutSet). Id: <market>-<holder>."
+type AutoRedeemMarketOptOut {
+  id: ID!
+  optIn: AutoRedeemOptIn!
+  holder: String! @index
+  market: Market!
+  optedOut: Boolean!
+  updatedAt: BigInt!
+  updatedTx: String!
+}
+
+"Every OptInSet and MarketOptOutSet, as a log."
+type AutoRedeemSettingChange {
+  id: ID!
+  holder: String! @index
+  kind: AutoRedeemSettingKind!
+  market: Market
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+"One side of one holder redeemed by the AutoRedeemer (AutoRedeemed). The vault paid the holder directly."
+type AutoRedemption {
+  id: ID!
+  market: Market!
+  holder: Wallet!
+  holderIsOurs: Boolean!
+  side: Side!
+  amount: BigInt!
+  paid: BigInt!
+  "Who called redeemFor or redeemManyFor: the keeper, in practice."
+  caller: String!
+  callerIsOurs: Boolean!
+  "The vault's record of the same redemption."
+  redemption: Redemption
+  block: BigInt!
+  timestamp: BigInt! @index
+  tx: String!
+}
+
+"A holder redeemManyFor skipped because their redemption reverted (RedeemFailed). Nothing moved for them."
+type AutoRedeemFailure {
+  id: ID!
+  market: Market!
+  holder: String! @index
+  "The revert data, hex."
+  reason: String!
+  "The transaction sender."
+  caller: String!
+  callerIsOurs: Boolean!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+# ---- ConditionalOrders --------------------------------------------------------------------------
+
+"""
+A take-profit, stop-loss or limit order (ConditionalOrders), from OrderPlaced to OrderExecuted or
+OrderCancelled. Id: the order id. Prices are E6 on the traded side's own book price.
+"""
+type ConditionalOrder {
+  id: ID!
+  orderId: BigInt!
+  owner: Wallet!
+  ownerIsOurs: Boolean!
+  market: Market!
+  kind: RouterTradeKind!
+  condition: OrderCondition!
+  triggerPriceE6: BigInt!
+  "Unix seconds, inclusive. After it the order can only be cancelled."
+  expiry: BigInt!
+  executorTipBps: Int!
+  "BuyYes: USDC to spend. SellYes: YES to sell. BuyNo: NO to buy. SellNo: NO to sell."
+  amountIn: BigInt!
+  "BuyYes: least YES received. SellYes and SellNo: least USDC received. BuyNo: most USDC paid."
+  limit: BigInt!
+  status: ConditionalOrderStatus! @index
+  placedAt: BigInt! @index
+  placedAtBlock: BigInt!
+  placedTx: String!
+  "Execution: who executed it, the trigger-side price it ran at, the input used, what the owner got after the tip, and the tip (in the output token)."
+  executor: String
+  executorIsOurs: Boolean
+  executedPriceE6: BigInt
+  spent: BigInt
+  received: BigInt
+  tip: BigInt
+  routerTrade: RouterTrade
+  executedAt: BigInt
+  executedAtBlock: BigInt
+  executeTx: String
+  cancelledAt: BigInt
+  cancelTx: String
+  updatedAt: BigInt!
+}
+
+# ---- ReferralRegistry ---------------------------------------------------------------------------
+
+"A referral binding (Bound). A user binds again only after a binding expires. Id: <block>-<logIndex>."
+type Referral {
+  id: ID!
+  user: Wallet!
+  userIsOurs: Boolean!
+  referrer: Referrer!
+  "Active from boundAt until expiresAt, exclusive."
+  boundAt: BigInt!
+  expiresAt: BigInt! @index
+  "Who sent the binding: the user for bind(), a relayer for bindFor()."
+  relayer: String!
+  relayed: Boolean!
+  relayerIsOurs: Boolean!
+  "Fees the user paid while this binding was active, and the protocol's share of them."
+  feeCount: Int!
+  fees: BigInt!
+  protocolShare: BigInt!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+  feeEvents: [ReferralFee!]! @derivedFrom(field: "referral")
+}
+
+"A referrer and every binding to it. Id: the referrer."
+type Referrer {
+  id: ID!
+  isOurs: Boolean!
+  bindingCount: Int!
+  "Distinct users ever bound to this referrer."
+  userCount: Int!
+  firstBoundAt: BigInt!
+  lastBoundAt: BigInt!
+  "The latest expiry among its bindings."
+  activeUntil: BigInt!
+  "Referred users' fees while bound, and the protocol's share of them."
+  feeCount: Int!
+  fees: BigInt!
+  protocolShare: BigInt!
+  referrals: [Referral!]! @derivedFrom(field: "referrer")
+  users: [ReferredUser!]! @derivedFrom(field: "referrer")
+  credits: [ReferralCredit!]! @derivedFrom(field: "referrer")
+}
+
+"One referrer and one user it referred, over all their bindings. Id: <referrer>-<user>."
+type ReferredUser {
+  id: ID!
+  referrer: Referrer!
+  user: String! @index
+  bindingCount: Int!
+  firstBoundAt: BigInt!
+  "The latest binding's expiry."
+  expiresAt: BigInt!
+  feeCount: Int!
+  fees: BigInt!
+  protocolShare: BigInt!
+}
+
+"""
+One fee a referred user paid while bound: a redemption fee (the vault's Redeemed, user = to) or a pool
+claim fee (PoolClaimed). Fees of zero are not recorded. A referrer's credit for it is
+floor(protocolShare * referralShareBps / 10000), with the epoch's published referralShareBps.
+Id: <block>-<logIndex> of the fee event.
+"""
+type ReferralFee {
+  id: ID!
+  referral: Referral!
+  referrer: Referrer!
+  user: String! @index
+  market: Market!
+  kind: ReferralFeeKind!
+  fee: BigInt!
+  "fee - floor(fee * 2500 / 10000): the 75% the protocol keeps (the creator's 25% is never shared)."
+  protocolShare: BigInt!
+  date: String! @index
+  block: BigInt!
+  timestamp: BigInt! @index
+  tx: String!
+}
+
+"Referred users' fees per referrer per UTC day, while their bindings were active: what the rewards scorer reads. Id: <referrer>-<YYYY-MM-DD>."
+type ReferralCredit {
+  id: ID!
+  referrer: Referrer!
+  date: String! @index
+  dayStart: BigInt!
+  feeCount: Int!
+  fees: BigInt!
+  protocolShare: BigInt!
+}
+
+# ---- MerkleDistributor --------------------------------------------------------------------------
+
+"One reward epoch (EpochCreated), funded in full when created. Id: the epoch number."
+type RewardEpoch {
+  id: ID!
+  epoch: BigInt!
+  distributor: String!
+  token: String!
+  root: String!
+  total: BigInt!
+  "Unix seconds, inclusive: claims close after it, then the funder can sweep the rest."
+  claimDeadline: BigInt!
+  claimed: BigInt!
+  claimCount: Int!
+  swept: Boolean!
+  sweptAmount: BigInt!
+  sweptTo: String
+  sweptAt: BigInt
+  sweepTx: String
+  "total - claimed - sweptAmount: still owed to claimants."
+  outstanding: BigInt!
+  "The transaction sender: the funder."
+  funder: String!
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  createdTx: String!
+  claims: [RewardClaim!]! @derivedFrom(field: "epoch")
+}
+
+"One account's claim in one epoch (Claimed). Id: <epoch>-<account>."
+type RewardClaim {
+  id: ID!
+  epoch: RewardEpoch!
+  account: String! @index
+  accountIsOurs: Boolean!
+  amount: BigInt!
+  "Who submitted the claim; the tokens always go to the account."
+  caller: String!
+  callerIsOurs: Boolean!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+"Reward totals for one token across epochs. Id: the token."
+type RewardToken {
+  id: ID!
+  epochCount: Int!
+  funded: BigInt!
+  claimed: BigInt!
+  swept: BigInt!
+  "funded - claimed - swept: what the distributor still owes (its outstanding(token))."
+  outstanding: BigInt!
+}
+
+"The MerkleDistributor's funder role. Id: the distributor."
+type RewardDistributor {
+  id: ID!
+  funder: String!
+  pendingFunder: String
+  funderIsOurs: Boolean!
+  updatedAt: BigInt!
+  updatedTx: String!
+}
+
+# ---- ImpliedProbabilityOracle and price adapters ------------------------------------------------
+
+"A market's chance of YES as of its latest oracle poke (Poked). Chance and spread are E6: 1000000 is 100%. Id: the market."
+type OracleFeed {
+  id: ID!
+  market: Market!
+  chanceE6: Int!
+  spreadE6: Int!
+  "An empty book read the last observation."
+  stale: Boolean!
+  pokeCount: Int!
+  pokeCountOurs: Int!
+  checkpointCount: Int!
+  firstPokedAt: BigInt!
+  lastPokedAt: BigInt!
+  lastPokedAtBlock: BigInt!
+  lastPoker: String!
+  lastPokeTx: String!
+  checkpoints: [OracleCheckpoint!]! @derivedFrom(field: "feed")
+}
+
+"A poke that stored a checkpoint (at most one per 30 seconds per market): the chance history. Id: <market>-<block>."
+type OracleCheckpoint {
+  id: ID!
+  feed: OracleFeed!
+  market: Market!
+  chanceE6: Int!
+  spreadE6: Int!
+  stale: Boolean!
+  pokerIsOurs: Boolean!
+  block: BigInt!
+  timestamp: BigInt! @index
+  tx: String!
+}
+
+"An OutcomeTokenPriceAdapter: a Chainlink-style price of one market's YES or NO token (AdapterCreated). Id: the adapter."
+type PriceAdapter {
+  id: ID!
+  factory: String!
+  market: Market!
+  side: Side!
+  "The transaction sender."
+  creator: String!
+  creatorIsOurs: Boolean!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+# ---- TemplateTimelock ---------------------------------------------------------------------------
+
+"""
+A queued factory change (OperationQueued), with its full calldata decoded so anyone can review a new
+template before it can go live. Id: the operation id, keccak256(abi.encode(data, nonce)).
+"""
+type TimelockOperation {
+  id: ID!
+  timelock: String!
+  nonce: BigInt!
+  selector: String!
+  kind: TimelockOperationKind!
+  "The calldata, hex: execute(data, nonce) runs exactly this."
+  data: String!
+  "A one-sentence summary of the call."
+  summary: String!
+  "AddTemplate."
+  templateId: BigInt
+  resolver: String
+  minPool: BigInt
+  minStakers: BigInt
+  minChanceBps: BigInt
+  maxChanceBps: BigInt
+  "SetCaps."
+  poolCap: BigInt
+  walletCap: BigInt
+  minStake: BigInt
+  creatorMinStake: BigInt
+  "SetCollateralCap."
+  collateralCap: BigInt
+  "TransferGuardian."
+  pendingGuardian: String
+  "It can run from readyAt until expiresAt (readyAt plus the 14-day grace period)."
+  readyAt: BigInt!
+  expiresAt: BigInt!
+  status: TimelockOperationStatus! @index
+  "The transaction sender: the proposer."
+  proposer: String!
+  queuedAt: BigInt!
+  queuedAtBlock: BigInt!
+  queueTx: String!
+  executor: String
+  executorIsOurs: Boolean
+  executedAt: BigInt
+  executeTx: String
+  cancelledAt: BigInt
+  cancelTx: String
+}
+
+"A TemplateTimelock action that takes effect at once: a pause set, or the guardian role accepted."
+type TimelockAction {
+  id: ID!
+  timelock: String!
+  kind: TimelockActionKind!
+  "For pauses: the new value."
+  paused: Boolean
+  sender: String!
+  senderIsOurs: Boolean!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
 }

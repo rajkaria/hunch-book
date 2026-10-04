@@ -1,0 +1,24 @@
+{
+  "name": "@hunch-book/example-agent-trader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Example agent on @hunch-book/sdk: watches Perpl funding markets and buys YES under a budget. Dry run by default.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "once": "tsx src/main.ts --once",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hunch-book/sdk": "workspace:*",
+    "viem": "2.57.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  }
+}

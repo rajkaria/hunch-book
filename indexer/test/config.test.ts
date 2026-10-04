@@ -28,6 +28,21 @@ describe("generated config", () => {
     for (const key of ["factory", "vault", "router", "graduator", "usdc"]) {
       expect(config).toContain(`address: "${d.hunchBook[key]}"`);
     }
+    // Template 7's resolver and every periphery contract, each under its own name.
+    expect(config).toContain(
+      `      - name: SnapshotResolver\n        address: "${d.hunchBook.resolvers.snapshot}"\n`,
+    );
+    for (const [name, key] of [
+      ["AutoRedeemer", "autoRedeemer"],
+      ["ConditionalOrders", "conditionalOrders"],
+      ["ReferralRegistry", "referralRegistry"],
+      ["MerkleDistributor", "merkleDistributor"],
+      ["ImpliedProbabilityOracle", "impliedProbabilityOracle"],
+      ["PriceAdapterFactory", "priceAdapterFactory"],
+      ["TemplateTimelock", "templateTimelock"],
+    ] as const) {
+      expect(config).toContain(`      - name: ${name}\n        address: "${d.hunchBook.periphery[key]}"\n`);
+    }
     expect(config).toContain(`url: \${ENVIO_MONAD_TESTNET_RPC:-${d.rpc}}`);
     expect(config).toContain(`for: \${ENVIO_RPC_MODE:-fallback}`);
     expect(config).toContain("interval_ceiling: 100");
@@ -57,6 +72,28 @@ describe("generated config", () => {
     expect(config).toContain(`url: \${ENVIO_MONAD_MAINNET_RPC:-${mainnet.rpc}}`);
     // Mainnet collateral is Circle USDC from the external block of the deployments file.
     expect(config).toContain(`address: "${mainnet.external.usdc}"`);
+    // Contracts not deployed there yet are listed without an address, so they are never read.
+    expect(config).toContain(
+      "      - name: SnapshotResolver\n      - name: AutoRedeemer\n      - name: ConditionalOrders\n",
+    );
+    expect(config.trimEnd().endsWith("      - name: TemplateTimelock")).toBe(true);
+    const withPeriphery = renderConfig(
+      {
+        ...deployed,
+        hunchBook: {
+          ...deployed.hunchBook,
+          periphery: { autoRedeemer: "0x00000000000000000000000000000000000000f5" },
+        },
+      },
+      "ENVIO_MONAD_MAINNET_RPC",
+    );
+    expect(withPeriphery).toContain(
+      '      - name: AutoRedeemer\n        address: "0x00000000000000000000000000000000000000f5"\n',
+    );
+    // The core is required.
+    expect(() =>
+      renderConfig({ ...deployed, hunchBook: { ...deployed.hunchBook, router: undefined } }, "X"),
+    ).toThrow(/no Hunch Book addresses/);
   });
 
   it("labels our wallets from the deployments file, lowercase", () => {
@@ -67,9 +104,28 @@ describe("generated config", () => {
       expect(n.ours.keeper).toBe(d.wallets.keeper.toLowerCase());
       expect(n.chainId).toBe(d.chainId);
     }
-    const testnet = networkConstants(deployment("monad-testnet"));
+    const testnetFile = deployment("monad-testnet");
+    const testnet = networkConstants(testnetFile);
     expect(testnet.perps["64"]).toBe("MON");
     expect(testnet.chainlinkFeeds["0x12c0f44368a02081ce58a936d1c1f606bb301715"]).toBe("BTC/USD");
+    // The reward funder and the timelock proposer are ours too, and every address is lowercase.
+    const p = testnetFile.hunchBook.periphery;
+    expect(testnet.ours.distributorFunder).toBe(p.distributorFunder.toLowerCase());
+    expect(testnet.ours.timelockProposer).toBe(p.timelockProposer.toLowerCase());
+    expect(testnet.periphery).toEqual({
+      autoRedeemer: p.autoRedeemer.toLowerCase(),
+      conditionalOrders: p.conditionalOrders.toLowerCase(),
+      referralRegistry: p.referralRegistry.toLowerCase(),
+      merkleDistributor: p.merkleDistributor.toLowerCase(),
+      impliedProbabilityOracle: p.impliedProbabilityOracle.toLowerCase(),
+      priceAdapterFactory: p.priceAdapterFactory.toLowerCase(),
+      templateTimelock: p.templateTimelock.toLowerCase(),
+      deployBlock: p.deployBlock,
+    });
+    expect(testnet.resolvers.snapshot).toBe(testnetFile.hunchBook.resolvers.snapshot.toLowerCase());
+    const mainnet = networkConstants(deployment("monad-mainnet"));
+    expect(mainnet.periphery.autoRedeemer).toBeNull();
+    expect(mainnet.resolvers).toEqual({});
   });
 
   it("writes event signatures Envio can read, from the contracts' ABIs", () => {

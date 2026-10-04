@@ -16,12 +16,25 @@ tokens, settling, voiding. The keeper makes sure someone does, on time, for ever
 | Ask Kuru for a book | Mainnet: the rule is met, but only Kuru can create books and there is none yet | None. A `book-request` log line (and webhook post) with the exact `deployProxy` call, at most once per market every 6 hours |
 | Register the book | Mainnet: Kuru has deployed the book at the address `deployProxy` gives these parameters | `graduator.registerBook(market, book)`, then `graduate()` next cycle |
 | Push token claims | The market has graduated and still holds YES or NO for stakers | `market.claimTokensFor(users)`, in batches of 50 |
+| Prove YES | Touch templates (3 and 4): the market is past staking and an observation in its window proves YES | `market.proveYes(proof)`, before or after close |
+| Snapshot | Templates that need a separate call to take their snapshot (none today: template 7's `settle` takes it) | the template's snapshot call |
 | Settle | The close has passed, the template's resolver can answer, and the settlement deadline has not passed | `market.settle(evidence)` |
 | Push pool payouts | A market that never graduated is settled or voided, and its pool still holds USDC | `market.claimPoolFor(users)`, in batches of 50 |
 | Void | The settlement deadline has passed with no answer | `market.voidIfExpired()` |
 
 Every decision comes from pure functions in [`src/plan.ts`](./src/plan.ts) of one market's state and
 the chain's current block and time, and carries a plain reason. The dry run prints them all.
+
+After the markets, four jobs look at every market at once ([`src/jobs/`](./src/jobs)). Each runs only when
+its contract is in `hunchBook.periphery` (or, for series, a file is set), and each can be switched off by
+name with `KEEPER_JOBS_OFF`:
+
+| Job | When | Transaction |
+|---|---|---|
+| Auto-redeem (`autoRedeem`) | A graduated market has settled or voided, and holders who opted in on the AutoRedeemer still hold redeemable tokens with an allowance | `autoRedeemer.redeemManyFor(market, holders)`, in batches |
+| Conditional orders (`orders`) | An open ConditionalOrders order's trigger holds against its market's book | `conditionalOrders.execute(orderId)` |
+| Oracle pokes (`oracle`) | A market with a live book was last poked at least `KEEPER_ORACLE_POKE_SECONDS` ago | `oracle.pokeMany(markets)` |
+| Recurring series (`series`) | A series period's creation point has come and the period has no market yet | `factory.createMarket(...)` with the keeper's first stake ([docs/SERIES.md](../../docs/SERIES.md)) |
 
 ### Settlement evidence, per template
 
@@ -43,6 +56,33 @@ template with no settler is logged once and skipped; a new template plugs in wit
   (`/v2/updates/price/{T}?ids[]=...`, with `PYTH_API_KEY` as a bearer token), and the call carries
   Pyth's update fee as its value. The keeper checks the update was published within 60 seconds after T
   before it spends gas. Without a key, it logs why and tries again later.
+- **Template 3, price touch.** YES is proved by pointing at the round that touched: the prover reads every
+  Chainlink round of [T1, T2] once, as it is written (in batches through Multicall3, across phases if the
+  feed changed aggregator inside the window), applies the resolver's rule (the round answers in itself,
+  is positive, and touches the strike with the resolver's rounding for the direction; equal counts), and
+  sends `proveYes(abi.encode(roundId))` for the first touch, before or after close. NO is `settle(0x)`,
+  sent only once the 24-hour challenge period after T2 is over, the feed has reported at or after T2, and
+  the keeper has read every round of the window with no touch: the template's NO assumes an honest prover,
+  and the keeper is that prover.
+- **Template 4, Perpl funding spike.** YES is proved by pointing at the event: the prover walks Perpl's
+  events through its own "last event at or before" answers (the answer for e − 1 is the event before e,
+  exactly the read the resolver makes), batched on the funding grid and re-predicted wherever an event is
+  off it, and sends `proveYes(abi.encode(uint64 e))` for the first final event whose single-interval
+  increment is above the threshold. NO is `settle(0x)` once `block.number > endBlock + challengeBlocks`
+  (read from the resolver) and every event of the window has been checked.
+- **Template 5, price range.** The same bracketing round (or Pyth update) as template 2.
+- **Template 6, parlay.** The evidence is empty. The keeper reads every leg's phase and outcome first and
+  settles once any leg settled NO or all settled YES; a voided leg with no NO is reported as never
+  settling (the parlay voids at its deadline).
+- **Template 7, snapshot.** The evidence is empty, and `settle` takes the snapshot when nobody has yet, so
+  the keeper settles at its first cycle after close: one transaction takes the snapshot and settles, and
+  every market on the same observation then answers from it. Inside the window, a source that cannot be
+  snapshotted right now (its revert is decoded and logged) is retried within 5 seconds rather than with
+  the usual doubling wait. After the window with no snapshot, the market can never settle: the keeper
+  reports it once and it voids at its deadline.
+
+A proof that the keeper believes in but that would not go through is retried with the same backoff and
+reported (`proof-rejected` alert); the keeper never settles NO while it holds a proof of YES.
 
 If a settlement simulation fails (for example the Perpl resolver returns Unresolved and the market
 reverts `NotResolved`), the keeper waits 60 seconds, then twice as long each time, up to 30 minutes.
@@ -64,6 +104,30 @@ onchain (`claimableTokens`, `claimablePool`) before it goes into a transaction.
 The keeper knows a job is finished from the chain, not from its lists: token claims are done when the
 market holds no YES or NO, pool payouts when the market's pool ledger is empty. A market with nothing
 left is not read again.
+
+### Auto-redeem, conditional orders and oracle pokes
+
+- **Auto-redeem** ([docs/PERIPHERY.md](../../docs/PERIPHERY.md#autoredeemer)). Who opted in comes from the
+  AutoRedeemer's `OptInSet` events, scanned forward from its deploy block with a cursor in the state file
+  (at most 50 log requests a cycle, so catching up never holds the other jobs). For each settled or voided
+  graduated market, `redeemable(market, holder)` (which already applies per-market opt-outs, balances
+  and allowances) picks the holders with something to redeem, and `redeemManyFor` pays them; the vault
+  sends the USDC straight to each holder. A market is checked again when the opted-in list changes and
+  every `KEEPER_REDEEM_RECHECK_SECONDS`. `redeemManyFor` catches each holder's failure, so a gas estimate
+  can be a limit at which every inner redemption runs out of gas and is skipped while the call still
+  succeeds; the keeper calls it (`eth_call`) at growing limits until it redeems as many holders as it does
+  with all the gas a transaction may have, and sends with that limit.
+- **Conditional orders** ([docs/PERIPHERY.md](../../docs/PERIPHERY.md#conditionalorders)). Every open order
+  (ids 1 to `orderCount()`) is read each cycle with its market's YES book (`bestBidAsk`). The contract's
+  trigger rules are pure functions in [`src/jobs/triggers.ts`](./src/jobs/triggers.ts): bids rounded down
+  and asks up to E6, NO prices as 1 − the YES book, an empty side never triggers, expiry inclusive, and
+  only while the market trades. A triggered order is simulated first; one that would revert (the owner
+  moved their funds or cut the allowance, the limit cannot fill) is logged and retried after 60 seconds,
+  doubling to 30 minutes. The tip goes to the keeper's published address.
+- **Oracle pokes** ([docs/PERIPHERY.md](../../docs/PERIPHERY.md#impliedprobabilityoracle)). Markets with a
+  live book (graduated, not yet settled) whose last poke, read from the oracle itself, is at least
+  `KEEPER_ORACLE_POKE_SECONDS` old are poked together in one `pokeMany`. A poke for one market estimated
+  at about 300,000 gas on testnet, about 0.03 MON at 102 gwei, so the default is every 30 minutes.
 
 ## Safety
 
@@ -129,6 +193,13 @@ To run it as a service (Railway, launchd, or in the background on this machine),
 | `KEEPER_ALERT_WEBHOOK` | none | When set, errors, a low balance, markets that cannot settle (or still have not after the longest retry wait) and book requests are posted there as JSON. |
 | `KEEPER_ALERT_REPEAT_SECONDS` | `1800` | The same alert (same event, same market) is posted at most this often. |
 | `KEEPER_MARKETS` | all | Comma-separated market addresses to handle; all markets when unset. |
+| `KEEPER_JOBS_OFF` | none | Comma-separated jobs to switch off: `prove`, `snapshot`, `autoRedeem`, `orders`, `oracle`, `series`. |
+| `KEEPER_ORACLE_POKE_SECONDS` | `1800` | Poke each market with a live book at most this often; `0` turns pokes off. |
+| `KEEPER_ORACLE_BATCH` | `25` | Markets per `pokeMany` transaction (1 to 200). |
+| `KEEPER_REDEEM_BATCH` | `50` | Holders per `redeemManyFor` transaction (1 to 500). |
+| `KEEPER_REDEEM_RECHECK_SECONDS` | `600` | A settled market's opted-in holders are checked again this often. |
+| `KEEPER_SERIES_FILE` | none | The recurring series file ([docs/SERIES.md](../../docs/SERIES.md)); the series job runs only when set. |
+| `KEEPER_SERIES_ENABLED` | off | The series job's own kill switch (it spends the keeper's USDC). Creating needs both this and `KEEPER_ENABLED`. |
 | `INDEXER_URL` | none | The indexer's GraphQL endpoint. When set, stakers come from it, with the log scan as fallback. |
 | `PYTH_API_KEY` | none | Pyth API key for Hermes. Needed only to settle markets on Pyth prices. |
 | `KEEPER_HERMES_URL` | `https://hermes.pyth.network` | The Hermes service. |
@@ -163,7 +234,8 @@ The health snapshot (file, and `/health` when a port is set):
 | `cycles`, `lastCycleAt`, `lastCycleMs`, `block` | The last cycle: when, how long, at which block |
 | `monBalance`, `minMon`, `lowBalance` | The keeper's MON balance and its warning threshold |
 | `markets.total`, `markets.done`, `markets.byPhase` | Markets known, markets finished, live markets per phase |
-| `jobs.<job>.lastRunAt` | When the job last looked at every market (`discover`, `graduate`, `claims`, `settle`, `void`, `payouts`) |
+| `jobs.<job>.lastRunAt` | When the job last looked at every market (`discover`, `graduate`, `claims`, `prove`, `snapshot`, `settle`, `void`, `payouts`, `series`, `autoRedeem`, `orders`, `oracle`) |
+| `jobs.<job>.info` | What a cycle-level job knows: opted-in holders and scan cursor (`autoRedeem`), open and triggered orders (`orders`), markets due a poke (`oracle`), every series' next period and status (`series`) |
 | `jobs.<job>.due` | Markets where the job had something to send in the last cycle |
 | `jobs.<job>.lastAction` | The last transaction: market, action, status, hash and explorer link |
 | `jobs.<job>.lastError`, `lastError` | The last error, per job and overall |
@@ -207,6 +279,14 @@ pnpm --filter @hunch-book/keeper test
   and the gas-cap split; scan windows and cursors surviving a restart; evidence encoding for both
   templates; Hermes requests and the 60-second rule; the indexer query and its fallback; alerts and
   redaction; `sendTx` in dry run and live.
+- **Templates 3 to 7**: the touch hunter on the same recorded Chainlink rounds, checked against brute
+  force on many windows and strikes, round by round as rounds appear, across a phase change, and never
+  complete before T2; the spike hunter on 601 recorded BTC and MON Perpl funding events, with a pause in
+  the grid, checked against brute force; the parlay rule for every mix of leg states; the range evidence;
+  the snapshot settler before, in and after its window.
+- **Cycle jobs**: the conditional-order trigger rules against the contract's cases; opt-in replay and
+  the auto-redeem state; oracle poke timing; the series file, schedules, strike rules (with recorded BTC
+  funding for the trailing median), params and period identity.
 - **Integration tests** (`test/integration/`): a fresh anvil chain with Hunch Book's real factory, vault,
   market and outcome tokens from `contracts/out`, plus the contracts' own mocks for the parts outside
   Hunch Book (a resolver that answers what the test sets, Kuru's Router and Margin Account).
@@ -217,6 +297,13 @@ pnpm --filter @hunch-book/keeper test
     once with the exact `deployProxy` parameters, finds the book Kuru deploys at the predicted address,
     registers it (the Graduator verifies it) and graduates into it.
   - A template with no settler is skipped with one warning; a settler registered at startup settles it.
+  - The new jobs against the real resolvers for templates 3, 4, 6 and 7 (with the resolvers' own
+    Chainlink, Perpl and snapshot-source stand-ins) and the real AutoRedeemer, ConditionalOrders,
+    oracle and HunchRouter (with the periphery tests' Kuru book stand-in): a touch proved the cycle its
+    round exists; a spike proved once its event is final; snapshot markets settled inside their window
+    from one snapshot, and one past its window reported; a stop-loss executed when the bid falls to its
+    trigger; the oracle poked once per interval; an opted-in holder's winning tokens redeemed after
+    settlement; and touch NO, parlay NO and spike NO settled after their challenge periods.
 
   They skip, rather than fail, when anvil is not installed or `contracts/out` has not been built
   (`forge build`).
@@ -224,8 +311,13 @@ pnpm --filter @hunch-book/keeper test
 ## Limits
 
 - It polls. A pool that meets its rule is graduated on the next cycle, not in the same block.
-- Recurring series (K-2), touch-market proofs (S-3) and auto-redeem (K-3) are planned, not built. Touch
-  templates plug in as new settlers.
+- The touch and spike hunts keep their progress in memory. After a restart they read the window again,
+  once (at most 2,000 round reads a cycle for a touch market).
+- Auto-redeem, conditional orders, oracle pokes and recurring series are built and tested on a local
+  chain. Each starts sending only when the keeper runs with `KEEPER_ENABLED` and the periphery is in the
+  deployments file; series also need `KEEPER_SERIES_FILE` and `KEEPER_SERIES_ENABLED`.
+- Snapshot markets (template 7) depend on the keeper settling inside the window. If it is down for the
+  whole window and nobody else takes the snapshot, the market voids.
 - The default indexer query assumes a `Stake` entity with `market_id` and `user` fields. The indexer is
   planned; until it exists, `INDEXER_URL` stays unset and stakers come from the logs.
 - On mainnet, graduation waits for Kuru to create each book. The keeper asks (log line and webhook) and

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "hunch-book": {
+      "command": "node",
+      "args": ["/absolute/path/to/hunch-book/packages/mcp/dist/main.js"],
+      "env": {
+        "HUNCH_MCP_NETWORK": "monad-testnet",
+        "HUNCH_MCP_PRIVATE_KEY": "<the agent wallet's key: a wallet made for the agent>",
+        "HUNCH_MCP_MAX_USDC_PER_CALL": "25",
+        "HUNCH_MCP_MAX_TOKENS_PER_CALL": "50",
+        "HUNCH_MCP_MAX_SLIPPAGE_BPS": "200"
+      }
+    }
+  }
+}

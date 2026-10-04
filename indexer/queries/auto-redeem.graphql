@@ -1,0 +1,55 @@
+# A holder's auto-redeem status: whether it is on, the markets they excluded, what the AutoRedeemer
+# redeemed for them, and any redemption that failed. $holder is the address in lowercase.
+# The keeper's list of holders to redeem after a market settles: AutoRedeemOptIn(where: { optedIn:
+# { _eq: true } }), minus the holders with an AutoRedeemMarketOptOut row for that market that is optedOut.
+query AutoRedeemStatus($holder: String!, $limit: Int = 50) {
+  AutoRedeemOptIn_by_pk(id: $holder) {
+    optedIn
+    optInCount
+    firstOptedInAt
+    marketsOptedOut
+    redemptionCount
+    redeemedUsdc
+    failureCount
+    updatedAt
+    updatedTx
+    marketOptOuts(where: { optedOut: { _eq: true } }) {
+      market {
+        id
+        number
+        question
+      }
+      updatedAt
+    }
+  }
+  AutoRedemption(where: { holder_id: { _eq: $holder } }, order_by: { timestamp: desc }, limit: $limit) {
+    id
+    side
+    amount
+    paid
+    caller
+    callerIsOurs
+    timestamp
+    tx
+    market {
+      id
+      number
+      outcome
+    }
+    redemption {
+      fee
+      voided
+    }
+  }
+  AutoRedeemFailure(where: { holder: { _eq: $holder } }, order_by: { timestamp: desc }, limit: $limit) {
+    id
+    reason
+    caller
+    timestamp
+    tx
+    market {
+      id
+      number
+    }
+  }
+}

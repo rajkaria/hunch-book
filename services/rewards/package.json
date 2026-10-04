@@ -1,0 +1,25 @@
+{
+  "name": "@hunch-book/rewards",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hunch Book's rewards CLI: scores makers from Kuru books, credits referrers from fees, writes MerkleDistributor epoch files. Dry run only.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "rewards": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hunch-book/sdk": "workspace:*",
+    "@hunch-book/shared": "workspace:*",
+    "viem": "2.57.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  }
+}

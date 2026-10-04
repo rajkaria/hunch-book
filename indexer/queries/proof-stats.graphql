@@ -57,6 +57,33 @@ query ProofStats($chainId: String!, $days: Int = 30) {
     vaultUsdcOut
     vaultUsdcBalance
     solvencyMargin
+    snapshotsTaken
+    snapshotsTakenOurs
+    autoRedeemHolders
+    autoRedemptionCount
+    autoRedeemedUsdc
+    autoRedemptionCountOurCaller
+    autoRedeemFailures
+    conditionalOrdersPlaced
+    conditionalOrdersOpen
+    conditionalOrdersExecuted
+    conditionalOrdersCancelled
+    conditionalOrdersExecutedByUs
+    referralBindings
+    referralBindingsRelayedByUs
+    referrers
+    referredFeeCount
+    referredProtocolShare
+    rewardEpochs
+    rewardClaimCount
+    oraclePokes
+    oraclePokesOurs
+    oracleCheckpoints
+    priceAdapters
+    timelockQueued
+    timelockExecuted
+    timelockCancelled
+    timelockPending
     updatedAt
     updatedAtBlock
   }
@@ -83,6 +110,18 @@ query ProofStats($chainId: String!, $days: Int = 30) {
     newWallets
     vaultUsdcIn
     vaultUsdcOut
+    snapshotsTaken
+    autoRedemptionCount
+    autoRedeemedUsdc
+    conditionalOrdersPlaced
+    conditionalOrdersExecuted
+    conditionalOrdersCancelled
+    referralBindings
+    referredFeeCount
+    referredProtocolShare
+    rewardClaimCount
+    oraclePokes
+    oraclePokesOurs
   }
   Market(where: { solvencyMargin: { _lt: "0" } }) {
     id

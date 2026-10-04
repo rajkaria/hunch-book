@@ -42,7 +42,25 @@ export interface KeeperConfig {
   hermesUrl: string;
   /** Handle only these markets when set. */
   markets: Address[] | undefined;
+  /** Cycle-level and proof jobs switched off by name (KEEPER_JOBS_OFF). */
+  jobsOff: Set<OptionalJob>;
+  /** Poke each market with a live book at most this often; 0 turns oracle pokes off. */
+  oraclePokeSeconds: number;
+  /** Markets per pokeMany transaction. */
+  oracleBatch: number;
+  /** Holders per redeemManyFor transaction. */
+  redeemBatch: number;
+  /** A settled market's opted-in holders are checked again this often. */
+  redeemRecheckSeconds: number;
+  /** The recurring series file; the series job is off when unset. */
+  seriesFile: string | undefined;
+  /** Second kill switch for creating series markets, which spends the keeper's own USDC. */
+  seriesEnabled: boolean;
 }
+
+/** Jobs that can be switched off one by one with KEEPER_JOBS_OFF (the core jobs cannot). */
+export const OPTIONAL_JOBS = ["prove", "snapshot", "autoRedeem", "orders", "oracle", "series"] as const;
+export type OptionalJob = (typeof OPTIONAL_JOBS)[number];
 
 type Env = Record<string, string | undefined>;
 
@@ -108,6 +126,16 @@ export function parseConfig(env: Env): KeeperConfig {
     throw new Error("KEEPER_SETTLE_RETRY_MAX_SECONDS must be at least KEEPER_SETTLE_RETRY_SECONDS");
   }
 
+  const jobsOff = new Set<OptionalJob>();
+  for (const name of env.KEEPER_JOBS_OFF?.split(",") ?? []) {
+    const job = name.trim();
+    if (!job) continue;
+    if (!(OPTIONAL_JOBS as readonly string[]).includes(job)) {
+      throw new Error(`KEEPER_JOBS_OFF has an unknown job "${job}" (known: ${OPTIONAL_JOBS.join(", ")})`);
+    }
+    jobsOff.add(job as OptionalJob);
+  }
+
   const healthPortRaw = env.KEEPER_HEALTH_PORT?.trim();
   return {
     network,
@@ -151,6 +179,25 @@ export function parseConfig(env: Env): KeeperConfig {
     pythApiKey: env.PYTH_API_KEY?.trim() || undefined,
     hermesUrl: (url(env, "KEEPER_HERMES_URL") ?? "https://hermes.pyth.network").replace(/\/+$/, ""),
     markets: markets && markets.length > 0 ? markets : undefined,
+    jobsOff,
+    oraclePokeSeconds: num(env, "KEEPER_ORACLE_POKE_SECONDS", 1_800, nonNegative, "zero or more"),
+    oracleBatch: num(
+      env,
+      "KEEPER_ORACLE_BATCH",
+      25,
+      (x) => positiveInt(x) && x <= 200,
+      "an integer from 1 to 200",
+    ),
+    redeemBatch: num(
+      env,
+      "KEEPER_REDEEM_BATCH",
+      50,
+      (x) => positiveInt(x) && x <= 500,
+      "an integer from 1 to 500",
+    ),
+    redeemRecheckSeconds: num(env, "KEEPER_REDEEM_RECHECK_SECONDS", 600, positive, "above zero"),
+    seriesFile: env.KEEPER_SERIES_FILE?.trim() || undefined,
+    seriesEnabled: parseBool(env.KEEPER_SERIES_ENABLED),
   };
 }
 
@@ -166,9 +213,10 @@ function origin(value: string | undefined): string | undefined {
 
 /** The config as it is safe to log: secrets are reduced to whether they are set. */
 export function describeConfig(config: KeeperConfig): Record<string, unknown> {
-  const { privateKey, pythApiKey, alertWebhook, indexerUrl, rpcUrl, ...rest } = config;
+  const { privateKey, pythApiKey, alertWebhook, indexerUrl, rpcUrl, jobsOff, ...rest } = config;
   return {
     ...rest,
+    jobsOff: [...jobsOff],
     rpcUrl: rpcUrl === deployments[config.network].rpc ? rpcUrl : origin(rpcUrl),
     privateKey: privateKey ? "set" : "missing",
     pythApiKey: pythApiKey ? "set" : "missing",

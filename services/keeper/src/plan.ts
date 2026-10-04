@@ -7,13 +7,15 @@ import type { ChainNow, Settler } from "./settlers/index.js";
 // time, and the factory's globals. No reads, no sends: what to do comes from here, how to do it from
 // keeper.ts. Every decision carries a plain reason, which is what the dry run prints.
 
-export type JobName = "graduate" | "claims" | "settle" | "void" | "payouts";
+export type JobName = "graduate" | "claims" | "prove" | "snapshot" | "settle" | "void" | "payouts";
 
 export type ActionKind =
   | "graduate"
   | "register-book"
   | "book-request"
   | "claim-tokens"
+  | "prove"
+  | "snapshot"
   | "settle"
   | "void"
   | "claim-pool";
@@ -27,6 +29,8 @@ export interface Decision {
 
 /** The fields of a market snapshot the planner looks at. */
 export interface PlanMarket {
+  address: Address;
+  resolver: Address;
   templateId: number;
   params: `0x${string}`;
   window: Window;
@@ -47,7 +51,7 @@ export interface PlanInput {
   market: PlanMarket;
   now: ChainNow;
   globals: Globals;
-  settler: Pick<Settler, "name" | "waitReason"> | undefined;
+  settler: Pick<Settler, "name" | "waitReason" | "prover" | "snapshot"> | undefined;
   /** Mainnet only: where Kuru would deploy this market's book, and whether it already has. */
   predictedBook?: { address: Address; deployed: boolean };
 }
@@ -150,6 +154,24 @@ function planSettle(input: PlanInput): Decision {
   };
 }
 
+/** Templates with an early YES: hunt for the proof as soon as the market is past staking. */
+function planProve(input: PlanInput): Decision | undefined {
+  const { market: m, now, settler } = input;
+  if (!settler?.prover) return undefined;
+  const wait = settler.prover.waitReason(m, now);
+  if (wait) return { job: "prove", reason: wait };
+  return { job: "prove", action: "prove", reason: "look for the observation that proves YES" };
+}
+
+/** Snapshot-settled templates: take the snapshot inside the window after close. */
+function planSnapshot(input: PlanInput): Decision | undefined {
+  const { market: m, now, settler } = input;
+  if (!settler?.snapshot) return undefined;
+  const wait = settler.snapshot.waitReason(m, now);
+  if (wait) return { job: "snapshot", reason: wait };
+  return { job: "snapshot", action: "snapshot", reason: "the snapshot window is open: take the snapshot" };
+}
+
 function planPayouts(m: PlanMarket): Decision {
   if (m.poolOwed === 0n) return { job: "payouts", reason: "every pool payout is done" };
   return {
@@ -176,6 +198,10 @@ export function planMarket(input: PlanInput): Decision[] {
         reason: `past the settlement deadline (${m.window.settleDeadline}) with no answer`,
       });
     } else if (m.phase !== Phase.Pool) {
+      const prove = planProve(input);
+      if (prove) out.push(prove);
+      const snapshot = planSnapshot(input);
+      if (snapshot) out.push(snapshot);
       out.push(planSettle(input));
     }
   }

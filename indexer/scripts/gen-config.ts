@@ -11,11 +11,19 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  autoRedeemerAbi,
   collateralVaultAbi,
+  conditionalOrdersAbi,
   graduatorAbi,
   hunchBookFactoryAbi,
   hunchRouterAbi,
+  impliedProbabilityOracleAbi,
   marketAbi,
+  merkleDistributorAbi,
+  outcomeTokenPriceAdapterFactoryAbi,
+  referralRegistryAbi,
+  snapshotResolverAbi,
+  templateTimelockAbi,
 } from "../../packages/shared/src/abis/generated.js";
 import { kuruOrderBookAbi } from "../../packages/shared/src/kuru/abis.js";
 import type { NetworkConstants } from "../src/lib/network.js";
@@ -49,6 +57,19 @@ interface DeploymentFile {
     guardian?: string;
     feeRecipient?: string;
     deployBlock?: number;
+    resolvers?: Record<string, string>;
+    periphery?: {
+      autoRedeemer?: string;
+      conditionalOrders?: string;
+      referralRegistry?: string;
+      merkleDistributor?: string;
+      impliedProbabilityOracle?: string;
+      priceAdapterFactory?: string;
+      templateTimelock?: string;
+      timelockProposer?: string;
+      distributorFunder?: string;
+      deployBlock?: number;
+    };
   };
   wallets: { maker: string; keeper: string };
   external: {
@@ -142,7 +163,84 @@ export function contractEvents(): { name: string; dynamic: boolean; events: stri
         "OrdersCanceled",
       ]),
     },
+    // Template 7's resolver keeps the snapshots it takes.
+    { name: "SnapshotResolver", dynamic: false, events: pick(snapshotResolverAbi, ["SnapshotTaken"]) },
+    // Periphery (docs/PERIPHERY.md).
+    {
+      name: "AutoRedeemer",
+      dynamic: false,
+      events: pick(autoRedeemerAbi, ["OptInSet", "MarketOptOutSet", "AutoRedeemed", "RedeemFailed"]),
+    },
+    {
+      name: "ConditionalOrders",
+      dynamic: false,
+      events: pick(conditionalOrdersAbi, ["OrderPlaced", "OrderCancelled", "OrderExecuted"]),
+    },
+    { name: "ReferralRegistry", dynamic: false, events: pick(referralRegistryAbi, ["Bound"]) },
+    {
+      name: "MerkleDistributor",
+      dynamic: false,
+      events: pick(merkleDistributorAbi, [
+        "EpochCreated",
+        "Claimed",
+        "Swept",
+        "FunderTransferStarted",
+        "FunderTransferred",
+      ]),
+    },
+    {
+      name: "ImpliedProbabilityOracle",
+      dynamic: false,
+      events: pick(impliedProbabilityOracleAbi, ["Poked"]),
+    },
+    {
+      name: "PriceAdapterFactory",
+      dynamic: false,
+      events: pick(outcomeTokenPriceAdapterFactoryAbi, ["AdapterCreated"]),
+    },
+    {
+      name: "TemplateTimelock",
+      dynamic: false,
+      events: pick(templateTimelockAbi, [
+        "OperationQueued",
+        "OperationExecuted",
+        "OperationCancelled",
+        "CreationPauseSet",
+        "GraduationPauseSet",
+        "GuardianAccepted",
+      ]),
+    },
   ];
+}
+
+/** The core contracts a network needs before it gets a config at all. */
+export const CORE_CONTRACTS = ["HunchBookFactory", "CollateralVault", "HunchRouter", "Graduator", "Usdc"];
+
+/**
+ * Where each static contract is on a network. A contract the deployments file has no address for is
+ * listed without one, so nothing registers it and it is never read there (the same handlers serve every
+ * network). Every static contract is read from the core's deploy block, including those deployed later
+ * (template 7's resolver, the periphery): they have no logs before their deployment, and Envio 3.12
+ * cannot resume a test indexer past a contract start block later than the chain's.
+ */
+export function staticContracts(d: DeploymentFile): Record<string, string | undefined> {
+  const h = d.hunchBook;
+  const p = h.periphery ?? {};
+  return {
+    HunchBookFactory: h.factory,
+    CollateralVault: h.vault,
+    HunchRouter: h.router,
+    Graduator: h.graduator,
+    Usdc: collateralOf(d),
+    SnapshotResolver: h.resolvers?.snapshot,
+    AutoRedeemer: p.autoRedeemer,
+    ConditionalOrders: p.conditionalOrders,
+    ReferralRegistry: p.referralRegistry,
+    MerkleDistributor: p.merkleDistributor,
+    ImpliedProbabilityOracle: p.impliedProbabilityOracle,
+    PriceAdapterFactory: p.priceAdapterFactory,
+    TemplateTimelock: p.templateTimelock,
+  };
 }
 
 // ---- rendering ----------------------------------------------------------------------------
@@ -164,7 +262,7 @@ export function collateralOf(d: DeploymentFile): string | undefined {
   return d.hunchBook.usdc ?? d.external.usdc;
 }
 
-/** A network gets an indexer config once every contract the indexer reads has an address. */
+/** A network gets an indexer config once every core contract the indexer reads has an address. */
 export function isDeployed(d: DeploymentFile): boolean {
   const h = d.hunchBook;
   return Boolean(h.factory && h.vault && h.router && h.graduator && collateralOf(d) && h.deployBlock);
@@ -172,6 +270,7 @@ export function isDeployed(d: DeploymentFile): boolean {
 
 export function networkConstants(d: DeploymentFile): NetworkConstants {
   const h = d.hunchBook;
+  const p = h.periphery ?? {};
   const invert = (m: Record<string, string | number>, lowerKeys: boolean) =>
     Object.fromEntries(
       Object.entries(m).map(([label, value]) => [
@@ -193,11 +292,26 @@ export function networkConstants(d: DeploymentFile): NetworkConstants {
       usdc: lower(collateralOf(d)),
       marketImplementation: lower(h.marketImplementation),
     },
+    resolvers: Object.fromEntries(
+      Object.entries(h.resolvers ?? {}).map(([name, address]) => [name, address.toLowerCase()]),
+    ),
+    periphery: {
+      autoRedeemer: lower(p.autoRedeemer),
+      conditionalOrders: lower(p.conditionalOrders),
+      referralRegistry: lower(p.referralRegistry),
+      merkleDistributor: lower(p.merkleDistributor),
+      impliedProbabilityOracle: lower(p.impliedProbabilityOracle),
+      priceAdapterFactory: lower(p.priceAdapterFactory),
+      templateTimelock: lower(p.templateTimelock),
+      deployBlock: p.deployBlock ?? null,
+    },
     ours: {
       maker: d.wallets.maker.toLowerCase(),
       keeper: d.wallets.keeper.toLowerCase(),
       guardian: lower(h.guardian),
       feeRecipient: lower(h.feeRecipient),
+      distributorFunder: lower(p.distributorFunder),
+      timelockProposer: lower(p.timelockProposer),
     },
     kuru: {
       router: d.external.kuru.router.toLowerCase(),
@@ -213,13 +327,7 @@ export function renderConfig(d: DeploymentFile, rpcEnv: string): string {
   const h = d.hunchBook;
   if (!isDeployed(d)) throw new Error(`${d.network} has no Hunch Book addresses yet`);
   const contracts = contractEvents();
-  const staticAddress: Record<string, string | undefined> = {
-    HunchBookFactory: h.factory,
-    CollateralVault: h.vault,
-    HunchRouter: h.router,
-    Graduator: h.graduator,
-    Usdc: collateralOf(d),
-  };
+  const addresses = staticContracts(d);
   const lines = [
     `# Generated by scripts/gen-config.ts from deployments/${d.network}.json. Do not edit by hand.`,
     "# Regenerate: pnpm --filter @hunch-book/indexer gen-config",
@@ -250,14 +358,17 @@ export function renderConfig(d: DeploymentFile, rpcEnv: string): string {
     `        for: ${envRef("ENVIO_RPC_MODE", "fallback")}`,
     `        initial_block_interval: ${RPC_BLOCK_RANGE}`,
     `        interval_ceiling: ${RPC_BLOCK_RANGE}`,
+    "    # Contracts without an address are registered while indexing (markets, tokens, books), or are",
+    "    # not deployed on this network yet and are never read.",
     "    contracts:",
   );
   for (const c of contracts) {
     lines.push(`      - name: ${c.name}`);
     if (c.dynamic) continue;
-    const address = staticAddress[c.name];
-    if (!address) throw new Error(`no address for ${c.name} on ${d.network}`);
-    lines.push(`        address: "${address}"`);
+    if (!(c.name in addresses)) throw new Error(`static contract ${c.name} has no entry in staticContracts`);
+    const address = addresses[c.name];
+    if (address) lines.push(`        address: "${address}"`);
+    else if (CORE_CONTRACTS.includes(c.name)) throw new Error(`no address for ${c.name} on ${d.network}`);
   }
   return `${lines.join("\n")}\n`;
 }

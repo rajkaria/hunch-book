@@ -4,6 +4,7 @@ import { indexer } from "envio";
 import { outcomeOf, sideOf } from "../lib/enums.js";
 import { redeemFeePerTokenE6 } from "../lib/math.js";
 import { addr } from "../lib/network.js";
+import { creditReferral } from "../lib/referrals.js";
 import { pairId, Unit } from "../lib/store.js";
 
 indexer.onEvent({ contract: "Market", event: "Staked" }, async ({ event, context }) => {
@@ -313,5 +314,6 @@ indexer.onEvent({ contract: "Market", event: "PoolClaimed" }, async ({ event, co
   s.poolPayoutCount += 1;
   s.poolPaidOut += paid;
   s.poolFees += fee;
+  await creditReferral(u, { user, market: market.id, kind: "PoolClaim", fee });
   u.flush();
 });

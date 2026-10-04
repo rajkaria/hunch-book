@@ -44,6 +44,8 @@ async function main(): Promise<void> {
     envLoaded: loaded,
     keeper: keeper.keeper,
     ...describeConfig(config),
+    templates: keeper.settlers.templates(),
+    cycleJobs: keeper.cycleJobs.map((j) => j.name),
   });
   keeper.checkPublishedAddress();
 

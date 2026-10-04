@@ -435,7 +435,8 @@ the mark was never more than 50 seconds old.
   both ends included: by calling `snapshot(sourceId, closeTime, snapshotWindow)` on the resolver, or by
   calling the market's `settle()`, which takes it when nobody has yet. A keeper that calls `settle()` with
   empty evidence at the first block after T takes the snapshot and settles the market in one
-  transaction. For Hunch's keeper to do this it needs a template 7 settler, which is planned.
+  transaction. Hunch's keeper does this with its template 7 settler
+  ([services/keeper](../services/keeper/README.md#settlement-evidence-per-template)).
 - The resolver makes the call itself (STATICCALL) and copies out only the words it needs. It stores
   (value, block, timestamp) only if the call succeeded, every word it needs was returned, an unsigned
   value fits in int256, the pinned words and the guard's answer are those of deployment, and the value

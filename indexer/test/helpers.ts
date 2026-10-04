@@ -1,9 +1,14 @@
 // Test helpers: a small event-level model of Hunch Book that emits the same logs, in the same order,
 // as the contracts do (checked against Monad testnet receipts), and feeds them to Envio's test indexer.
 import { createTestIndexer, type TestIndexer } from "envio";
-import { encodeAbiParameters } from "viem";
+import { encodeAbiParameters, keccak256 } from "viem";
 import { networkOf } from "../src/lib/network.js";
-import { perplFundingParamsAbi, priceAtTimeParamsAbi } from "../src/lib/params.js";
+import {
+  perplFundingParamsAbi,
+  priceAtTimeParamsAbi,
+  snapshotKey,
+  snapshotParamsAbi,
+} from "../src/lib/params.js";
 
 export const CHAIN = 10143;
 const n = networkOf(CHAIN);
@@ -24,7 +29,18 @@ export const ADDR = {
   guardian: must(n.ours.guardian),
   marginAccount: n.kuru.marginAccount,
   zero: "0x0000000000000000000000000000000000000000",
+  snapshotResolver: must(n.resolvers.snapshot ?? null),
+  autoRedeemer: must(n.periphery.autoRedeemer),
+  conditionalOrders: must(n.periphery.conditionalOrders),
+  referralRegistry: must(n.periphery.referralRegistry),
+  merkleDistributor: must(n.periphery.merkleDistributor),
+  oracle: must(n.periphery.impliedProbabilityOracle),
+  adapterFactory: must(n.periphery.priceAdapterFactory),
+  timelock: must(n.periphery.templateTimelock),
 };
+
+/** The block the periphery was deployed at on testnet: tests emit periphery logs after it. */
+export const PERIPHERY_BLOCK = n.periphery.deployBlock ?? 0;
 
 /** The market seeded on Monad testnet (contracts/script/SeedTestnetMarket.s.sol) and its book. */
 export const SEED = {
@@ -87,6 +103,17 @@ export function priceParams(p: {
       closeTime: p.closeTime,
     },
   ]);
+}
+
+export function snapshotParams(p: {
+  sourceId: number;
+  threshold: bigint;
+  comparator: number;
+  lockTime: bigint;
+  closeTime: bigint;
+  snapshotWindow: number;
+}): string {
+  return encodeAbiParameters(snapshotParamsAbi, [p]);
 }
 
 export type Item = Record<string, unknown>;
@@ -152,6 +179,12 @@ export class Script {
     });
     this.logIndex += 1;
     return id;
+  }
+
+  /** Leaves room for logs the indexer does not read (approvals, other USDC transfers): they still take log indexes. */
+  skipLogs(count: number): this {
+    this.logIndex += count;
+    return this;
   }
 
   /** The logs not yet delivered. */
@@ -570,7 +603,313 @@ export class Protocol {
       ADDR.vault,
     );
   }
+
+  // ---- template 7 ----
+
+  addSnapshotTemplate(): void {
+    this.s.emit(
+      "HunchBookFactory",
+      "TemplateAdded",
+      {
+        templateId: 7n,
+        resolver: ADDR.snapshotResolver,
+        rule: { minPool: USDC(500), minStakers: 10n, minChanceBps: 300n, maxChanceBps: 9700n },
+      },
+      ADDR.factory,
+    );
+  }
+
+  /** SnapshotResolver stores a snapshot read in this block. `caller` is a market inside settle(). */
+  snapshotTaken(p: {
+    sourceId: number;
+    closeTime: bigint;
+    window: number;
+    value: bigint;
+    caller: string;
+  }): string {
+    return this.s.emit(
+      "SnapshotResolver",
+      "SnapshotTaken",
+      {
+        key: snapshotKey(p.sourceId, p.closeTime, p.window),
+        sourceId: BigInt(p.sourceId),
+        caller: p.caller,
+        closeTime: p.closeTime,
+        snapshotWindow: BigInt(p.window),
+        value: p.value,
+        blockNumber: BigInt(this.s.block),
+        timestamp: BigInt(this.s.timestamp),
+      },
+      ADDR.snapshotResolver,
+    );
+  }
+
+  // ---- AutoRedeemer ----
+
+  optIn(holder: string, optedIn = true): void {
+    this.s.emit("AutoRedeemer", "OptInSet", { holder, optedIn }, ADDR.autoRedeemer);
+  }
+
+  marketOptOut(holder: string, market: string, optedOut = true): void {
+    this.s.emit("AutoRedeemer", "MarketOptOutSet", { holder, market, optedOut }, ADDR.autoRedeemer);
+  }
+
+  /**
+   * AutoRedeemer.redeemFor on a settled market: it pulls the holder's tokens, the vault burns them from
+   * it, accrues the fee, emits Redeemed (holder = the AutoRedeemer, to = the holder) and pays the holder.
+   */
+  autoRedeem(p: {
+    market: string;
+    holder: string;
+    side: bigint;
+    amount: bigint;
+    paid: bigint;
+    fee: bigint;
+    creator: string;
+    caller: string;
+  }): void {
+    const m = this.state(p.market);
+    const token = p.side === Side.Yes ? m.yes : m.no;
+    this.token(token, p.holder, ADDR.autoRedeemer, p.amount);
+    this.token(token, ADDR.autoRedeemer, ADDR.zero, p.amount);
+    if (p.fee > 0n) this.feesAccrued(p.market, p.fee, p.creator);
+    this.s.emit(
+      "CollateralVault",
+      "Redeemed",
+      {
+        market: p.market,
+        holder: ADDR.autoRedeemer,
+        to: p.holder,
+        side: p.side,
+        amount: p.amount,
+        paid: p.paid,
+        fee: p.fee,
+      },
+      ADDR.vault,
+    );
+    if (p.paid > 0n) this.usdc(ADDR.vault, p.holder, p.paid);
+    this.s.emit(
+      "AutoRedeemer",
+      "AutoRedeemed",
+      {
+        market: p.market,
+        holder: p.holder,
+        side: p.side,
+        amount: p.amount,
+        paid: p.paid,
+        caller: p.caller,
+      },
+      ADDR.autoRedeemer,
+    );
+  }
+
+  redeemFailed(p: { market: string; holder: string; reason: string }): void {
+    this.s.emit("AutoRedeemer", "RedeemFailed", p, ADDR.autoRedeemer);
+  }
+
+  // ---- ConditionalOrders ----
+
+  placeOrder(p: {
+    orderId: bigint;
+    owner: string;
+    market: string;
+    kind: bigint;
+    condition: bigint;
+    triggerPriceE6: bigint;
+    expiry: bigint;
+    executorTipBps?: bigint;
+    amountIn: bigint;
+    limit: bigint;
+  }): void {
+    this.s.emit("ConditionalOrders", "OrderPlaced", { executorTipBps: 0n, ...p }, ADDR.conditionalOrders);
+  }
+
+  cancelOrder(p: { orderId: bigint; owner: string }): void {
+    this.s.emit("ConditionalOrders", "OrderCancelled", p, ADDR.conditionalOrders);
+  }
+
+  /**
+   * ConditionalOrders.execute for a BuyYes or SellYes order, filled once against `maker`'s Kuru order:
+   * pull the input from the owner, trade through the router (the contract is the router's user, the
+   * executor the transaction's origin), pay the owner the output minus the tip, tip the executor.
+   * Approvals and USDC transfers away from the vault are not read, but take log indexes.
+   */
+  executeYesOrder(p: {
+    orderId: bigint;
+    owner: string;
+    executor: string;
+    market: string;
+    book: string;
+    buy: boolean;
+    kuruOrderId: bigint;
+    maker: string;
+    price: bigint;
+    size: bigint;
+    remaining: bigint;
+    tipBps: bigint;
+  }): { spent: bigint; received: bigint; tip: bigint } {
+    const m = this.state(p.market);
+    const co = ADDR.conditionalOrders;
+    const usdc = (p.size * p.price) / 10n ** 18n;
+    const out = p.buy ? p.size : usdc;
+    const tip = (out * p.tipBps) / 10_000n;
+    const received = out - tip;
+    const spent = p.buy ? usdc : p.size;
+    // Pull the input and approve the router.
+    if (p.buy) this.s.skipLogs(2);
+    else {
+      this.token(m.yes, p.owner, co, p.size);
+      this.s.skipLogs(1);
+    }
+    // The router's trade.
+    if (p.buy) this.s.skipLogs(1);
+    else this.token(m.yes, co, ADDR.router, p.size);
+    this.fill({
+      book: p.book,
+      orderId: p.kuruOrderId,
+      maker: p.maker,
+      taker: ADDR.router,
+      txOrigin: p.executor,
+      takerBuysYes: p.buy,
+      price: p.price,
+      size: p.size,
+      remaining: p.remaining,
+    });
+    if (p.buy) {
+      this.token(m.yes, ADDR.marginAccount, ADDR.router, p.size);
+      this.token(m.yes, ADDR.router, co, p.size);
+    } else {
+      this.token(m.yes, ADDR.router, ADDR.marginAccount, p.size);
+      this.s.skipLogs(1);
+    }
+    this.s.emit(
+      "HunchRouter",
+      "Trade",
+      {
+        market: p.market,
+        user: co,
+        kind: p.buy ? Kind.BuyYes : Kind.SellYes,
+        amountIn: p.buy ? usdc : p.size,
+        amountOut: p.buy ? p.size : usdc,
+        book: p.book,
+      },
+      ADDR.router,
+    );
+    // Reset the approval, pay the owner and the executor.
+    this.s.skipLogs(1);
+    if (p.buy) {
+      this.token(m.yes, co, p.owner, received);
+      if (tip > 0n) this.token(m.yes, co, p.executor, tip);
+    } else {
+      this.s.skipLogs(tip > 0n ? 2 : 1);
+    }
+    this.s.emit(
+      "ConditionalOrders",
+      "OrderExecuted",
+      {
+        orderId: p.orderId,
+        owner: p.owner,
+        executor: p.executor,
+        priceE6: p.price / 10n ** 12n,
+        spent,
+        received,
+        tip,
+      },
+      co,
+    );
+    return { spent, received, tip };
+  }
+
+  // ---- ReferralRegistry ----
+
+  /** ReferralRegistry.bind (relayer = user) or bindFor (relayer = whoever sent it). Bindings last 180 days. */
+  bind(p: { user: string; referrer: string; relayer?: string; duration?: bigint }): void {
+    const boundAt = BigInt(this.s.timestamp);
+    this.s.emit(
+      "ReferralRegistry",
+      "Bound",
+      {
+        user: p.user,
+        referrer: p.referrer,
+        boundAt,
+        expiresAt: boundAt + (p.duration ?? REFERRAL_DURATION),
+        relayer: p.relayer ?? p.user,
+      },
+      ADDR.referralRegistry,
+    );
+  }
+
+  // ---- MerkleDistributor ----
+
+  createEpoch(p: {
+    epoch: bigint;
+    token: string;
+    root?: string;
+    total: bigint;
+    claimDeadline: bigint;
+  }): void {
+    this.s.skipLogs(1); // the funder's transfer of the total
+    this.s.emit(
+      "MerkleDistributor",
+      "EpochCreated",
+      { root: `0x${"11".repeat(32)}`, ...p },
+      ADDR.merkleDistributor,
+    );
+  }
+
+  claimReward(p: { epoch: bigint; account: string; amount: bigint; caller: string }): void {
+    this.s.skipLogs(1);
+    this.s.emit("MerkleDistributor", "Claimed", p, ADDR.merkleDistributor);
+  }
+
+  sweepEpoch(p: { epoch: bigint; to: string; amount: bigint }): void {
+    this.s.skipLogs(1);
+    this.s.emit("MerkleDistributor", "Swept", p, ADDR.merkleDistributor);
+  }
+
+  // ---- ImpliedProbabilityOracle and adapters ----
+
+  poke(p: {
+    market: string;
+    chanceE6: bigint;
+    spreadE6: bigint;
+    stale?: boolean;
+    checkpoint?: boolean;
+  }): void {
+    this.s.emit("ImpliedProbabilityOracle", "Poked", { stale: false, checkpoint: true, ...p }, ADDR.oracle);
+  }
+
+  adapterCreated(p: { market: string; side: bigint; adapter: string }): void {
+    this.s.emit("PriceAdapterFactory", "AdapterCreated", p, ADDR.adapterFactory);
+  }
+
+  // ---- TemplateTimelock ----
+
+  /** TemplateTimelock._queue: id = keccak256(abi.encode(data, nonce)), selector = the call's first four bytes. */
+  queueOperation(p: { data: string; nonce: bigint; readyAt: bigint }): string {
+    const id = keccak256(
+      encodeAbiParameters([{ type: "bytes" }, { type: "uint256" }], [p.data as `0x${string}`, p.nonce]),
+    );
+    this.s.emit(
+      "TemplateTimelock",
+      "OperationQueued",
+      { id, nonce: p.nonce, selector: p.data.slice(0, 10), data: p.data, readyAt: p.readyAt },
+      ADDR.timelock,
+    );
+    return id;
+  }
+
+  executeOperation(p: { id: string; nonce: bigint; executor: string }): void {
+    this.s.emit("TemplateTimelock", "OperationExecuted", p, ADDR.timelock);
+  }
+
+  cancelOperation(id: string): void {
+    this.s.emit("TemplateTimelock", "OperationCancelled", { id }, ADDR.timelock);
+  }
 }
+
+/** The testnet ReferralRegistry's DURATION: 180 days (deployments periphery.referralDuration). */
+export const REFERRAL_DURATION = 180n * 86_400n;
 
 /** Seeds the testnet market exactly as SeedTestnetMarket.s.sol did: 50 + 6 × 60 YES, 4 × 70 NO, graduate, claim. */
 export function seedTestnetMarket(p: Protocol): void {
@@ -591,6 +930,11 @@ export function seedTestnetMarket(p: Protocol): void {
   p.graduate({ market: SEED.market, book: SEED.book });
   p.s.next({ blocks: 3, seconds: 1 });
   p.claimTokens({ market: SEED.market, users: [ADDR.guardian, ...SEED.stakers] });
+}
+
+/** Moves the script to a block after the periphery's deploy block, in a new transaction from `from`. */
+export function afterPeripheryDeploy(p: Protocol, from: string = ADDR.guardian): void {
+  p.s.next({ blocks: Math.max(1, PERIPHERY_BLOCK + 100 - p.s.block), seconds: 3_600, from });
 }
 
 export const json = (value: unknown): unknown =>

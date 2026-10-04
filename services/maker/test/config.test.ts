@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -44,6 +44,38 @@ describe("parseConfig", () => {
     );
     expect(described).not.toContain("abab");
     expect(described).toContain('"privateKey":"set"');
+  });
+});
+
+describe("maker kit settings", () => {
+  it("paper mode never sends, needs no key, and starts from MAKER_PAPER_USDC", () => {
+    const paper = parseConfig({ MAKER_MODE: "paper", MAKER_ENABLED: "1", MAKER_PAPER_USDC: "250" });
+    expect(paper).toMatchObject({
+      mode: "paper",
+      enabled: false,
+      privateKey: undefined,
+      paperUsdc: 250_000_000n,
+    });
+    expect(parseConfig({})).toMatchObject({ mode: "live", paperUsdc: 1_000_000_000n });
+    expect(() => parseConfig({ MAKER_MODE: "sim" })).toThrow(/MAKER_MODE/);
+  });
+
+  it("the kit's .env.example parses, starts in paper mode, and names every setting the bot reads", () => {
+    const example = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
+    const config = parseConfig(parseEnvFile(example));
+    expect(config).toMatchObject({ mode: "paper", enabled: false, privateKey: undefined });
+    const source = readFileSync(new URL("../src/config.ts", import.meta.url), "utf8");
+    const read = new Set(
+      [...source.matchAll(/"(MAKER_[A-Z_]+)"|env\.(MAKER_[A-Z_]+)/g)].map((m) => m[1] ?? m[2]),
+    );
+    read.delete("MAKER_ENV_FILE"); // which file to load: set outside the file itself
+    for (const name of read) expect(example).toContain(`${name}=`);
+  });
+
+  it("quotes only the templates in MAKER_TEMPLATES when set", () => {
+    expect(parseConfig({ MAKER_TEMPLATES: "1, 3,6" }).templates).toEqual([1, 3, 6]);
+    expect(parseConfig({}).templates).toBeUndefined();
+    expect(() => parseConfig({ MAKER_TEMPLATES: "1,x" })).toThrow(/MAKER_TEMPLATES/);
   });
 });
 
