@@ -3,10 +3,13 @@
 import { addressUrl } from "@hunch-book/shared";
 import { useEffect, useId, useRef, useState } from "react";
 import { type Connector, useConnect, useConnectors, useDisconnect } from "wagmi";
+import { PASSKEY_CONNECTOR_TYPE } from "@/lib/account/connector";
 import { appChain, appDeployment, appNetworkLabel } from "@/lib/config";
 import { shortAddress } from "@/lib/format";
 import { describeTxError } from "@/lib/wallet/errors";
 import { useAppChain } from "@/lib/wallet/useAppChain";
+import { AccountPanel, AutoDrip } from "../account/AccountPanel";
+import { PasskeyConnect } from "../account/PasskeyConnect";
 import s from "../layout/layout.module.css";
 import { Button } from "../ui";
 import { FaucetButton, useFaucetAvailable } from "./Faucet";
@@ -18,9 +21,11 @@ import w from "./wallet.module.css";
  * the page has no injected provider at all (it could only fail).
  */
 export function pickConnectors(connectors: readonly Connector[], hasInjectedProvider: boolean): Connector[] {
-  const named = connectors.filter((c) => c.id !== "injected");
+  // Passkey accounts have their own section of the menu (components/account/PasskeyConnect).
+  const browser = connectors.filter((c) => c.type !== PASSKEY_CONNECTOR_TYPE);
+  const named = browser.filter((c) => c.id !== "injected");
   if (named.length > 0) return named;
-  return hasInjectedProvider ? [...connectors] : [];
+  return hasInjectedProvider ? browser : [];
 }
 
 function hasInjectedProvider(): boolean {
@@ -71,6 +76,7 @@ export function ConnectButton() {
   if (chain.isConnected && chain.address) {
     return (
       <div className={s.menuWrap} ref={wrap}>
+        <AutoDrip />
         {chain.wrongNetwork ? (
           <Button
             variant="primary"
@@ -102,6 +108,8 @@ export function ConnectButton() {
             >
               View on explorer
             </a>
+            <div className={s.divider} />
+            <AccountPanel />
             {faucet ? (
               <>
                 <div className={s.divider} />
@@ -180,6 +188,8 @@ export function ConnectButton() {
             Hunch Book runs on {appNetworkLabel}. After you connect, your wallet asks to add it and switch to
             it.
           </p>
+          <div className={s.divider} />
+          <PasskeyConnect />
         </div>
       ) : null}
     </div>

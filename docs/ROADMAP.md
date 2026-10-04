@@ -98,12 +98,12 @@ Graduation rules (v0 values, set per template and visible on every market):
 
 | ID | Deliverable | Status |
 |---|---|---|
-| A-4 | **Settlement verifier**: every settled market shows the exact read (contract, function, block, returned value) and a button that re-runs that read from your browser, no wallet needed | planned |
-| A-5 | **Proof page**: live counts of markets, wallets, trades and volume, and the share of book fills taken by Hunch's own maker | planned |
+| A-4 | **Settlement verifier**: every settled market shows the exact read (contract, function, block, returned value) and a button that re-runs that read from your browser, no wallet needed | live on testnet (`/verify/<market>`) |
+| A-5 | **Proof page**: live counts of markets, wallets, trades and volume, and the share of book fills taken by Hunch's own maker | live on testnet ([/proof](https://book.playhunch.xyz/proof)); full history once the indexer is hosted |
 | S-3 | **Touch markets** ("will MON reach K at any time before T?"): anyone proves YES by pointing at the Chainlink round where it happened; NO settles after a 24h window with no proof | live on testnet (templates 3 and 4, [TEMPLATES.md](./TEMPLATES.md)) |
 | A-6 | **Hedge assistant v0**: for a wallet with a Perpl position, show the funding it is paying and a market and size that pays out if funding stays high (needs Perpl position reads confirmed) | planned |
 | A-7 | Passkey accounts (Mera): a wallet derived from your passkey, no seed phrase or extension; first transactions covered by a capped MON drip, and stakes accepted as signed USDC authorisations a relayer submits | planned |
-| A-8 | Live trade tape: each fill with its block number and the time from signature to inclusion | planned |
+| A-8 | Live trade tape: each fill with its block number and the time from signature to inclusion | live on testnet ([/tape](https://book.playhunch.xyz/tape)) |
 
 ### 0.6 Hardening (target 2026-10-11 → 2026-10-13)
 
