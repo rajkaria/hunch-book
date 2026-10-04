@@ -428,6 +428,10 @@ export class Keeper {
         );
     this.settleRetry.set(market, { at: Date.now() + delaySeconds * 1000, delaySeconds });
     log("settle-later", { market, reason, retryInSeconds: delaySeconds }, longest ? "warn" : "info");
+    if (!longest && delaySeconds >= this.config.settleRetryMaxSeconds) {
+      // Still not settling after the longest wait: worth a person's look (the market voids at its deadline).
+      void this.alerter.send(`settle-stuck:${market}`, "settle-stuck", { market, reason }, "warn");
+    }
   }
 
   private async settle(m: MarketSnapshot, now: ChainNow): Promise<boolean> {
@@ -472,7 +476,13 @@ export class Keeper {
     if (result.status === "success") {
       this.settleRetry.delete(m.address);
     } else if (result.status === "dry-run") {
-      if (!result.simulation.ok) this.backoff(m.address, `settle would revert: ${result.simulation.reason}`);
+      if (!result.simulation.ok) {
+        this.backoff(m.address, `settle would revert: ${result.simulation.reason}`);
+      } else if (!this.verbosePlan) {
+        // A dry run that keeps running: fetch the evidence again only when it would be logged again.
+        const delaySeconds = DRY_RUN_REPEAT_MS / 1000;
+        this.settleRetry.set(m.address, { at: Date.now() + DRY_RUN_REPEAT_MS, delaySeconds });
+      }
     } else {
       // Skipped (the simulation failed, for example NotResolved), reverted, or unknown.
       this.backoff(m.address, result.status === "skipped" ? result.reason : `settle ${result.status}`);
@@ -484,7 +494,8 @@ export class Keeper {
 
   private async pushClaims(m: MarketSnapshot, kind: "tokens" | "pool", scan: ScanContext): Promise<boolean> {
     const job: HealthJob = kind === "tokens" ? "claims" : "payouts";
-    if (!this.stakerSource) return false;
+    // Every staker was already checked with a final list: nothing anyone can claim is left.
+    if (!this.stakerSource || this.exhausted.has(m.address)) return false;
     const list = await this.stakerSource.stakers(m.address, scan);
     const users = uniqueAddresses(list.users);
     const claimable = users.length ? await this.claimable(m.address, kind, users) : [];

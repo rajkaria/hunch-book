@@ -206,12 +206,19 @@ pnpm --filter @hunch-book/keeper test
   and the gas-cap split; scan windows and cursors surviving a restart; evidence encoding for both
   templates; Hermes requests and the 60-second rule; the indexer query and its fallback; alerts and
   redaction; `sendTx` in dry run and live.
-- **Integration test** (`test/integration/`): a fresh anvil chain with Hunch Book's real factory, vault,
-  market and outcome tokens from `contracts/out`, plus the contracts' own mock graduator and mock
-  resolver. The keeper graduates a pool, finds every staker from the logs and pushes their tokens in
-  batches, backs off while the resolver has no answer, settles once it has one, voids a market past its
-  deadline, pays pool winners and refunds, and then stops reading finished markets. It skips, rather
-  than fails, when anvil is not installed or `contracts/out` has not been built (`forge build`).
+- **Integration tests** (`test/integration/`): a fresh anvil chain with Hunch Book's real factory, vault,
+  market and outcome tokens from `contracts/out`, plus the contracts' own mocks for the parts outside
+  Hunch Book (a resolver that answers what the test sets, Kuru's Router and Margin Account).
+  - The whole loop: the keeper graduates a pool, finds every staker from the logs and pushes their
+    tokens in batches, backs off while the resolver has no answer, settles once it has one, voids a
+    market past its deadline, pays pool winners and refunds, and then stops reading finished markets.
+  - Books on a network where only Kuru can create them, with the real Graduator: the keeper asks Kuru
+    once with the exact `deployProxy` parameters, finds the book Kuru deploys at the predicted address,
+    registers it (the Graduator verifies it) and graduates into it.
+  - A template with no settler is skipped with one warning; a settler registered at startup settles it.
+
+  They skip, rather than fail, when anvil is not installed or `contracts/out` has not been built
+  (`forge build`).
 
 ## Limits
 
