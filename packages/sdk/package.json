@@ -1,0 +1,35 @@
+{
+  "name": "@hunch-book/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript SDK for Hunch Book: read markets, quote trades, send every lifecycle action, find and verify settlement evidence.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hunch-book/shared": "workspace:*",
+    "viem": "2.57.2"
+  },
+  "devDependencies": {
+    "@openzeppelin/merkle-tree": "1.0.8",
+    "@types/node": "26.6.4",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  }
+}
