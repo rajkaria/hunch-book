@@ -1,5 +1,7 @@
 import { BPS, CREATOR_SHARE_BPS } from "@hunch-book/shared";
 import type { Address } from "viem";
+import { appNetwork } from "../config";
+import { indexerUrl as networkIndexerUrl } from "../indexer/client";
 import type { Bind } from "./binds";
 
 // The referral formula from docs/PERIPHERY.md ("The referral formula"), as pure functions. The registry
@@ -67,10 +69,9 @@ export function estimateCredit(
   return { total, counted, perUser };
 }
 
-/** The indexer's GraphQL endpoint, when the app is configured with one. */
+/** The indexer's GraphQL endpoint for the active network, when the app is configured with one. */
 export function indexerUrl(): string | null {
-  const url = process.env.NEXT_PUBLIC_INDEXER_URL?.trim();
-  return url ? url : null;
+  return networkIndexerUrl(appNetwork);
 }
 
 const FEE_EVENTS_QUERY = `query ReferralFees($users: [String!]!) {

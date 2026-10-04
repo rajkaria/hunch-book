@@ -21,6 +21,7 @@ import { ActionsPanel } from "./ActionsPanel";
 import { BookPanel } from "./BookPanel";
 import s from "./market.module.css";
 import { PositionPanel } from "./PositionPanel";
+import { SnapshotPanel } from "./SnapshotPanel";
 import { StakeTicket } from "./StakeTicket";
 import {
   ChancePanel,
@@ -85,6 +86,7 @@ export function MarketBody({
           <GraduationPanel m={m} />
           <TimelinePanel m={m} clock={clock} now={now} />
           <SourcePanel m={m} />
+          {m.decoded.kind === "snapshot" ? <SnapshotPanel m={m} now={now} /> : null}
           <VoidTermsPanel m={m} />
           <ContractsPanel m={m} />
         </div>
