@@ -1,4 +1,18 @@
-// What each page will show once the contracts are deployed. Plain words, shown in not-deployed states.
+// Product copy used in more than one place, and what each page will show once the contracts are
+// deployed (shown in not-deployed states). Plain words, short sentences.
+
+/** The one-sentence description: page metadata, the footer and the share card. */
+export const DESCRIPTION =
+  "Prediction markets on Monad that start as USDC pools, graduate to Kuru's onchain order book, and settle by reading the chain.";
+
+/** The three stages, as the landing headline and the share card say them. */
+export const TAGLINE = ["Start as a pool.", "Graduate to a book.", "Settle from the chain."] as const;
+
+/** Where each part comes from. */
+export const BUILT_ON = "Built on Monad, trades on Kuru, settles from Perpl and Chainlink.";
+
+/** Said wherever testnet money could be mistaken for real money. */
+export const TESTNET_MONEY = "Testnet: stakes use Hunch Book's own test USDC, not real money.";
 
 export const MARKETS_WILL_SHOW = [
   "Every market from the factory, newest first, with its rule in one sentence.",

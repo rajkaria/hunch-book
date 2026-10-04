@@ -3,21 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import s from "./layout.module.css";
+import { DOCS_URL, isActive, NAV_LINKS } from "./nav";
 
-const LINKS = [
-  { href: "/markets", label: "Markets", match: ["/markets", "/m/"] },
-  { href: "/portfolio", label: "Portfolio", match: ["/portfolio"] },
-  { href: "/proof", label: "Proof", match: ["/proof", "/verify/"] },
-] as const;
-
+/** The desktop navigation bar. Under 720px the mobile sheet takes over. */
 export function NavLinks() {
   const pathname = usePathname() ?? "/";
   return (
     <nav className={s.nav} aria-label="Main">
-      {LINKS.map((link) => {
-        const active = link.match.some(
-          (m) => pathname === m || pathname.startsWith(m.endsWith("/") ? m : `${m}/`),
-        );
+      {NAV_LINKS.map((link) => {
+        const active = isActive(pathname, link);
         return (
           <Link
             key={link.href}
@@ -29,6 +23,12 @@ export function NavLinks() {
           </Link>
         );
       })}
+      <a className={s.navLink} href={DOCS_URL} target="_blank" rel="noreferrer">
+        Docs
+        <span className={s.navExternal} aria-hidden="true">
+          ↗
+        </span>
+      </a>
     </nav>
   );
 }

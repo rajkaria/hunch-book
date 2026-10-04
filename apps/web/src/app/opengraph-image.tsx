@@ -1,20 +1,52 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { deployments } from "@hunch-book/shared";
 import { ImageResponse } from "next/og";
 import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
 
-// The share card: flat, same colours as the app, no gradients. Built once at build time.
+// The share card, in the main Hunch look: ink with a lime and a violet glow, the lime tile, and the
+// three-stage headline in Archivo (read from public/fonts at build time, no network). Built once.
 
-export const alt = "Hunch Book: prediction markets that start as pools and graduate to an onchain order book";
+export const alt = "Hunch Book: start as a pool, graduate to a book, settle from the chain";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-const BG = "#0e0f0c";
-const LINE = "#2a2d25";
-const TEXT = "#ecefe6";
-const MUTED = "#a2a797";
-const LIME = "#c6f432";
+const INK = "#0b0b0f";
+const PAPER = "#fafaf7";
+const MUTED = "#b4b4ad";
+const LIME = "#cbff5d";
+const WARN = "#f6bd4f";
 
-export default function OpengraphImage() {
-  const status = isDeployed(appDeployment) ? `Live on ${appNetworkLabel}` : `${appNetworkLabel}: building`;
+const fontFile = (name: string) => readFile(join(process.cwd(), "public", "fonts", name));
+
+export default async function OpengraphImage() {
+  const [heavy, medium] = await Promise.all([
+    fontFile("archivo-latin-800-normal.woff"),
+    fontFile("archivo-latin-500-normal.woff"),
+  ]);
+  const live = isDeployed(appDeployment);
+  const mainnetLive = isDeployed(deployments["monad-mainnet"]);
+  const pill = (text: string, color: string, border: string, background: string) => (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 18px",
+        borderRadius: 999,
+        border: `1px solid ${border}`,
+        background,
+        color,
+        fontSize: 18,
+        fontWeight: 500,
+        letterSpacing: 2,
+        textTransform: "uppercase",
+      }}
+    >
+      <div style={{ width: 10, height: 10, borderRadius: 5, background: color }} />
+      {text}
+    </div>
+  );
   return new ImageResponse(
     <div
       style={{
@@ -23,41 +55,108 @@ export default function OpengraphImage() {
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
-        padding: "72px 80px",
-        background: BG,
-        color: TEXT,
+        padding: "64px 72px",
+        position: "relative",
+        backgroundColor: INK,
+        color: PAPER,
+        fontFamily: "Archivo",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <div style={{ width: 28, height: 28, background: LIME, borderRadius: 4 }} />
-        <div style={{ fontSize: 30, letterSpacing: 6, fontWeight: 700 }}>HUNCH BOOK</div>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-        <div style={{ fontSize: 68, lineHeight: 1.08, fontWeight: 700, maxWidth: 1000, letterSpacing: -1 }}>
-          Prediction markets that start as pools and graduate to an onchain order book.
-        </div>
-        <div style={{ fontSize: 30, color: MUTED, maxWidth: 980, lineHeight: 1.4 }}>
-          Sell before the answer on Kuru. Settled by reading the chain, not by a person.
-        </div>
-      </div>
       <div
         style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: 1200,
+          height: 630,
           display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          paddingTop: 28,
-          borderTop: `2px solid ${LINE}`,
-          fontSize: 26,
-          color: MUTED,
+          backgroundImage:
+            "radial-gradient(circle at 92% 6%, rgba(139,92,246,0.5), transparent 46%), radial-gradient(circle at 6% 100%, rgba(203,255,93,0.24), transparent 44%)",
         }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, color: LIME }}>
-          <div style={{ width: 14, height: 14, borderRadius: 7, background: LIME }} />
-          {status}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: 1200,
+          height: 630,
+          display: "flex",
+          backgroundImage:
+            "linear-gradient(rgba(250,250,247,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(250,250,247,0.04) 1px, transparent 1px)",
+          backgroundSize: "34px 34px",
+          opacity: 0.5,
+        }}
+      />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 18,
+            background: LIME,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 0 48px rgba(203,255,93,0.35)",
+          }}
+        >
+          <svg width="36" height="36" viewBox="0 0 100 100" aria-hidden="true">
+            <path d="M6 6 H94 V94 H6 Z M33 94 V48 A17 17 0 0 1 67 48 V94 Z" fill={INK} fillRule="evenodd" />
+          </svg>
         </div>
-        <div style={{ display: "flex" }}>Monad · Kuru · Perpl · Chainlink</div>
+        <div style={{ display: "flex", fontSize: 44, fontWeight: 800, letterSpacing: -1.5 }}>
+          Hunch<span style={{ color: MUTED, marginLeft: 12 }}>Book</span>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", fontSize: 84, fontWeight: 800, lineHeight: 1 }}>
+        <div style={{ display: "flex", letterSpacing: -4 }}>Start as a pool.</div>
+        <div style={{ display: "flex", letterSpacing: -4, marginTop: 6 }}>
+          Graduate to a
+          <div
+            style={{
+              display: "flex",
+              marginLeft: 14,
+              padding: "0 6px",
+              backgroundImage: `linear-gradient(180deg, transparent 64%, ${LIME} 64%, ${LIME} 90%, transparent 90%)`,
+            }}
+          >
+            book
+          </div>
+          .
+        </div>
+        <div style={{ display: "flex", letterSpacing: -4, marginTop: 6, color: MUTED }}>
+          Settle from the chain.
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", gap: 14 }}>
+          {live
+            ? pill(`Live on ${appNetworkLabel}`, LIME, "rgba(203,255,93,0.4)", "rgba(203,255,93,0.1)")
+            : pill(`${appNetworkLabel}: building`, WARN, "rgba(246,189,79,0.4)", "rgba(246,189,79,0.1)")}
+          {appNetworkLabel === "Monad testnet"
+            ? pill(
+                mainnetLive ? "Live on Monad mainnet" : "Mainnet planned",
+                MUTED,
+                "rgba(250,250,247,0.16)",
+                "rgba(250,250,247,0.05)",
+              )
+            : null}
+        </div>
+        <div style={{ display: "flex", fontSize: 20, fontWeight: 500, color: MUTED }}>
+          Monad · Kuru · Perpl · Chainlink
+        </div>
       </div>
     </div>,
-    size,
+    {
+      ...size,
+      fonts: [
+        { name: "Archivo", data: heavy, weight: 800, style: "normal" },
+        { name: "Archivo", data: medium, weight: 500, style: "normal" },
+      ],
+    },
   );
 }
