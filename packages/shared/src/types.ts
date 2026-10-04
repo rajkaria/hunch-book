@@ -46,10 +46,14 @@ export interface MarketCaps {
   creatorMinStake: bigint;
 }
 
-/** Template ids registered with the factory. */
+/** Template ids registered with the factory. docs/TEMPLATES.md describes each one. */
 export const TemplateId = {
   PerplFunding: 1,
   PriceAtTime: 2,
+  ChainlinkTouch: 3,
+  PerplFundingSpike: 4,
+  PriceRange: 5,
+  Parlay: 6,
 } as const;
 export type TemplateId = (typeof TemplateId)[keyof typeof TemplateId];
 

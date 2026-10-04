@@ -5,35 +5,28 @@ import {LibString} from "solady/utils/LibString.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {IResolver} from "../interfaces/IResolver.sol";
 import {Outcome, Window} from "../interfaces/IHunchBookTypes.sol";
-import {PriceAtTimeParams} from "../interfaces/ITemplates.sol";
+import {PriceRangeParams} from "../interfaces/ITemplatesV2.sol";
 import {IPyth} from "../interfaces/external/IPyth.sol";
 import {PriceAtTimeReader} from "./PriceAtTimeReader.sol";
 import {ResolverText} from "./ResolverText.sol";
 
-/// @title Template S-2: price at a time (docs/PROTOCOL.md §6.2)
-/// @notice "Will ASSET/USD be at or above K at time T?" YES if the price at T is at or above
-///         `strikeE8` (8 decimals), NO otherwise.
-///         - Chainlink (source 0): the settler names round r. It is accepted only if r and r + 1 are in
-///           the same phase, updatedAt(r) <= T < updatedAt(r + 1), T − updatedAt(r) <= 1 hour and the
-///           answer is positive. Within a phase updatedAt never decreases, so at most one round can
-///           satisfy this for a given T: nobody can pick a convenient price.
-///         - Pyth (source 1): the settler passes signed updates. Pyth's `parsePriceFeedUpdatesUnique`
-///           with [T, T + 60 s] returns only the first update published at or after T.
-/// @dev A pure reader: no owner, no funds between calls. The feed and Pyth-id allowlists are written
-///      once in the constructor and can never change; a new feed ships as a new resolver (template).
-///      A failed read of round r + 1 only ever yields `Unresolved`; every other failure reverts.
-///      A round is scaled with the decimals of the phase aggregator that wrote it. The reading code is
-///      shared with template 5 (PriceRangeResolver) through PriceAtTimeReader.
+/// @title Template 5: price range at a time
+/// @notice "Will ASSET/USD be at or above K1 and below K2 at time T?" YES if the price at T is at or
+///         above `lowerE8` and below `upperE8` (8 decimals), NO otherwise. The lower bound is inclusive
+///         and the upper bound exclusive, so ranges that share a bound never both settle YES.
+///         The price at T is read exactly as template 2 reads it (PriceAtTimeReader):
+///         - Chainlink (source 0): the round r with updatedAt(r) <= T < updatedAt(r + 1), in one phase,
+///           at most one hour before T, positive.
+///         - Pyth (source 1): the first signed update published in [T, T + 60 s].
+/// @dev A pure reader: no owner, no funds between calls. Allowlists are written once in the
+///      constructor and can never change. Down-scaling truncates, which is exact for both bounds:
+///      floor(x) >= K1 if and only if x >= K1, and floor(x) < K2 if and only if x < K2.
 ///
-///      evidenceHash, for the settlement verifier:
-///      - Chainlink: keccak256(abi.encode(uint8 0, address feed, uint80 r, int256 answer,
-///        uint256 updatedAt(r), uint256 updatedAt(r + 1), uint256 T))
-///      - Pyth: keccak256(abi.encode(uint8 1, address pyth, bytes32 id,
-///        (int64 price, uint64 conf, int32 expo, uint256 publishTime), uint64 T))
-contract PriceAtTimeResolver is IResolver, PriceAtTimeReader {
+///      evidenceHash: the same format as template 2 (see PriceAtTimeReader).
+contract PriceRangeResolver is IResolver, PriceAtTimeReader {
     // Every error this resolver can revert with. The shared readers revert with file-level errors of
     // the same signatures (so the same selectors); declaring them here lists them in this
-    // contract's ABI and lets callers write `PriceAtTimeResolver.Error.selector`.
+    // contract's ABI and lets callers write `PriceRangeResolver.Error.selector`.
     error NotAContract(address account);
     error DuplicateEntry();
     error LengthMismatch();
@@ -44,7 +37,8 @@ contract PriceAtTimeResolver is IResolver, PriceAtTimeReader {
     error FeedNotAllowed(address feed);
     error PythIdNotAllowed(bytes32 id);
     error UnusedFieldSet();
-    error StrikeNotPositive(int256 strikeE8);
+    error LowerNotPositive(int256 lowerE8);
+    error EmptyRange(int256 lowerE8, int256 upperE8);
     error LockNotInFuture(uint64 lockTime, uint256 currentTime);
     error CloseBeforeLock(uint64 lockTime, uint64 closeTime);
     error DeadlineOverflow();
@@ -71,30 +65,33 @@ contract PriceAtTimeResolver is IResolver, PriceAtTimeReader {
 
     /// @inheritdoc IResolver
     function validate(bytes calldata params) external view returns (Window memory window) {
-        PriceAtTimeParams memory p = abi.decode(params, (PriceAtTimeParams));
+        PriceRangeParams memory p = abi.decode(params, (PriceRangeParams));
         // One encoding per question, so the factory's (template, params) key is unique per question.
         if (keccak256(abi.encode(p)) != keccak256(params)) revert NonCanonicalParams();
         _checkSource(p.source, p.feed, p.pythId);
-        if (p.strikeE8 <= 0) revert StrikeNotPositive(p.strikeE8);
+        if (p.lowerE8 <= 0) revert LowerNotPositive(p.lowerE8);
+        if (p.upperE8 <= p.lowerE8) revert EmptyRange(p.lowerE8, p.upperE8);
         window = _timeWindow(p.lockTime, p.closeTime);
     }
 
     /// @inheritdoc IResolver
     function describe(bytes calldata params) external view returns (string memory) {
-        PriceAtTimeParams memory p = abi.decode(params, (PriceAtTimeParams));
+        PriceRangeParams memory p = abi.decode(params, (PriceRangeParams));
         (string memory pair, string memory source) = _sourceText(p.source, p.feed, p.pythId);
         return string.concat(
-            "Will ",
+            "YES if ",
+            source,
+            " puts ",
             pair,
-            " be at or above ",
-            ResolverText.usd(p.strikeE8, 8),
+            " at or above ",
+            ResolverText.usd(p.lowerE8, 8),
+            " and below ",
+            ResolverText.usd(p.upperE8, 8),
             " at ",
             ResolverText.utc(p.closeTime),
             " (unix time ",
             LibString.toString(p.closeTime),
-            "), per ",
-            source,
-            "?"
+            "); NO otherwise."
         );
     }
 
@@ -106,11 +103,12 @@ contract PriceAtTimeResolver is IResolver, PriceAtTimeReader {
         payable
         returns (Outcome outcome, bytes32 evidenceHash)
     {
-        PriceAtTimeParams memory p = abi.decode(params, (PriceAtTimeParams));
+        PriceRangeParams memory p = abi.decode(params, (PriceRangeParams));
         _checkSource(p.source, p.feed, p.pythId);
         PriceRead memory read = _priceAt(p.source, p.feed, p.pythId, p.closeTime, evidence);
         if (read.known) {
-            outcome = read.priceE8 >= p.strikeE8 ? Outcome.Yes : Outcome.No;
+            bool inside = read.priceE8 >= p.lowerE8 && read.priceE8 < p.upperE8;
+            outcome = inside ? Outcome.Yes : Outcome.No;
             evidenceHash = read.evidenceHash;
         }
         uint256 refund = msg.value - read.fee;

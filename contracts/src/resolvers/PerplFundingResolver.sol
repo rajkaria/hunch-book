@@ -7,6 +7,7 @@ import {IResolver} from "../interfaces/IResolver.sol";
 import {Outcome, Window} from "../interfaces/IHunchBookTypes.sol";
 import {PerplFundingParams} from "../interfaces/ITemplates.sol";
 import {IPerplExchange} from "../interfaces/external/IPerplExchange.sol";
+import {PerplReader} from "./PerplReader.sol";
 import {ResolverText} from "./ResolverText.sol";
 
 /// @title Template S-1: net funding on a Perpl perpetual (docs/PROTOCOL.md §6.1)
@@ -18,55 +19,20 @@ import {ResolverText} from "./ResolverText.sol";
 ///      that a failure can only ever produce `Unresolved` (the market then voids at its deadline), never
 ///      an outcome. An outcome needs every read to succeed and every check to pass.
 ///
-///      Implementation changes. Perpl's Exchange is an ERC-1967/UUPS proxy. A contract cannot read
-///      another contract's storage, so the ERC-1967 implementation slot is invisible onchain; the proxy
-///      has no `implementation()` getter, and `proxiableUUID()` reverts when called through the proxy.
-///      The only implementation identity Perpl exposes to contracts is `getContractVersion()`, which
-///      Perpl stamps inside each upgrade transaction (event `ContractVersionSet`). The market's
-///      parameters have no field to record it and `validate` is a view, so this resolver pins the
-///      version at its own deployment instead:
-///      - `validate` refuses new markets once the live version differs from the pinned one (a new
-///        resolver, registered as a new template, is needed after a Perpl upgrade);
-///      - `resolve` returns `Unresolved` if the live version differs from the pinned one.
-///      Limits, stated plainly: an upgrade that keeps the same version number, or an upgrade and a
-///      rollback that both happen between creation and settlement, cannot be detected onchain. The
-///      keeper watches the implementation slot offchain (eth_getStorageAt) and reports such events.
-///      The check also covers the time from creation to settlement, which is wider than the
-///      observation window, so a version change after `endBlock` but before settlement voids the
-///      market too. The keeper settles right after `endBlock` to keep that gap short.
+///      Implementation changes: this resolver pins Perpl's `getContractVersion()` at its deployment
+///      (see PerplReader, which it shares with template 4). `validate` refuses new markets once the
+///      live version differs; `resolve` returns `Unresolved` if it differs. The check also covers
+///      the time from creation to settlement, which is wider than the observation window, so a
+///      version change after `endBlock` but before settlement voids the market too. The keeper
+///      settles right after `endBlock` to keep that gap short.
 ///
 ///      evidenceHash, for the settlement verifier: keccak256(abi.encode(address exchange,
 ///      uint256 perpId, uint64 startBlock, uint64 endBlock, int48 F(start), int48 F(end),
 ///      uint256 eventBlock(start), uint256 eventBlock(end))).
-contract PerplFundingResolver is IResolver {
-    /// Settlement stays open this long after the estimated close (docs/PROTOCOL.md §2).
-    uint256 public constant SETTLEMENT_WINDOW = 7 days;
-
-    /// `resolve` refuses if the last funding event at or before `endBlock` is older than this many
-    /// funding intervals (the perp was paused, so its sum stopped moving).
-    uint256 public constant MAX_STALE_INTERVALS = 2;
-
-    /// Floor for `blockTimeMs`. Monad produces a block every 300 to 400 ms; the estimate must be at
-    /// least twice that so the settlement deadline can never arrive before `endBlock` does.
-    uint256 public constant MIN_BLOCK_TIME_MS = 800;
-
-    /// Perpl's `PerpStatusEnum` value for a paused perp.
-    uint8 internal constant PERP_STATUS_PAUSED = 0;
-
-    /// Perpl ids live in a 4-word bitmap: 0..1023.
-    uint256 internal constant MAX_PERP_ID = 1023;
-
-    IPerplExchange public immutable exchange;
-
-    /// Conservative milliseconds per block. Used only to turn `endBlock` into an estimated unix
-    /// time for the settlement deadline; it never affects an outcome.
-    uint256 public immutable blockTimeMs;
-
-    /// Perpl's `getContractVersion()` when this resolver was deployed (v1.<major>.<minor>.<patch>).
-    uint256 public immutable versionMajor;
-    uint256 public immutable versionMinor;
-    uint256 public immutable versionPatch;
-
+contract PerplFundingResolver is IResolver, PerplReader {
+    // Every error this resolver can revert with. PerplReader reverts with file-level errors of the
+    // same signatures (so the same selectors); declaring them here lists them in this contract's ABI
+    // and lets callers write `PerplFundingResolver.Error.selector`.
     error NotAContract(address account);
     error BlockTimeTooLow(uint256 blockTimeMs, uint256 minimum);
     error NonCanonicalParams();
@@ -82,16 +48,7 @@ contract PerplFundingResolver is IResolver {
 
     /// @param exchange_ Perpl's Exchange proxy.
     /// @param blockTimeMs_ conservative milliseconds per block (at least `MIN_BLOCK_TIME_MS`).
-    constructor(IPerplExchange exchange_, uint256 blockTimeMs_) {
-        if (address(exchange_).code.length == 0) revert NotAContract(address(exchange_));
-        if (blockTimeMs_ < MIN_BLOCK_TIME_MS) revert BlockTimeTooLow(blockTimeMs_, MIN_BLOCK_TIME_MS);
-        exchange = exchange_;
-        blockTimeMs = blockTimeMs_;
-        (uint256 major, uint256 minor, uint256 patch) = exchange_.getContractVersion();
-        versionMajor = major;
-        versionMinor = minor;
-        versionPatch = patch;
-    }
+    constructor(IPerplExchange exchange_, uint256 blockTimeMs_) PerplReader(exchange_, blockTimeMs_) {}
 
     // ---------------------------------------------------------------- IResolver
 
@@ -100,39 +57,11 @@ contract PerplFundingResolver is IResolver {
         PerplFundingParams memory p = abi.decode(params, (PerplFundingParams));
         // One encoding per question, so the factory's (template, params) key is unique per question.
         if (keccak256(abi.encode(p)) != keccak256(params)) revert NonCanonicalParams();
-
-        (uint256 major, uint256 minor, uint256 patch) = exchange.getContractVersion();
-        if (!_isPinned(major, minor, patch)) revert ExchangeVersionChanged(major, minor, patch);
-
-        if (p.startBlock <= block.number) revert StartBlockNotInFuture(p.startBlock, block.number);
-        if (!isListed(p.perpId)) revert PerpNotListed(p.perpId);
-
-        IPerplExchange.PerpetualInfoV2 memory info = exchange.getPerpetualInfoV2(p.perpId);
-        if (info.status == PERP_STATUS_PAUSED) revert PerpPaused(p.perpId);
-        if (info.fundingSumScalingExp != p.expectedScalingExp) {
-            revert ScalingExpMismatch(p.expectedScalingExp, info.fundingSumScalingExp);
-        }
-        // Funding must already run at the window's start. `resolve` relies on this to detect an id
-        // that was removed and listed again during the window (its funding start block moves).
-        if (info.fundingStartBlock == 0 || info.fundingStartBlock > p.startBlock) {
-            revert FundingNotStarted(p.perpId, info.fundingStartBlock, p.startBlock);
-        }
-
-        uint256 interval = exchange.getFundingInterval();
-        if (p.endBlock <= p.startBlock || p.endBlock - p.startBlock < interval) {
-            revert WindowTooShort(p.startBlock, p.endBlock, interval);
-        }
-
+        _checkNewMarket(p.perpId, p.startBlock, p.endBlock, p.expectedScalingExp);
         // Round the time to endBlock up, then add the settlement window.
-        uint256 msToEnd = (uint256(p.endBlock) - block.number) * blockTimeMs;
-        uint256 deadline = block.timestamp + (msToEnd + 999) / 1000 + SETTLEMENT_WINDOW;
-        // An overflow guard, not a timing rule.
-        // forge-lint: disable-next-line(block-timestamp)
-        if (deadline > type(uint64).max) revert DeadlineOverflow();
-
-        // Safe: bounded by type(uint64).max just above.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        window = Window({blockClock: true, lock: p.startBlock, close: p.endBlock, settleDeadline: uint64(deadline)});
+        window = Window({
+            blockClock: true, lock: p.startBlock, close: p.endBlock, settleDeadline: _settleDeadline(p.endBlock)
+        });
     }
 
     /// @inheritdoc IResolver
@@ -188,51 +117,22 @@ contract PerplFundingResolver is IResolver {
         return false;
     }
 
-    // ---------------------------------------------------------------- views
-
-    /// True if Perpl lists `perpId` in its existence bitmap.
-    function isListed(uint256 perpId) public view returns (bool) {
-        if (perpId > MAX_PERP_ID) return false;
-        uint256[4] memory bitmap = exchange.getPerpetualExistsBitmap();
-        return (bitmap[perpId >> 8] >> (perpId & 0xff)) & 1 == 1;
-    }
-
-    /// True if Perpl's live version is the one pinned at deployment.
-    function versionUnchanged() public view returns (bool) {
-        try exchange.getContractVersion() returns (uint256 major, uint256 minor, uint256 patch) {
-            return _isPinned(major, minor, patch);
-        } catch {
-            return false;
-        }
-    }
-
     // ---------------------------------------------------------------- internals
 
     function _read(PerplFundingParams memory p) internal view returns (Outcome, bytes32) {
         // Perpl can overwrite a scheduled funding value until its event block passes. Once
         // block.number > endBlock, every event at or before endBlock is final.
         if (block.number <= p.endBlock) return (Outcome.Unresolved, bytes32(0));
-        if (!versionUnchanged()) return (Outcome.Unresolved, bytes32(0));
 
-        // The perp must still exist at this id with the units recorded at creation, and the id must
-        // not have been listed again since the window started.
-        try exchange.getPerpetualInfoV2(p.perpId) returns (IPerplExchange.PerpetualInfoV2 memory info) {
-            if (info.fundingSumScalingExp != p.expectedScalingExp) return (Outcome.Unresolved, bytes32(0));
-            if (info.fundingStartBlock == 0 || info.fundingStartBlock > p.startBlock) {
-                return (Outcome.Unresolved, bytes32(0));
-            }
-        } catch {
-            return (Outcome.Unresolved, bytes32(0));
-        }
+        // The pinned version, and the perp still at this id with the units recorded at creation and
+        // not listed again since the window started.
+        (bool intact, uint256 interval) = _sourceIntact(p.perpId, p.startBlock, p.expectedScalingExp);
+        if (!intact) return (Outcome.Unresolved, bytes32(0));
+        return _readWindow(p, interval);
+    }
 
-        uint256 interval = 0;
-        try exchange.getFundingInterval() returns (uint256 i) {
-            interval = i;
-        } catch {
-            return (Outcome.Unresolved, bytes32(0));
-        }
-        if (interval == 0) return (Outcome.Unresolved, bytes32(0));
-
+    /// F(startBlock) and F(endBlock), once the source is known to be intact.
+    function _readWindow(PerplFundingParams memory p, uint256 interval) internal view returns (Outcome, bytes32) {
         (bool okStart, int48 sumStart, uint256 eventStart) = _fundingSum(p.perpId, p.startBlock);
         (bool okEnd, int48 sumEnd, uint256 eventEnd) = _fundingSum(p.perpId, p.endBlock);
         if (!okStart || !okEnd) return (Outcome.Unresolved, bytes32(0));
@@ -251,21 +151,5 @@ contract PerplFundingResolver is IResolver {
             abi.encode(address(exchange), p.perpId, p.startBlock, p.endBlock, sumStart, sumEnd, eventStart, eventEnd)
         );
         return (outcome, evidenceHash);
-    }
-
-    function _fundingSum(uint256 perpId, uint256 blockNumber)
-        internal
-        view
-        returns (bool ok, int48 sum, uint256 eventBlock)
-    {
-        try exchange.getFundingSumAtBlock(perpId, blockNumber) returns (int48 s, uint256 e) {
-            return (true, s, e);
-        } catch {
-            return (false, 0, 0);
-        }
-    }
-
-    function _isPinned(uint256 major, uint256 minor, uint256 patch) internal view returns (bool) {
-        return major == versionMajor && minor == versionMinor && patch == versionPatch;
     }
 }
