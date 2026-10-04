@@ -63,6 +63,29 @@ lognormal with no drift. Its volatility is the realised volatility of the Chainl
 rounds, read with `getRoundData`, so no API key is needed. It does not quote a feed that has not updated
 for an hour, and never uses a volatility below 5% a year.
 
+**Touch, funding spike, range and parlay (templates 3 to 6).** The chance a driftless lognormal price
+reaches the strike within the window (corrected for a feed that writes rounds, not a path); the share of
+past stretches of Perpl funding events with one increment above the threshold; the difference of two
+lognormal tails; and the product of the legs' chances, flagged as assuming independent legs. Template 7
+(snapshot) has no model and is not quoted. [docs/MAKER-KIT.md](../../docs/MAKER-KIT.md#pricing-models)
+describes each model and its assumptions.
+
+## Maker kit and paper mode
+
+Anyone can run this bot with their own key and capital: [docs/MAKER-KIT.md](../../docs/MAKER-KIT.md)
+covers setup, risk limits, every setting, the models, how fills are counted and how maker rewards are
+planned to be scored. [`.env.example`](./.env.example) lists every setting.
+
+`MAKER_MODE=paper` quotes exactly as live mode would, with the orders resting only in memory, and fills
+them against the book's real Kuru `Trade` events: a paper quote fills only when a real trade printed
+strictly through its price, so no queue priority is assumed. It keeps a paper account (USDC, YES and NO
+per market, minting, merging, redemption after settlement) and logs `paper-fill` and `paper-pnl`; the
+health snapshot shows the account. It never sends a transaction and needs no key.
+
+```sh
+MAKER_MODE=paper pnpm --filter @hunch-book/maker start
+```
+
 ## Run it
 
 Node 22 and pnpm. From the repository root:
@@ -97,6 +120,8 @@ local state.
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `MAKER_MODE` | `live` | `live` or `paper` (simulated fills against real trades; never sends, needs no key). |
+| `MAKER_PAPER_USDC` | `1000` | Paper mode's starting USDC. |
 | `MAKER_PRIVATE_KEY` | none | The bot's key. Needed only when `MAKER_ENABLED` is on. |
 | `MAKER_NETWORK` | `monad-testnet` | `monad-testnet` or `monad-mainnet`. Picks `deployments/<network>.json`. |
 | `MAKER_ENABLED` | off | Kill switch. Only `1`, `true`, `yes` or `on` turns sending on. Off: dry run. |
@@ -118,6 +143,7 @@ local state.
 | `MAKER_MAX_GAS_PER_TX` | `3000000` | Upper bound on any transaction's gas limit. |
 | `MAKER_DUST` | `1` | Tokens. The USDC float kept in the margin account, and the smallest withdraw or merge worth a transaction. |
 | `MAKER_MARKETS` | all | Comma-separated market addresses to quote; all graduated markets when unset. |
+| `MAKER_TEMPLATES` | all priced | Comma-separated template ids to quote; every template with a model (1 to 6) when unset. |
 | `MAKER_HEALTH_FILE` | `services/maker/health.json` | Where the health snapshot is written after every pass. |
 | `MAKER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET http://localhost:<port>/health`. |
 | `MAKER_ENV_FILE` | repository `.env` | The `.env` file to load. |
@@ -173,7 +199,11 @@ pnpm --filter @hunch-book/maker test
 - **Pricing** runs on data recorded from Monad mainnet: Perpl BTC and MON funding sums, Chainlink BTC,
   ETH and MON rounds, and Kuru's MON-USDC order book (for the L2 decoder). `scripts/capture-fixtures.ts`
   records them into `test/fixtures/`; they are never edited by hand. To refresh them:
-  `pnpm --filter @hunch-book/maker capture-fixtures`.
+  `pnpm --filter @hunch-book/maker capture-fixtures` (`--only <name>` for one). The touch and range
+  models run on BTC, ETH, MON and SOL rounds, with the touch formula checked against a Monte Carlo of the
+  same price; the spike model on BTC and MON funding, checked against a direct count of the history.
+- **Paper fills** replay 60 Kuru MON-USDC trades recorded from Monad mainnet against paper quotes around
+  the book as it stood just before them, checked against a trade-by-trade count.
 - **Quotes, order tracking and config** are unit tests.
 - **Fork tests** start an anvil fork of Monad testnet (Foundry 1.8 or later). One runs the bot's
   execution code against Kuru's real contracts: it creates a book with Kuru's `Router.deployProxy` on mock
@@ -194,7 +224,11 @@ pnpm --filter @hunch-book/maker test
 - The Perpl model assumes the latest interval's funding carries on, and takes its uncertainty from the
   perp's own history. It does not know about Perpl's price administrator's plans or rate clamps.
 - Price markets settled by Pyth (assets with no Chainlink feed on Monad, such as SOL) are not quoted:
-  historical Pyth updates need an API key.
+  historical Pyth updates need an API key. Snapshot markets (template 7) have no model and are not quoted.
+- The parlay model multiplies the legs' chances, so it is wrong for legs that move together (two
+  questions on one asset). The quote's detail says so.
+- Paper mode cannot know how others would have reacted to its quotes, and counts no fill at a price equal
+  to a real trade's, so on a quiet book it may show no fills.
 - The inventory cap is per market. USDC in Kuru's margin account is shared by every book the bot quotes.
 - Before close the bot cancels its own orders, but Kuru's book is not Hunch Book's to halt. Orders other
   people leave on the book can still fill after close.

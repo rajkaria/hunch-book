@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -58,6 +58,18 @@ describe("maker kit settings", () => {
     });
     expect(parseConfig({})).toMatchObject({ mode: "live", paperUsdc: 1_000_000_000n });
     expect(() => parseConfig({ MAKER_MODE: "sim" })).toThrow(/MAKER_MODE/);
+  });
+
+  it("the kit's .env.example parses, starts in paper mode, and names every setting the bot reads", () => {
+    const example = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
+    const config = parseConfig(parseEnvFile(example));
+    expect(config).toMatchObject({ mode: "paper", enabled: false, privateKey: undefined });
+    const source = readFileSync(new URL("../src/config.ts", import.meta.url), "utf8");
+    const read = new Set(
+      [...source.matchAll(/"(MAKER_[A-Z_]+)"|env\.(MAKER_[A-Z_]+)/g)].map((m) => m[1] ?? m[2]),
+    );
+    read.delete("MAKER_ENV_FILE"); // which file to load: set outside the file itself
+    for (const name of read) expect(example).toContain(`${name}=`);
   });
 
   it("quotes only the templates in MAKER_TEMPLATES when set", () => {
