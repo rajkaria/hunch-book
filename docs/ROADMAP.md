@@ -1,6 +1,6 @@
 # Hunch Book roadmap
 
-Last updated: 2026-10-03. Status words used below:
+Last updated: 2026-10-04. Status words used below:
 
 - **planned**: designed, not started
 - **building**: in progress
@@ -79,20 +79,20 @@ Graduation rules (v0 values, set per template and visible on every market):
 
 | ID | Deliverable | Status |
 |---|---|---|
-| I-1 | Envio indexer: markets, stakes, graduations, Kuru fills on our books, positions, settlements, redemptions | planned |
-| A-1 | App: market list, market page (chance, book depth, rules, source), stake and trade ticket, portfolio with claim and redeem | planned |
-| A-2 | Create flow: pick a template, fill parameters, see the exact settlement rule in plain words, make the first stake | planned |
-| K-1 | Keeper v0: graduates eligible pools, settles markets at window end | planned |
+| I-1 | Envio indexer: markets, stakes, graduations, Kuru fills on our books, positions, settlements, redemptions | building |
+| A-1 | App: market list, market page (chance, book depth, rules, source), stake and trade ticket, portfolio with claim and redeem | building |
+| A-2 | Create flow: pick a template, fill parameters, see the exact settlement rule in plain words, make the first stake | building |
+| K-1 | Keeper v0: graduates eligible pools, pushes token claims, settles markets at window end, voids after the deadline, pays out pools ([services/keeper](../services/keeper)) | live on testnet ([keeper address](https://testnet.monadscan.com/address/0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569)) |
 | O-2 | Golden path run by a person on testnet, including a hard refresh and two different wallets | planned |
 
 ### 0.4 Mainnet beta (target 2026-10-07 → 2026-10-08)
 
 | ID | Deliverable | Status |
 |---|---|---|
-| O-3 | Contracts on Monad mainnet with native USDC; addresses in `deployments/monad-mainnet.json` and the README | planned |
-| O-4 | Beta caps: per-market pool cap, per-wallet stake cap, total collateral cap; guardian can pause creation and graduation only (never redemption, never outcomes) | planned |
-| V-3 | Graduation to Kuru mainnet. Kuru's mainnet market creation is owner-only, so Kuru creates each YES/USDC book on request and anyone registers it (the Graduator verifies it). Until Kuru does, mainnet markets run as pools and graduation is shown on testnet | planned |
-| A-3 | Mainnet app with explorer links on every action | planned |
+| O-3 | Contracts on Monad mainnet with native USDC; addresses in `deployments/monad-mainnet.json` and the README | building: rehearsed end to end on a fork of Monad mainnet ([runbook](./DEPLOY.md)); waits for the guardian multisig |
+| O-4 | Beta caps: per-market pool cap, per-wallet stake cap, total collateral cap; guardian can pause creation and graduation only (never redemption, never outcomes) | live on testnet; set by the deploy script for mainnet |
+| V-3 | Graduation to Kuru mainnet. Kuru's mainnet market creation is owner-only, so Kuru creates each YES/USDC book on request and anyone registers it (the Graduator verifies it). Until Kuru does, mainnet markets run as pools and graduation is shown on testnet | building: register flow rehearsed on a mainnet fork; the keeper sends each book request |
+| A-3 | Mainnet app with explorer links on every action | building |
 
 ### 0.5 Proof and utility (target 2026-10-09 → 2026-10-10)
 
