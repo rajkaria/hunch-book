@@ -80,8 +80,8 @@ Graduation rules (v0 values, set per template and visible on every market):
 | ID | Deliverable | Status |
 |---|---|---|
 | I-1 | Envio indexer: markets, stakes, graduations, Kuru fills on our books, positions, settlements, redemptions | building |
-| A-1 | App: market list, market page (chance, book depth, rules, source), stake and trade ticket, portfolio with claim and redeem | building |
-| A-2 | Create flow: pick a template, fill parameters, see the exact settlement rule in plain words, make the first stake | building |
+| A-1 | App: market list, market page (chance, book depth, rules, source), stake and trade ticket, portfolio with claim and redeem | live on testnet ([book.playhunch.xyz](https://book.playhunch.xyz)) |
+| A-2 | Create flow: pick a template, fill parameters, see the exact settlement rule in plain words, make the first stake | live on testnet ([/create](https://book.playhunch.xyz/create), templates 1 to 6) |
 | K-1 | Keeper v0: graduates eligible pools, pushes token claims, settles markets at window end, voids after the deadline, pays out pools ([services/keeper](../services/keeper)) | live on testnet ([keeper address](https://testnet.monadscan.com/address/0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569)) |
 | O-2 | Golden path run by a person on testnet, including a hard refresh and two different wallets | planned |
 
