@@ -32,7 +32,7 @@ const C = "0xC000000000000000000000000000000000000003" as const;
 const EM_DASH = String.fromCodePoint(0x2014);
 
 describe("template ids", () => {
-  it("numbers the six templates as the factory registers them", () => {
+  it("numbers the seven templates as the factory registers them", () => {
     expect(TemplateId).toEqual({
       PerplFunding: 1,
       PriceAtTime: 2,
@@ -40,6 +40,7 @@ describe("template ids", () => {
       PerplFundingSpike: 4,
       PriceRange: 5,
       Parlay: 6,
+      Snapshot: 7,
     });
     for (const id of Object.values(TemplateId)) {
       expect(TEMPLATES[id].id).toBe(id);
@@ -53,10 +54,11 @@ describe("template ids", () => {
     expect(templateLabel(4)).toBe("Perpl funding spike");
     expect(templateLabel(5)).toBe("Price range");
     expect(templateLabel(6)).toBe("Parlay");
+    expect(templateLabel(7)).toBe("Snapshot");
     expect(templateLabel(0)).toBe("Template 0");
     expect(templateLabel(9)).toBe("Template 9");
-    expect(isTemplateId(6)).toBe(true);
-    expect(isTemplateId(7)).toBe(false);
+    expect(isTemplateId(7)).toBe(true);
+    expect(isTemplateId(8)).toBe(false);
   });
 
   it("marks the touch templates as early-YES and the Perpl ones as block-clock", () => {

@@ -23,6 +23,9 @@ const ABIS = [
   ["hunchRouterAbi", "IHunchRouter.sol", "IHunchRouter", true],
   ["templateParamsCodecAbi", "ITemplates.sol", "ITemplateParamsCodec", true],
   ["templateParamsCodecV2Abi", "ITemplatesV2.sol", "ITemplateParamsCodecV2", true],
+  ["templateParamsCodecV3Abi", "ITemplatesV3.sol", "ITemplateParamsCodecV3", true],
+  // Template 7's resolver: `snapshot`, the stored snapshots, its sources, its events and errors.
+  ["snapshotResolverAbi", "SnapshotResolver.sol", "SnapshotResolver", true],
   // Periphery (docs/PERIPHERY.md)
   ["autoRedeemerAbi", "IAutoRedeemer.sol", "IAutoRedeemer", true],
   ["conditionalOrdersAbi", "IConditionalOrders.sol", "IConditionalOrders", true],
