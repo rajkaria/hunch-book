@@ -18,6 +18,17 @@ export interface HealthSnapshot {
   openOrders: number;
   lastError?: string;
   markets: MarketHealth[];
+  /** "live" or "paper" (MAKER_MODE). */
+  mode: string;
+  /** Paper mode: the simulated account, in USDC base units. */
+  paper?: {
+    usdc: string;
+    value: string;
+    pnl: string;
+    start: string;
+    fills: number;
+    positions: Record<string, { yes: string; no: string; mark: number; fills: number; volume: string }>;
+  };
 }
 
 const json = (value: unknown) =>
@@ -29,7 +40,7 @@ export class Health {
 
   constructor(
     private readonly file: string,
-    base: { network: string; maker: string; enabled: boolean },
+    base: { network: string; maker: string; enabled: boolean; mode: string },
   ) {
     this.snapshot = { ...base, updatedAt: new Date().toISOString(), openOrders: 0, markets: [] };
   }

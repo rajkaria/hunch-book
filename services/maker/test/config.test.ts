@@ -47,6 +47,26 @@ describe("parseConfig", () => {
   });
 });
 
+describe("maker kit settings", () => {
+  it("paper mode never sends, needs no key, and starts from MAKER_PAPER_USDC", () => {
+    const paper = parseConfig({ MAKER_MODE: "paper", MAKER_ENABLED: "1", MAKER_PAPER_USDC: "250" });
+    expect(paper).toMatchObject({
+      mode: "paper",
+      enabled: false,
+      privateKey: undefined,
+      paperUsdc: 250_000_000n,
+    });
+    expect(parseConfig({})).toMatchObject({ mode: "live", paperUsdc: 1_000_000_000n });
+    expect(() => parseConfig({ MAKER_MODE: "sim" })).toThrow(/MAKER_MODE/);
+  });
+
+  it("quotes only the templates in MAKER_TEMPLATES when set", () => {
+    expect(parseConfig({ MAKER_TEMPLATES: "1, 3,6" }).templates).toEqual([1, 3, 6]);
+    expect(parseConfig({}).templates).toBeUndefined();
+    expect(() => parseConfig({ MAKER_TEMPLATES: "1,x" })).toThrow(/MAKER_TEMPLATES/);
+  });
+});
+
 describe(".env loading", () => {
   it("parses comments, export, and quotes", () => {
     expect(parseEnvFile('# c\nexport A=1\nB="two words"\nC=3 # note\n\nbad line\n')).toEqual({
