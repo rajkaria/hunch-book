@@ -10,6 +10,17 @@ import n from "./network.module.css";
 
 const SHORT: Record<Network, string> = { "monad-testnet": "Testnet", "monad-mainnet": "Mainnet" };
 
+/** The active network's name, for page eyebrows: follows a switch made in this browser. */
+export function ActiveNetworkLabel({ suffix }: { suffix?: string }) {
+  const network = useAppNetwork();
+  return (
+    <>
+      {NETWORK_LABEL[network]}
+      {suffix}
+    </>
+  );
+}
+
 /**
  * Picks the network the app reads from and writes to. A network is offered once its factory is in
  * deployments/<network>.json; until then it reads "planned" and links to how it ships.

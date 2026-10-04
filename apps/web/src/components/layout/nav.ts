@@ -14,6 +14,7 @@ export const NAV_LINKS: readonly NavLink[] = [
   { href: "/create", label: "Create", match: ["/create"] },
   { href: "/portfolio", label: "Portfolio", match: ["/portfolio"] },
   { href: "/proof", label: "Proof", match: ["/proof", "/verify/"] },
+  { href: "/tape", label: "Tape", match: ["/tape"] },
 ];
 
 /** The protocol docs on GitHub. */

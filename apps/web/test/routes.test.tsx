@@ -8,6 +8,7 @@ import NotFound from "../src/app/not-found";
 import Home from "../src/app/page";
 import PortfolioPage from "../src/app/portfolio/page";
 import ProofPage from "../src/app/proof/page";
+import TapePage from "../src/app/tape/page";
 import VerifyPage from "../src/app/verify/[address]/page";
 import { Footer } from "../src/components/layout/Footer";
 import { Header } from "../src/components/layout/Header";
@@ -24,6 +25,7 @@ const state = vi.hoisted(() => ({
   market: {} as QueryState,
   portfolio: {} as QueryState,
   position: {} as QueryState,
+  tape: {} as QueryState,
 }));
 
 vi.mock("@/lib/config", async (importOriginal) => {
@@ -81,6 +83,22 @@ vi.mock("@/lib/hooks", async (importOriginal) => {
   };
 });
 
+// The tape polls the chain or the indexer; here it gets fixed data.
+vi.mock("@/lib/tape/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/tape/hooks")>();
+  return {
+    ...actual,
+    useTape: () => ({
+      isPending: !state.tape.error && state.tape.data === undefined,
+      isError: Boolean(state.tape.error),
+      data: state.tape.data,
+      refetch: vi.fn(),
+      loadOlder: vi.fn(),
+      extending: false,
+    }),
+  };
+});
+
 const ok = <T,>(data: T) => ({ data: { status: "ok", data } });
 const params = (address: string) => ({ params: Promise.resolve({ address }) });
 const noSearch = { searchParams: Promise.resolve({}) };
@@ -91,6 +109,7 @@ beforeEach(() => {
   state.market = {};
   state.portfolio = {};
   state.position = {};
+  state.tape = {};
 });
 
 describe("with no contracts deployed", () => {
@@ -154,6 +173,7 @@ describe("with no contracts deployed", () => {
       "Create",
       "Portfolio",
       "Proof",
+      "Tape",
       "Docs↗",
     ]);
     expect(nav.getByRole("link", { name: "Markets" }).getAttribute("aria-current")).toBe("page");
@@ -359,6 +379,49 @@ describe("with contracts deployed", () => {
     expect(screen.getByRole("link", { name: /^Factory/ }).getAttribute("href")).toMatch(
       new RegExp(`${FACTORY}$`),
     );
+  });
+
+  it("/tape lists fills live from chain, with our maker labelled and the blocks it read", async () => {
+    state.markets = ok({ markets: [trading], total: 1 });
+    state.tape = {
+      data: {
+        source: "chain",
+        data: {
+          fills: [
+            {
+              id: "68000000-1",
+              book: "0x00000000000000000000000000000000000000bb",
+              market: trading.address,
+              marketNumber: 8,
+              question: trading.description,
+              block: 68_000_000n,
+              logIndex: 1,
+              time: 1_798_999_990,
+              tx: `0x${"cd".repeat(32)}`,
+              priceE6: 620_000n,
+              size: USDC(10),
+              notional: USDC(6.2),
+              takerBuysYes: true,
+              maker: "0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A",
+              trader: "0x1111111111111111111111111111111111111111",
+              viaRouter: true,
+              makerIsOurMaker: true,
+              makerIsOurs: true,
+              traderIsOurs: false,
+            },
+          ],
+          window: { from: 67_999_001n, to: 68_000_000n },
+          books: 1,
+        },
+      },
+    };
+    await renderWithProviders(await TapePage(noSearch));
+    expect(screen.getByRole("heading", { level: 1, name: "Trade tape" })).toBeTruthy();
+    expect(screen.getByText("Live from chain")).toBeTruthy();
+    expect(screen.getByText("Hunch maker (ours)")).toBeTruthy();
+    expect(screen.getByText("0.620")).toBeTruthy();
+    expect(screen.getByText(/Read from blocks 67,999,001 to 68,000,000/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Look further back" })).toBeTruthy();
   });
 
   it("/ says when live figures cannot be read, and the menu says the contracts are live", async () => {

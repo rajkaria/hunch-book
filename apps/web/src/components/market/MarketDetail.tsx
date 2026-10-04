@@ -11,6 +11,7 @@ import { templateLabel } from "@/lib/market/params";
 import type { ChainClock, MarketView } from "@/lib/market/types";
 import { Countdown, marketHeadline } from "../markets/MarketCard";
 import { EmptyState, ErrorState, LoadingRows, NotDeployed } from "../states";
+import { MarketTape } from "../tape/MarketTape";
 import { Badge } from "../ui";
 import { ActionsPanel } from "./ActionsPanel";
 import { BookPanel } from "./BookPanel";
@@ -71,6 +72,7 @@ export function MarketBody({
         </div>
         <div className={s.main}>
           {m.graduated && m.book ? <BookPanel m={m} /> : null}
+          {m.graduated && m.book ? <MarketTape m={m} /> : null}
           <GraduationPanel m={m} />
           <TimelinePanel m={m} clock={clock} now={now} />
           <SourcePanel m={m} />

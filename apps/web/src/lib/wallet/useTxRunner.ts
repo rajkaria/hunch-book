@@ -7,11 +7,16 @@ import { useWriteContract } from "wagmi";
 import { getPublicClient } from "../chain/client";
 import { appChain, appNetwork, parseNetwork } from "../config";
 import { describeTxError, withKnownErrors } from "./errors";
+import { RECEIPT_POLL_MS, recordTxTiming, setTxBlockTime } from "./txTiming";
 
 export interface TxRecord {
   hash: Hex;
   label: string;
   status: "pending" | "confirmed" | "failed";
+  /** Milliseconds from the wallet's signature to the receipt, measured in this browser. */
+  includedMs?: number;
+  /** The block it landed in. */
+  block?: bigint;
 }
 
 /**
@@ -58,11 +63,31 @@ export function useTxRunner(refresh: QueryKey[]) {
       setStage("wallet");
       // The request shape is checked by the simulation above; wagmi's generics cannot follow a dynamic ABI.
       const hash = await write.mutateAsync({ ...request, chainId: appChain.id } as never);
+      // The wallet has signed and sent it: start the inclusion clock (this browser's clock).
+      const signedAt = Date.now();
+      const network = appNetwork;
       setTxs((prev) => [{ hash, label, status: "pending" }, ...prev]);
       setStage("block");
-      const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 500 });
+      const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: RECEIPT_POLL_MS });
+      const seenAt = Date.now();
+      const includedMs = seenAt - signedAt;
+      recordTxTiming({
+        hash,
+        network,
+        signedAt,
+        seenAt,
+        includedMs,
+        block: receipt.blockNumber,
+        blockTime: null,
+      });
+      client
+        .getBlock({ blockNumber: receipt.blockNumber })
+        .then((b) => setTxBlockTime(hash, Number(b.timestamp)))
+        .catch(() => undefined);
       const status = receipt.status === "success" ? "confirmed" : "failed";
-      setTxs((prev) => prev.map((t) => (t.hash === hash ? { ...t, status } : t)));
+      setTxs((prev) =>
+        prev.map((t) => (t.hash === hash ? { ...t, status, includedMs, block: receipt.blockNumber } : t)),
+      );
       if (status === "failed") setError("The transaction reverted on chain. Nothing was moved.");
       return status === "confirmed";
     },

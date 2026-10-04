@@ -1,0 +1,208 @@
+/* The trade tape. Tokens only: var(--...) from globals.css. */
+
+.scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  color: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .table tbody tr {
+    animation: tape-in var(--duration) var(--ease-out) both;
+  }
+}
+
+.table .num {
+  text-align: right;
+}
+
+/* Columns that only fit on wider screens. */
+.wide {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .wide {
+    display: table-cell;
+  }
+}
+
+.compact .wide {
+  display: none;
+}
+
+.mine td {
+  background: var(--accent-soft);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.time {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.subtle {
+  font-size: var(--text-xs);
+  color: var(--subtle);
+}
+
+.market {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.question {
+  color: var(--muted);
+}
+
+@media (max-width: 719px) {
+  .question {
+    display: none;
+  }
+}
+
+.buy {
+  color: var(--yes);
+  font-weight: 650;
+}
+
+.sell {
+  color: var(--no);
+  font-weight: 650;
+}
+
+.party {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.addr {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.ours {
+  padding: 1px 6px;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--radius-pill);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.you {
+  padding: 1px 6px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-pill);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.landed {
+  font-size: var(--text-xs);
+  color: var(--accent);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--subtle);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+@media (min-width: 720px) {
+  .stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.empty {
+  padding: var(--space-5) var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+@keyframes tape-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
