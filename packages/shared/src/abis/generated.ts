@@ -3331,6 +3331,174 @@ export const templateParamsCodecAbi = [
   }
 ] as const;
 
+export const templateParamsCodecV2Abi = [
+  {
+    "type": "function",
+    "name": "chainlinkTouch",
+    "inputs": [
+      {
+        "name": "params",
+        "type": "tuple",
+        "internalType": "struct ChainlinkTouchParams",
+        "components": [
+          {
+            "name": "feed",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "strikeE8",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "direction",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "lockTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "startTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "endTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "parlay",
+    "inputs": [
+      {
+        "name": "params",
+        "type": "tuple",
+        "internalType": "struct ParlayParams",
+        "components": [
+          {
+            "name": "legs",
+            "type": "address[]",
+            "internalType": "address[]"
+          },
+          {
+            "name": "lockTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "closeTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "perplFundingSpike",
+    "inputs": [
+      {
+        "name": "params",
+        "type": "tuple",
+        "internalType": "struct PerplFundingSpikeParams",
+        "components": [
+          {
+            "name": "perpId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "startBlock",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "endBlock",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "threshold",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "expectedScalingExp",
+            "type": "uint8",
+            "internalType": "uint8"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "priceRange",
+    "inputs": [
+      {
+        "name": "params",
+        "type": "tuple",
+        "internalType": "struct PriceRangeParams",
+        "components": [
+          {
+            "name": "source",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "feed",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "pythId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "lowerE8",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "upperE8",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "lockTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "closeTime",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "pure"
+  }
+] as const;
+
 export const testUsdcAbi = [
   {
     "type": "function",

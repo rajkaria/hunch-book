@@ -22,6 +22,7 @@ const ABIS = [
   ["graduatorAbi", "IGraduator.sol", "IGraduator", true],
   ["hunchRouterAbi", "IHunchRouter.sol", "IHunchRouter", true],
   ["templateParamsCodecAbi", "ITemplates.sol", "ITemplateParamsCodec", true],
+  ["templateParamsCodecV2Abi", "ITemplatesV2.sol", "ITemplateParamsCodecV2", true],
   ["testUsdcAbi", "TestUSDC.sol", "TestUSDC", false],
   ["perplExchangeAbi", "IPerplExchange.sol", "IPerplExchange", false],
   ["chainlinkAggregatorAbi", "IChainlinkAggregator.sol", "IChainlinkAggregator", false],
