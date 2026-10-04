@@ -1,0 +1,44 @@
+/* Faucet pieces. Tokens only: var(--...) from globals.css. */
+
+.faucet {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.faucetActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.faucetLink {
+  font-size: var(--text-sm);
+}
+
+.faucetNote {
+  font-size: var(--text-sm);
+}
+
+.small {
+  font-size: var(--text-xs);
+  color: var(--subtle);
+}
+
+.error {
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+.lowBox {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+
+.menuFaucet {
+  padding: var(--space-2) var(--space-3);
+}

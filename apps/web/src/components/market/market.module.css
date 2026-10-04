@@ -41,7 +41,10 @@
   }
 }
 
-/* Phones: chance, then the ticket, then the details. Wide screens: the ticket sits in a sticky column. */
+/*
+ * Phones: chance, then the ticket, then the details. Wide screens: ticket, position and actions sit in a
+ * side column. It is not sticky: with the actions below the ticket it is often taller than the screen.
+ */
 .grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -74,11 +77,6 @@
       "chance side"
       "rest side";
     gap: var(--space-4) var(--space-5);
-  }
-
-  .sideCol {
-    position: sticky;
-    top: 80px;
   }
 }
 

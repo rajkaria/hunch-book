@@ -167,7 +167,7 @@ export function useBook(book: Address | null) {
     queryKey: queryKeys.book(book ?? "0x"),
     queryFn: () => readBookSnapshot(getPublicClient(), book as Address, appDeployment.wallets.maker),
     enabled: deployed && book !== null,
-    refetchInterval: 4_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -189,7 +189,7 @@ export function useWalletBalances(user: Address | undefined, market: MarketView)
         user as Address,
       ),
     enabled: deployed && Boolean(user && protocol.data),
-    refetchInterval: 8_000,
+    refetchInterval: 10_000,
   });
 }
 

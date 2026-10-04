@@ -179,11 +179,28 @@ export async function readBookSnapshot(
     owned: null,
   };
   if (owner) {
-    try {
-      snapshot.owned = await readOwnedSizes(client, book, decoded, owner);
-    } catch {
-      snapshot.owned = null;
+    // Walking the order lists costs extra calls, so it runs again only when the levels change (or every
+    // OWNED_TTL_MS, in case orders changed hands at the same price and size).
+    const key = `${book}:${owner}:${levelsKey(decoded)}`;
+    const cached = ownedCache.get(book.toLowerCase());
+    if (cached?.key === key && Date.now() - cached.at < OWNED_TTL_MS) {
+      snapshot.owned = cached.owned;
+    } else {
+      try {
+        snapshot.owned = await readOwnedSizes(client, book, decoded, owner);
+        ownedCache.set(book.toLowerCase(), { key, owned: snapshot.owned, at: Date.now() });
+      } catch {
+        snapshot.owned = null;
+      }
     }
   }
   return snapshot;
 }
+
+const OWNED_TTL_MS = 30_000;
+const ownedCache = new Map<string, { key: string; owned: { bids: bigint[]; asks: bigint[] }; at: number }>();
+
+const levelsKey = (l: { bids: readonly L2Level[]; asks: readonly L2Level[] }): string =>
+  [...l.bids.slice(0, ATTRIBUTED_LEVELS), { price: 0n, size: 0n }, ...l.asks.slice(0, ATTRIBUTED_LEVELS)]
+    .map((x) => `${x.price}:${x.size}`)
+    .join(",");

@@ -9,32 +9,15 @@ import { queryKeys, useProtocolAddresses, useUsdcState, useUserPosition } from "
 import { marketChance, parseUsdcInput, previewStake, validateStake } from "@/lib/market/logic";
 import type { MarketView } from "@/lib/market/types";
 import { useAppChain } from "@/lib/wallet/useAppChain";
-import { useTxRunner } from "@/lib/wallet/useTxRunner";
+import { stageText, useTxRunner } from "@/lib/wallet/useTxRunner";
 import { Button, Panel } from "../ui";
 import { ConnectButton } from "../wallet/ConnectButton";
+import { LowBalanceFaucet } from "../wallet/Faucet";
 import s from "./market.module.css";
+import { TradeTicket } from "./TradeTicket";
 import { TxList } from "./TxList";
 
 const SIDE_NAME: Record<Side, string> = { [Side.Yes]: "YES", [Side.No]: "NO" };
-
-function TradeSoon() {
-  return (
-    <div className={s.later}>
-      <p className={s.prose}>
-        Buying and selling YES and NO on this market's Kuru book is coming in the next build.
-      </p>
-      <div className={s.sides}>
-        <Button disabled title="Coming in the next build">
-          Buy YES
-        </Button>
-        <Button disabled title="Coming in the next build">
-          Buy NO
-        </Button>
-      </div>
-      <p className={s.laterNote}>Coming in the next build. Nothing here sends a transaction yet.</p>
-    </div>
-  );
-}
 
 export function StakeTicket({ m }: { m: MarketView }) {
   const open = m.phase === Phase.Pool;
@@ -129,7 +112,7 @@ export function StakeTicket({ m }: { m: MarketView }) {
   } else if (tx.busy) {
     action = (
       <Button block disabled>
-        {tx.stage === "wallet" ? "Confirm in your wallet..." : "Waiting for the block..."}
+        {stageText(tx.stage)}
       </Button>
     );
   } else if (amount === null || problem) {
@@ -182,7 +165,7 @@ export function StakeTicket({ m }: { m: MarketView }) {
       </div>
 
       {tab === "trade" ? (
-        <TradeSoon />
+        <TradeTicket m={m} />
       ) : (
         <div role="tabpanel">
           {!open ? (
@@ -271,6 +254,9 @@ export function StakeTicket({ m }: { m: MarketView }) {
             </div>
           ) : null}
 
+          {open && wallet.isConnected ? (
+            <LowBalanceFaucet balance={usdc.data?.balance ?? null} need={amount} />
+          ) : null}
           {action}
           {tx.error ? (
             <p className={s.txError} role="alert">

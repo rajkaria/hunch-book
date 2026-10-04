@@ -12,8 +12,10 @@ import type { ChainClock, MarketView } from "@/lib/market/types";
 import { Countdown, marketHeadline } from "../markets/MarketCard";
 import { EmptyState, ErrorState, LoadingRows, NotDeployed } from "../states";
 import { Badge } from "../ui";
+import { ActionsPanel } from "./ActionsPanel";
+import { BookPanel } from "./BookPanel";
 import s from "./market.module.css";
-import { LaterActions, PositionPanel } from "./PositionPanel";
+import { PositionPanel } from "./PositionPanel";
 import { StakeTicket } from "./StakeTicket";
 import {
   ChancePanel,
@@ -68,6 +70,7 @@ export function MarketBody({
           <ChancePanel m={m} />
         </div>
         <div className={s.main}>
+          {m.graduated && m.book ? <BookPanel m={m} /> : null}
           <GraduationPanel m={m} />
           <TimelinePanel m={m} clock={clock} now={now} />
           <SourcePanel m={m} />
@@ -77,7 +80,7 @@ export function MarketBody({
         <div className={s.sideCol}>
           <StakeTicket m={m} />
           <PositionPanel m={m} />
-          <LaterActions m={m} />
+          <ActionsPanel m={m} head={clock ? { block: clock.blockNumber, time: clock.timestamp } : null} />
         </div>
       </div>
     </>
@@ -86,8 +89,8 @@ export function MarketBody({
 
 export function MarketDetail({ address }: { address: Address }) {
   const query = useMarket(address);
-  const blockClock = query.data?.status === "ok" && query.data.data.window.blockClock;
-  const clock = useChainClock(Boolean(blockClock));
+  // The head drives countdowns for block-clock markets and every action's time gate.
+  const clock = useChainClock(query.data?.status === "ok");
   const now = useNow();
 
   if (query.isPending) return <LoadingRows rows={3} label="Loading market" />;

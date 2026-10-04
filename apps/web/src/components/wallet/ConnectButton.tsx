@@ -9,6 +9,8 @@ import { describeTxError } from "@/lib/wallet/errors";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import s from "../layout/layout.module.css";
 import { Button } from "../ui";
+import { FaucetButton, useFaucetAvailable } from "./Faucet";
+import w from "./wallet.module.css";
 
 /**
  * Browser wallets found by EIP-6963, plus the plain injected provider when nothing announced itself.
@@ -43,6 +45,7 @@ export function ConnectButton() {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  const faucet = useFaucetAvailable();
 
   useEffect(() => {
     if (!open) return;
@@ -99,6 +102,15 @@ export function ConnectButton() {
             >
               View on explorer
             </a>
+            {faucet ? (
+              <>
+                <div className={s.divider} />
+                <p className={s.menuHeading}>Testnet funds</p>
+                <div className={w.menuFaucet}>
+                  <FaucetButton compact />
+                </div>
+              </>
+            ) : null}
             <div className={s.divider} />
             <button type="button" className={s.menuItem} onClick={() => disconnect.mutate()}>
               Disconnect

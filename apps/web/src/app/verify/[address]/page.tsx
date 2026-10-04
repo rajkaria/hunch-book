@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `Verify ${shortAddress(address)}`,
     description:
-      "What settled this Hunch Book market: the outcome, the evidence hash, the resolver and its parameters.",
+      "What settled this Hunch Book market: the exact onchain read, the evidence hash, the settler, and a button that runs the read again from your browser.",
   };
 }
 
@@ -27,8 +27,9 @@ export default async function VerifyPage({ params }: Props) {
     <div className="page">
       <PageHeader eyebrow={`${appNetworkLabel} · Verify`} title="Settlement">
         <p>
-          A market's outcome comes only from its resolver reading onchain data. This page shows what the
-          market stored when it settled, so anyone can check it.
+          A market's outcome comes only from its resolver reading onchain data. This page shows the exact
+          read, runs it again from your browser with no wallet, and compares it with what the market stored
+          when it settled.
         </p>
       </PageHeader>
       {isDeployed(appDeployment) ? (
