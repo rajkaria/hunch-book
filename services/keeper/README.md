@@ -54,7 +54,8 @@ Token claims and pool payouts need the list of stakers. By default the keeper re
 100-block windows from a cursor saved in a state file, starting at the market's creation block (found
 the same way, from the factory's `MarketCreated` events, starting at `hunchBook.deployBlock`). Once a
 market is past staking and the scan has passed that block, its list is final and is never scanned again.
-Each cycle spends at most 300 log requests, so a long scan never holds up the other jobs.
+Each cycle spends at most 300 log requests, so a long scan never holds up the other jobs, and scans
+stop 10 blocks short of the head, so a block whose logs a node has not served yet is never skipped.
 
 With `INDEXER_URL` set, one GraphQL query to the indexer replaces the scan; the scan is the fallback
 whenever the indexer fails or does not know the market yet. Either way, every address is checked
@@ -125,7 +126,7 @@ To run it as a service (Railway, launchd, or in the background on this machine),
 | `KEEPER_STATE_FILE` | `services/keeper/.keeper-state.json` | Scan cursors, stakers found and book requests sent. Can be deleted at any time; it is rebuilt from the chain. |
 | `KEEPER_HEALTH_FILE` | `services/keeper/health.json` | Where the health snapshot is written after every cycle. |
 | `KEEPER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET http://localhost:<port>/health`. |
-| `KEEPER_ALERT_WEBHOOK` | none | When set, errors, a low balance, unsettleable markets and book requests are posted there as JSON. |
+| `KEEPER_ALERT_WEBHOOK` | none | When set, errors, a low balance, markets that cannot settle (or still have not after the longest retry wait) and book requests are posted there as JSON. |
 | `KEEPER_ALERT_REPEAT_SECONDS` | `1800` | The same alert (same event, same market) is posted at most this often. |
 | `KEEPER_MARKETS` | all | Comma-separated market addresses to handle; all markets when unset. |
 | `INDEXER_URL` | none | The indexer's GraphQL endpoint. When set, stakers come from it, with the log scan as fallback. |

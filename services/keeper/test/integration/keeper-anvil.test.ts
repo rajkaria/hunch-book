@@ -181,6 +181,8 @@ describe("the keeper against Hunch Book's core contracts on anvil", () => {
 
   it("finds every staker from the logs and pushes their tokens in batches", async (ctx) => {
     if (!chain) return ctx.skip();
+    // Log scans stay 10 blocks behind the head; on a live chain those blocks come by themselves.
+    await chain.test.mine({ blocks: 20 });
     lines.length = 0;
     await keeper.cycle();
     const claims = events("tx").filter((l) => l.action === "claimTokensFor");
@@ -200,7 +202,8 @@ describe("the keeper against Hunch Book's core contracts on anvil", () => {
     const a = state.markets[markets.a];
     expect(a?.createdBlock).toBeGreaterThan(0);
     expect(a?.stakers).toHaveLength(5);
-    expect(a?.stakerCursor).toBeGreaterThan(a?.stakingClosedAt ?? Number.POSITIVE_INFINITY);
+    // Staking was seen closed at this cycle's head; the scan has read up to 10 blocks before it.
+    expect(a?.stakerCursor).toBe((a?.stakingClosedAt ?? 0) - 9);
     expect(state.factoryCursor).toBeGreaterThan(0);
   });
 

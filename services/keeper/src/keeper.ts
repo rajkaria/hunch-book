@@ -55,6 +55,12 @@ import {
 /** In dry-run, the same intended transaction is logged again at most this often. */
 const DRY_RUN_REPEAT_MS = 10 * 60 * 1000;
 
+/**
+ * Log scans stop this many blocks short of the head, so a block whose logs a node has not served yet
+ * is never stepped over (about 4 seconds on Monad; it only delays a claim push, never skips one).
+ */
+const LOG_CONFIRMATIONS = 10n;
+
 /** A transaction went out, or in a dry run would have gone out (its simulation passed). */
 const sent = (result: TxResult) =>
   result.status === "dry-run" ? result.simulation.ok : result.status !== "skipped";
@@ -226,7 +232,7 @@ export class Keeper {
     const scan: ScanContext = {
       client: this.client,
       store: this.store,
-      head: now.block,
+      head: now.block > LOG_CONFIRMATIONS ? now.block - LOG_CONFIRMATIONS : 0n,
       range: this.config.logRange,
       budget,
     };
