@@ -4,7 +4,7 @@ import { marketAbi, Phase, Side } from "@hunch-book/shared";
 import { type ReactNode, useState } from "react";
 import { type Abi, erc20Abi, maxUint256 } from "viem";
 import { appNetworkLabel } from "@/lib/config";
-import { formatChance, formatUsdc } from "@/lib/format";
+import { chanceComplementBps, formatChance, formatUsdc } from "@/lib/format";
 import { queryKeys, useProtocolAddresses, useUsdcState, useUserPosition } from "@/lib/hooks";
 import { marketChance, parseUsdcInput, previewStake, validateStake } from "@/lib/market/logic";
 import type { MarketView } from "@/lib/market/types";
@@ -180,7 +180,7 @@ export function StakeTicket({ m, initialSide = Side.Yes }: { m: MarketView; init
           <fieldset className={s.sides} style={{ border: 0, padding: 0, margin: "0 0 16px" }}>
             <legend className="visually-hidden">Side</legend>
             {[Side.Yes, Side.No].map((option) => {
-              const bps = yesBps === null ? null : option === Side.Yes ? yesBps : 10_000n - yesBps;
+              const bps = yesBps === null ? null : option === Side.Yes ? yesBps : chanceComplementBps(yesBps);
               return (
                 <button
                   key={option}

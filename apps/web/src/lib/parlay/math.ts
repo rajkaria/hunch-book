@@ -53,12 +53,15 @@ export function oneIn(bps: bigint | null): string | null {
   return `about 1 in ${n >= 10 ? Math.round(n).toLocaleString("en-US") : n.toFixed(1).replace(/\.0$/, "")}`;
 }
 
-/** The earliest unix time a leg could lock: its lock time, or for a block clock the fastest arrival. */
+/**
+ * The earliest unix time a leg could lock: its lock time, or for a block clock the fastest arrival. A
+ * block lock the chain has already passed comes back in the past, so it never reads as "locks in 1s".
+ */
 export function earliestLock(m: Pick<MarketView, "window">, clock: ChainClock | null): number | null {
   if (!m.window.blockClock) return Number(m.window.lock);
   if (!clock) return null;
   const blocks = Number(m.window.lock - clock.blockNumber);
-  return clock.timestamp + Math.max(0, (blocks * FAST_BLOCK_MS) / 1000);
+  return clock.timestamp + (blocks * FAST_BLOCK_MS) / 1000;
 }
 
 /** The latest unix time a leg could close: its close time, or for a block clock the slowest arrival. */
@@ -75,7 +78,10 @@ export function legBlocker(m: MarketView, clock: ChainClock | null, now: number)
   if (m.phase === Phase.Closed || m.phase === Phase.PoolLocked) return "Already locked.";
   const lock = earliestLock(m, clock);
   if (lock === null) return "Reading the chain clock...";
-  if (lock <= now) return "Already locked.";
+  // The chain head is read more often than \`now\` ticks: a lock block it has passed is locked.
+  if (lock <= now || (m.window.blockClock && clock && m.window.lock <= clock.blockNumber)) {
+    return "Already locked.";
+  }
   if (lock <= now + MIN_OPEN_SECONDS + LOCK_MARGIN_SECONDS) {
     return "Locks too soon: a parlay must lock before every leg does.";
   }

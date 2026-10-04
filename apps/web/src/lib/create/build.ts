@@ -88,6 +88,11 @@ export interface PerplDraft {
   threshold: string;
   /** Snap the window to Perpl's funding grid. */
   snap: boolean;
+  /**
+   * Exact blocks from a link (lib/create/linked.ts). While set, they are the window as they are, and
+   * `start` and `end` only show their estimated times; editing a time clears them.
+   */
+  pinned?: { startBlock: bigint; endBlock: bigint } | null;
 }
 
 export interface PerplContext {
@@ -137,8 +142,9 @@ export function buildPerplParams(draft: PerplDraft, ctx: PerplContext): PerplBui
     issues.push(issue("asset", "Perpl has paused this perp, so it cannot be used for a new market."));
   }
 
-  const startUnix = fromLocalInput(draft.start);
-  const endUnix = fromLocalInput(draft.end);
+  const pinned = draft.pinned ?? null;
+  const startUnix = pinned ? timeAt(pinned.startBlock, head, pace.msPerBlock) : fromLocalInput(draft.start);
+  const endUnix = pinned ? timeAt(pinned.endBlock, head, pace.msPerBlock) : fromLocalInput(draft.end);
   if (startUnix === null) issues.push(issue("start", "Pick when the window starts."));
   else if (startUnix < now + MIN_LEAD_SECONDS) {
     issues.push(issue("start", `Staking stops when the window starts, so pick a start ${STAKING_LEAD}.`));
@@ -151,7 +157,10 @@ export function buildPerplParams(draft: PerplDraft, ctx: PerplContext): PerplBui
   if (startUnix !== null && endUnix !== null && endUnix > startUnix) {
     const rawStart = blockAt(startUnix, head, pace.msPerBlock);
     const rawEnd = blockAt(endUnix, head, pace.msPerBlock);
-    if (draft.snap) {
+    if (pinned) {
+      out.startBlock = pinned.startBlock;
+      out.endBlock = pinned.endBlock;
+    } else if (draft.snap) {
       const snapped = snapWindow({ startBlock: rawStart, endBlock: rawEnd, interval, anchor: ctx.anchor });
       out.startBlock = snapped.startBlock;
       out.endBlock = snapped.endBlock;

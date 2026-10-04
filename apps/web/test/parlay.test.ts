@@ -116,6 +116,17 @@ describe("parlay timing", () => {
       window: { blockClock: true, lock: 2_000_000n, close: 2_000_100n, settleDeadline: 0n },
     });
     expect(legBlocker(blocky, null, NOW)).toBe("Reading the chain clock...");
+    // A block lock the head has passed is locked, even while \`now\` lags the head's time.
+    const passed = makeMarket({
+      window: {
+        blockClock: true,
+        lock: clock.blockNumber - 5n,
+        close: clock.blockNumber + 100n,
+        settleDeadline: 0n,
+      },
+    });
+    expect(earliestLock(passed, clock)).toBeLessThan(clock.timestamp);
+    expect(legBlocker(passed, clock, clock.timestamp - 10)).toBe("Already locked.");
   });
 });
 

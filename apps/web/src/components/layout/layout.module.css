@@ -20,6 +20,13 @@
   padding: 0 var(--gutter);
 }
 
+/* The narrowest phones: tighter gaps so the wordmark never runs under the network switch. */
+@media (max-width: 419px) {
+  .headerInner {
+    gap: var(--space-2);
+  }
+}
+
 /* ---------- brand ---------- */
 
 .brand {
@@ -103,11 +110,15 @@
 
 /* ---------- desktop nav ---------- */
 
+/*
+ * The bar shows from 1100px, where every main link fits beside the brand and the wallet. Below that
+ * the menu button opens the sheet, so links never run under the network switch on a tablet.
+ */
 .nav {
   display: none;
 }
 
-@media (min-width: 720px) {
+@media (min-width: 1100px) {
   .nav {
     display: flex;
     align-items: center;
@@ -117,10 +128,10 @@
   }
 }
 
-@media (min-width: 960px) {
+@media (min-width: 1240px) {
   .nav {
-    margin-left: var(--space-5);
     gap: var(--space-1);
+    margin-left: var(--space-4);
   }
 }
 
@@ -141,7 +152,7 @@
     background-color var(--duration-fast) ease;
 }
 
-@media (min-width: 960px) {
+@media (min-width: 1240px) {
   .navLink {
     padding: 0 var(--space-3);
   }
@@ -172,13 +183,19 @@
   flex: none;
 }
 
+@media (max-width: 419px) {
+  .wallet {
+    gap: 6px;
+  }
+}
+
 /* ---------- mobile menu ---------- */
 
 .mobileNav {
   display: flex;
 }
 
-@media (min-width: 720px) {
+@media (min-width: 1100px) {
   .mobileNav {
     display: none;
   }
@@ -257,6 +274,16 @@
   border-radius: var(--radius-xl);
   background: rgba(17, 17, 24, 0.97);
   box-shadow: var(--shadow-lift);
+}
+
+/* On a tablet the sheet is a panel under the menu button, not the full width of the screen. */
+@media (min-width: 720px) {
+  .sheet {
+    top: calc(var(--header-h) + var(--space-2));
+    left: auto;
+    right: var(--gutter);
+    width: 360px;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {

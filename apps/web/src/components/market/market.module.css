@@ -41,6 +41,36 @@
   }
 }
 
+/* The resolver's own sentence, under a title that reads its block numbers as clock times. */
+.exactRule {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 72ch;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.exactRuleLabel {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.exactRuleText {
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.exactRuleNote {
+  font-size: var(--text-xs);
+  color: var(--subtle);
+}
+
 /*
  * Phones: chance, then the ticket, then the details. Wide screens: ticket, position and actions sit in a
  * side column. It is not sticky: with the actions below the ticket it is often taller than the screen.

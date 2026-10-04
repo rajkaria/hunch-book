@@ -7,9 +7,10 @@ import type { Address, Hex } from "viem";
 import { appDeployment, appNetworkLabel } from "@/lib/config";
 import { VERIFY_WILL_SHOW } from "@/lib/copy";
 import { formatDuration, formatE8Usd, formatFixed, formatInt, formatUtc } from "@/lib/format";
-import { useMarket, useSettlementTx, useVerification } from "@/lib/hooks";
+import { useChainClock, useMarket, useSettlementTx, useVerification } from "@/lib/hooks";
 import { phaseLabel } from "@/lib/market/logic";
 import { describeSource, perpName, templateLabel } from "@/lib/market/params";
+import { titleDiffersFromRule } from "@/lib/market/title";
 import type { MarketView } from "@/lib/market/types";
 import {
   type ChainlinkRead,
@@ -415,12 +416,20 @@ export function VerifyBody({ m }: { m: MarketView }) {
   const verification = useVerification(m);
   const settlement = useSettlementTx(m, final);
   const result = verification.data;
+  const clock = useChainClock(m.window.blockClock);
+  const title = marketHeadline(m, clock);
   return (
     <div className={v.stack}>
       <Panel title="Market" labelledBy="verify-market">
         <p className={v.headline}>
-          <Link href={`/m/${m.address}`}>{marketHeadline(m)}</Link>
+          <Link href={`/m/${m.address}`}>{title}</Link>
         </p>
+        {titleDiffersFromRule(m, title) ? (
+          <p className={v.lede}>
+            <span className="subtle">Exact rule, in the resolver's words: </span>
+            {m.description}
+          </p>
+        ) : null}
         <KeyValues
           items={[
             { label: "Market", value: <AddressLink address={m.address} full /> },

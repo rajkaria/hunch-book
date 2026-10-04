@@ -12,6 +12,7 @@ import {
 } from "@/lib/create/build";
 import { blockAt, fromLocalInput, timeAt, toLocalInput, uncertaintySeconds } from "@/lib/create/clock";
 import { useChallengeBlocks, useCreateClock, usePerpContext } from "@/lib/create/hooks";
+import type { PerplLinked } from "@/lib/create/linked";
 import {
   type FundingRule,
   formatFundingUsd,
@@ -33,10 +34,16 @@ import { Button, Field, fieldA11y, Input, Notice, Panel, SegmentedControl, Skele
 import s from "./create.module.css";
 import { When } from "./When";
 
-const PERPS = appDeployment.external.perpl.perps;
-const ASSETS = Object.keys(PERPS);
-/** MON first where it exists: it is the chain's own asset and the most active Perpl market on testnet. */
-const DEFAULT_ASSET = ASSETS.includes("MON") ? "MON" : (ASSETS[0] ?? "");
+/**
+ * The active network's Perpl perps (perp ids differ between testnet and mainnet), read at render so a
+ * network switch in the browser never builds params with the other network's ids. MON comes first where
+ * it exists: it is the chain's own asset and the most active Perpl market on testnet.
+ */
+function perpsOf(deployment: typeof appDeployment) {
+  const perps = deployment.external.perpl.perps;
+  const assets = Object.keys(perps);
+  return { perps, assets, defaultAsset: assets.includes("MON") ? "MON" : (assets[0] ?? "") };
+}
 
 /** How many recent funding events to show as chips. */
 const RECENT_SHOWN = 8;
@@ -55,6 +62,7 @@ export function PerplForm({
   resolver,
   onResult,
   prefill,
+  linked,
 }: {
   now: number;
   rule: FundingRule;
@@ -62,20 +70,52 @@ export function PerplForm({
   onResult: (r: FormResult) => void;
   /** Values from a link (lib/create/prefill.ts), for example the hedge assistant's. */
   prefill?: CreatePrefill;
+  /** A market's exact params from a link (lib/create/linked.ts), for example a ladder's missing strike. */
+  linked?: PerplLinked;
 }) {
-  const [draft, setDraft] = useState<PerplDraft>(() => ({
-    ...defaultPerplDraft(now, prefill?.asset ?? DEFAULT_ASSET),
-    ...(prefill?.start !== undefined ? { start: toLocalInput(prefill.start) } : {}),
-    ...(prefill?.end !== undefined ? { end: toLocalInput(prefill.end) } : {}),
-    ...(prefill?.threshold !== undefined ? { threshold: prefill.threshold } : {}),
-  }));
-  const [thresholdTouched, setThresholdTouched] = useState(prefill?.threshold !== undefined);
+  const { perps, assets, defaultAsset } = perpsOf(appDeployment);
+  const [draft, setDraft] = useState<PerplDraft>(() =>
+    linked
+      ? {
+          ...defaultPerplDraft(now, linked.asset ?? defaultAsset),
+          start: "",
+          end: "",
+          pinned: { startBlock: linked.startBlock, endBlock: linked.endBlock },
+        }
+      : {
+          ...defaultPerplDraft(now, prefill?.asset ?? defaultAsset),
+          ...(prefill?.start !== undefined ? { start: toLocalInput(prefill.start) } : {}),
+          ...(prefill?.end !== undefined ? { end: toLocalInput(prefill.end) } : {}),
+          ...(prefill?.threshold !== undefined ? { threshold: prefill.threshold } : {}),
+        },
+  );
+  const [thresholdTouched, setThresholdTouched] = useState(
+    prefill?.threshold !== undefined || linked !== undefined,
+  );
+  // A linked threshold is in Perpl's raw units; it becomes USD once the perp's decimals are read.
+  const [linkedThreshold, setLinkedThreshold] = useState<bigint | null>(linked?.threshold ?? null);
   const set = (patch: Partial<PerplDraft>) => setDraft((d) => ({ ...d, ...patch }));
   const spike = rule === "spike";
 
   const clock = useCreateClock();
-  const perpId = PERPS[draft.asset] !== undefined ? BigInt(PERPS[draft.asset] as number) : null;
+  const perpId = perps[draft.asset] !== undefined ? BigInt(perps[draft.asset] as number) : null;
   const perp = usePerpContext(perpId, clock.data?.head.number);
+
+  // Linked blocks: show their estimated times in the inputs once the chain clock is read.
+  const pinned = draft.pinned ?? null;
+  const clockNow = clock.data ?? null;
+  useEffect(() => {
+    if (!pinned || !clockNow) return;
+    const start = toLocalInput(timeAt(pinned.startBlock, clockNow.head, clockNow.pace.msPerBlock));
+    const end = toLocalInput(timeAt(pinned.endBlock, clockNow.head, clockNow.pace.msPerBlock));
+    setDraft((d) => (d.pinned && d.start === "" && d.end === "" ? { ...d, start, end } : d));
+  }, [pinned, clockNow]);
+  const linkedInfo = perp.data?.info;
+  useEffect(() => {
+    if (linkedThreshold === null || !linkedInfo) return;
+    setDraft((d) => ({ ...d, threshold: toInputString(linkedThreshold, fundingDecimals(linkedInfo)) }));
+    setLinkedThreshold(null);
+  }, [linkedThreshold, linkedInfo]);
   const challenge = useChallengeBlocks(spike ? resolver : undefined);
   const challengeBlocks = spike ? (challenge.data ?? null) : null;
   const ready = Boolean(clock.data && perp.data && perpId !== null && (!spike || challengeBlocks !== null));
@@ -179,9 +219,10 @@ export function PerplForm({
             value={draft.asset}
             onChange={(asset) => {
               setThresholdTouched(false);
+              setLinkedThreshold(null);
               set({ asset, threshold: "" });
             }}
-            options={ASSETS.map((a) => ({ value: a, label: a }))}
+            options={assets.map((a) => ({ value: a, label: a }))}
           />
           {assetError ? (
             <p className={s.error} role="alert">
@@ -224,7 +265,7 @@ export function PerplForm({
             <Input
               type="datetime-local"
               value={draft.start}
-              onChange={(e) => set({ start: e.target.value })}
+              onChange={(e) => set({ start: e.target.value, pinned: null })}
               {...fieldA11y("perpl-start", { hint: true, error: Boolean(startError) })}
             />
           </Field>
@@ -253,14 +294,25 @@ export function PerplForm({
             <Input
               type="datetime-local"
               value={draft.end}
-              onChange={(e) => set({ end: e.target.value })}
+              onChange={(e) => set({ end: e.target.value, pinned: null })}
               {...fieldA11y("perpl-end", { hint: true, error: Boolean(endError) })}
             />
           </Field>
         </div>
 
+        {pinned ? (
+          <p className={s.small}>
+            The link's exact blocks: {formatInt(pinned.startBlock)} to {formatInt(pinned.endBlock)}. The times
+            above are estimates of them. Editing a time works the blocks out again from the clock.
+          </p>
+        ) : null}
+
         <label className={s.check}>
-          <input type="checkbox" checked={draft.snap} onChange={(e) => set({ snap: e.target.checked })} />
+          <input
+            type="checkbox"
+            checked={draft.snap}
+            onChange={(e) => set({ snap: e.target.checked, pinned: null })}
+          />
           <span className={s.checkText}>
             <span>Snap the window to Perpl's funding grid</span>
             <span className={s.small}>

@@ -6,7 +6,7 @@ import type { Abi, Address } from "viem";
 import { appNetwork, appNetworkLabel } from "@/lib/config";
 import { PORTFOLIO_WILL_SHOW } from "@/lib/copy";
 import { formatUsdc, shortAddress } from "@/lib/format";
-import { usePortfolio, useProtocolAddresses } from "@/lib/hooks";
+import { useChainClock, usePortfolio, useProtocolAddresses } from "@/lib/hooks";
 import { phaseLabel, phaseTone } from "@/lib/market/logic";
 import {
   entryPlan,
@@ -71,6 +71,8 @@ const ACTION_BUTTON: Record<PlannedAction["kind"], string> = {
 export function PortfolioRows({ entries }: { entries: PortfolioEntry[] }) {
   const wallet = useAppChain();
   const protocol = useProtocolAddresses();
+  // Perpl markets' titles read their block windows as clock times.
+  const clock = useChainClock(entries.some((e) => e.market.window.blockClock));
   const tx = useTxRunner(REFRESH);
   const totals = portfolioTotals(entries);
   const plan = portfolioPlan(entries);
@@ -146,7 +148,7 @@ export function PortfolioRows({ entries }: { entries: PortfolioEntry[] }) {
               </div>
               <h2 className={ms.title}>
                 <Link className={ms.titleLink} href={`/m/${e.market.address}`}>
-                  {marketHeadline(e.market)}
+                  {marketHeadline(e.market, clock)}
                 </Link>
               </h2>
               <div className={s.figures}>

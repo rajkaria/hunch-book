@@ -2,12 +2,12 @@ import { addressUrl, blockUrl } from "@hunch-book/shared";
 import type { LandingRead, LandingSnapshot } from "@/lib/chain/landing";
 import { appDeployment, appNetwork, appNetworkLabel, factoryOf } from "@/lib/config";
 import { TESTNET_MONEY } from "@/lib/copy";
-import { formatInt, formatUsdc } from "@/lib/format";
+import { formatCount, formatInt, formatUsdc } from "@/lib/format";
 import { LiveDot, Stat } from "../ui";
 import { ContractLinks } from "./Hero";
 import s from "./landing.module.css";
 
-const plural = (n: number, one: string, many: string): string => `${formatInt(n)} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many: string): string => formatCount(n, one, many);
 
 /** What the vault figure includes: test money on testnet, and our own seed stakes when there are any. */
 export function vaultHint(data: Pick<LandingSnapshot, "vault" | "stats">): string | undefined {
@@ -113,7 +113,11 @@ export function LiveNumbers({ live }: { live: LandingRead }) {
           <div className={s.liveHead}>
             <h2 className={s.liveTitle} id="live-title">
               <LiveDot tone={live.status === "ok" ? "accent" : "muted"} />
-              {live.status === "not-deployed" ? "Not deployed yet" : `Live from ${appNetworkLabel}`}
+              {live.status === "not-deployed"
+                ? "Not deployed yet"
+                : live.status === "loading"
+                  ? `Reading ${appNetworkLabel}`
+                  : `Live from ${appNetworkLabel}`}
             </h2>
             {live.status === "ok" && live.data.block !== null ? (
               <p className={s.liveMeta}>
@@ -130,12 +134,16 @@ export function LiveNumbers({ live }: { live: LandingRead }) {
               <p className={s.liveEmptyTitle}>
                 {live.status === "not-deployed"
                   ? `The contracts are not deployed on ${appNetworkLabel} yet.`
-                  : `Could not reach ${appNetworkLabel} just now.`}
+                  : live.status === "loading"
+                    ? `Reading the contracts on ${appNetworkLabel}...`
+                    : `Could not reach ${appNetworkLabel} just now.`}
               </p>
               <p className="muted">
                 {live.status === "not-deployed"
                   ? "This panel fills in from the chain once they are."
-                  : "Nothing here is cached or estimated, so the figures stay hidden until the next read succeeds."}
+                  : live.status === "loading"
+                    ? "The figures appear as soon as the read lands."
+                    : "Nothing here is cached or estimated, so the figures stay hidden until the next read succeeds."}
               </p>
             </div>
           )}

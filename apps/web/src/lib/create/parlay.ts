@@ -1,5 +1,5 @@
 import { type Deployment, Outcome, Phase } from "@hunch-book/shared";
-import { fallbackHeadline } from "../market/params";
+import { marketTitle } from "../market/title";
 import type { MarketView } from "../market/types";
 import { legClose, legEarliestLock, type ParlayLeg } from "./build";
 import { type Head, type Pace, timeAt } from "./clock";
@@ -33,7 +33,11 @@ export function parlayCandidates(
     .map((m) => ({
       address: m.address,
       marketId: m.marketId,
-      label: m.description ?? fallbackHeadline(deployment, m.decoded),
+      label: marketTitle(m, deployment, {
+        blockNumber: ctx.head.number,
+        timestamp: ctx.head.timestamp,
+        msPerBlock: ctx.pace.msPerBlock,
+      }),
       window: m.window,
       phase: m.phase,
       earliestLock: legEarliestLock(m.window, ctx.head, ctx.fastBlockTimeMs),

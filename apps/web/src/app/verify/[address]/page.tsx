@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { DeployedGate } from "@/components/DeployedGate";
+import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
-import { NotDeployed } from "@/components/states";
 import { VerifyView } from "@/components/verify/VerifyView";
 import { parseAddressParam } from "@/lib/address";
-import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
 import { VERIFY_WILL_SHOW } from "@/lib/copy";
 import { shortAddress } from "@/lib/format";
 
@@ -25,18 +25,16 @@ export default async function VerifyPage({ params }: Props) {
   if (!address) notFound();
   return (
     <div className="page">
-      <PageHeader eyebrow={`${appNetworkLabel} · Verify`} title="Settlement">
+      <PageHeader eyebrow={<ActiveNetworkLabel suffix=" · Verify" />} title="Settlement">
         <p>
           A market's outcome comes only from its resolver reading onchain data. This page shows the exact
           read, runs it again from your browser with no wallet, and compares it with what the market stored
           when it settled.
         </p>
       </PageHeader>
-      {isDeployed(appDeployment) ? (
+      <DeployedGate willShow={VERIFY_WILL_SHOW}>
         <VerifyView address={address} />
-      ) : (
-        <NotDeployed willShow={VERIFY_WILL_SHOW} />
-      )}
+      </DeployedGate>
     </div>
   );
 }

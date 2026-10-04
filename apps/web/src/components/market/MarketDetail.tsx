@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import type { Address } from "viem";
 import { isSeededByUs } from "@/lib/chain/landing";
 import { appDeployment, appNetworkLabel } from "@/lib/config";
@@ -9,6 +10,7 @@ import { shortAddress } from "@/lib/format";
 import { useChainClock, useMarket, useNow } from "@/lib/hooks";
 import { phaseLabel, phaseTone } from "@/lib/market/logic";
 import { templateLabel } from "@/lib/market/params";
+import { titleDiffersFromRule } from "@/lib/market/title";
 import type { ChainClock, MarketView } from "@/lib/market/types";
 import { Countdown, marketHeadline } from "../markets/MarketCard";
 import { OrdersPanel } from "../orders/OrdersPanel";
@@ -51,6 +53,8 @@ export function MarketBody({
   clock: ChainClock | null;
   now: number | null;
 }) {
+  const title = marketHeadline(m, clock);
+  useDocumentTitle(title);
   return (
     <>
       <header className={s.head}>
@@ -67,9 +71,18 @@ export function MarketBody({
             Created by <span className="mono">{shortAddress(m.creator)}</span>
             {isSeededByUs(appDeployment, m.creator) ? " (ours)" : ""}
           </Link>
-          <ShareMarket m={m} />
+          <ShareMarket m={m} title={title} />
         </div>
-        <h1 className={s.headline}>{marketHeadline(m)}</h1>
+        <h1 className={s.headline}>{title}</h1>
+        {titleDiffersFromRule(m, title) ? (
+          <div className={s.exactRule}>
+            <span className={s.exactRuleLabel}>Exact rule</span>
+            <p className={s.exactRuleText}>{m.description}</p>
+            <span className={s.exactRuleNote}>
+              The resolver's own sentence. The times above are estimated from the block numbers it names.
+            </span>
+          </div>
+        ) : null}
         {m.description === null ? (
           <p className="subtle" style={{ fontSize: 14 }}>
             The resolver did not return its rule sentence, so this one is built from the market's parameters.
@@ -100,6 +113,16 @@ export function MarketBody({
       </div>
     </>
   );
+}
+
+/**
+ * Keeps the tab's title on the market as it reads now. The server's title comes from the build's default
+ * network and an earlier clock; after a network switch, or as the chain moves, this one is current.
+ */
+function useDocumentTitle(title: string) {
+  useEffect(() => {
+    document.title = `${title} | Hunch Book`;
+  }, [title]);
 }
 
 export function MarketDetail({ address }: { address: Address }) {

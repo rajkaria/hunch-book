@@ -139,7 +139,13 @@ export function ConnectButton() {
         onClick={() => setOpen((v) => !v)}
         disabled={chain.isConnecting && !open}
       >
-        {chain.isConnecting && !open ? "Connecting..." : "Connect wallet"}
+        {chain.isConnecting && !open ? (
+          "Connecting..."
+        ) : (
+          <>
+            Connect<span className={w.connectWord}> wallet</span>
+          </>
+        )}
       </Button>
       {open ? (
         <div className={s.menu} id={menuId}>

@@ -67,7 +67,12 @@ export function ParlayBuilder({
   );
   const shown = candidates.filter((m) => {
     const q = query.trim().toLowerCase();
-    return q === "" || marketHeadline(m).toLowerCase().includes(q) || `#${m.marketId}`.includes(q);
+    return (
+      q === "" ||
+      marketHeadline(m, clock).toLowerCase().includes(q) ||
+      (m.description ?? "").toLowerCase().includes(q) ||
+      `#${m.marketId}`.includes(q)
+    );
   });
   const legs = picked.flatMap((a) => markets.filter((m) => isAddressEqual(m.address, a)));
   const quote = parlayQuote(legs);
@@ -116,7 +121,7 @@ export function ParlayBuilder({
           <ol className={s.legs}>
             {legs.map((m, i) => (
               <li key={m.address}>
-                <span className={s.legName}>{marketHeadline(m)}</span>
+                <span className={s.legName}>{marketHeadline(m, clock)}</span>
                 <span className="mono">
                   {quote.legs[i] === null ? "n/a" : formatChance(quote.legs[i] as bigint)}
                 </span>
@@ -139,8 +144,8 @@ export function ParlayBuilder({
         ) : null}
         {existing ? (
           <Notice title="A parlay on these legs exists">
-            <Link href={`/m/${existing.address}`}>{marketHeadline(existing)}</Link>. Stake there, or create
-            one with other times.
+            <Link href={`/m/${existing.address}`}>{marketHeadline(existing, clock)}</Link>. Stake there, or
+            create one with other times.
           </Notice>
         ) : null}
         <div className={s.row}>
@@ -190,7 +195,7 @@ export function ParlayBuilder({
                   aria-describedby={`${id}-note`}
                 />
                 <label htmlFor={id} className={s.optionBody}>
-                  <span className={s.optionTitle}>{marketHeadline(m)}</span>
+                  <span className={s.optionTitle}>{marketHeadline(m, clock)}</span>
                   <span className={s.optionMeta} id={`${id}-note`}>
                     #{m.marketId.toString()} · {chanceDisplay(marketChance(m)).value}
                     {lock !== null && lock > now ? ` · locks in about ${formatDuration(lock - now)}` : ""}
@@ -207,7 +212,7 @@ export function ParlayBuilder({
 }
 
 /** Every template 6 market with its legs' states, reading legs older than the market list on demand. */
-export function ParlayList({ markets }: { markets: MarketView[] }) {
+export function ParlayList({ markets, clock = null }: { markets: MarketView[]; clock?: ChainClock | null }) {
   const parlays = markets.filter((m) => m.templateId === TemplateId.Parlay);
   const known = useMemo(() => new Map(markets.map((m) => [m.address.toLowerCase(), m])), [markets]);
   const missing = useMemo(() => {
@@ -249,7 +254,7 @@ export function ParlayList({ markets }: { markets: MarketView[] }) {
                   </Badge>
                 </div>
                 <Link className={s.cardTitle} href={`/m/${v.market.address}`}>
-                  {marketHeadline(v.market)}
+                  {marketHeadline(v.market, clock)}
                 </Link>
                 <p className={s.note}>
                   Parlay market: {chanceDisplay(own).value} · legs imply{" "}
@@ -260,7 +265,7 @@ export function ParlayList({ markets }: { markets: MarketView[] }) {
                     <li key={leg.address}>
                       <span className={s.legName}>
                         {leg.market ? (
-                          <Link href={`/m/${leg.address}`}>{marketHeadline(leg.market)}</Link>
+                          <Link href={`/m/${leg.address}`}>{marketHeadline(leg.market, clock)}</Link>
                         ) : (
                           <Link href={`/m/${leg.address}`} className="mono">
                             {leg.address}
@@ -309,7 +314,7 @@ export function ParlayPage() {
   return (
     <div className={s.stack}>
       <ParlayBuilder markets={markets} clock={clock} now={now as number} />
-      <ParlayList markets={markets} />
+      <ParlayList markets={markets} clock={clock} />
     </div>
   );
 }

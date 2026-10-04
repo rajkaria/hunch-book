@@ -1,17 +1,18 @@
 import { addressUrl, deployments, Phase } from "@hunch-book/shared";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { isSeededByUs, type LandingRead } from "@/lib/chain/landing";
+import { isSeededByUs, type LandingRead, landingClock } from "@/lib/chain/landing";
 import { appDeployment, appNetwork, appNetworkLabel, factoryOf, isDeployed, REPO_URL } from "@/lib/config";
 import { formatInt, formatUsdc, shortAddress } from "@/lib/format";
 import { chanceDisplay, lifecycleStages, marketChance, type StageState } from "@/lib/market/logic";
-import { fallbackHeadline } from "@/lib/market/params";
+import { marketTitle, type TitleClock } from "@/lib/market/title";
 import type { MarketView } from "@/lib/market/types";
 import { AddressLink, Badge, ButtonLink, ChanceBar, LiveDot, PhasePill } from "../ui";
 import s from "./landing.module.css";
 import { priceWords, usdcWords } from "./words";
 
-const DEPLOYMENTS_URL = `${REPO_URL}/blob/main/deployments/${appNetwork}.json`;
+/** Read at render, so it follows a network switch in the browser. */
+const deploymentsUrl = (): string => `${REPO_URL}/blob/main/deployments/${appNetwork}.json`;
 
 // ---------- stage track ----------
 
@@ -65,7 +66,7 @@ export function ContractLinks() {
           Vault <span className="mono">{shortAddress(vault)}</span>
         </a>
       ) : null}
-      <a href={DEPLOYMENTS_URL} target="_blank" rel="noreferrer">
+      <a href={deploymentsUrl()} target="_blank" rel="noreferrer">
         Every address and deploy transaction
       </a>
     </div>
@@ -111,11 +112,11 @@ function CardShell({ label, children, top }: { label: string; children: ReactNod
   );
 }
 
-function LiveMarketCard({ m }: { m: MarketView }) {
+function LiveMarketCard({ m, clock }: { m: MarketView; clock: TitleClock | null }) {
   const chance = marketChance(m);
   const shown = chanceDisplay(chance);
   const seeded = isSeededByUs(appDeployment, m.creator);
-  const headline = m.description ?? fallbackHeadline(appDeployment, m.decoded);
+  const headline = marketTitle(m, appDeployment, clock);
   const href = `/m/${m.address}`;
   return (
     <CardShell
@@ -187,18 +188,20 @@ function LiveMarketCard({ m }: { m: MarketView }) {
 /** The most active market, live, as the hero's picture. Falls back to plain words and contract links. */
 export function HeroCard({ live }: { live: LandingRead }) {
   const m = live.status === "ok" ? live.data.featured : null;
-  if (m) return <LiveMarketCard m={m} />;
+  if (m && live.status === "ok") return <LiveMarketCard m={m} clock={landingClock(live.data)} />;
   const empty = live.status === "ok" && live.data.marketCount === 0;
   return (
     <CardShell label="Contracts">
       <p className={s.cardTitle}>
         {empty
           ? "No markets yet. The first one appears here as soon as it is created."
-          : live.status === "ok"
-            ? "Could not read the markets just now. They load again on the next refresh."
-            : live.status === "not-deployed"
-              ? `Contracts are not deployed on ${appNetworkLabel} yet.`
-              : `Live figures are unavailable right now. The contracts are on ${appNetworkLabel}.`}
+          : live.status === "loading"
+            ? `Reading the markets on ${appNetworkLabel}...`
+            : live.status === "ok"
+              ? "Could not read the markets just now. They load again on the next refresh."
+              : live.status === "not-deployed"
+                ? `Contracts are not deployed on ${appNetworkLabel} yet.`
+                : `Live figures are unavailable right now. The contracts are on ${appNetworkLabel}.`}
       </p>
       <ChanceBar bps={null} size="lg" label="No market to show yet" />
       <StageTrack m={{ phase: Phase.Pool, graduated: false }} />

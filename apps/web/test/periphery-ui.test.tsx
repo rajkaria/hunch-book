@@ -415,7 +415,7 @@ describe("referral prompt and panel", () => {
 
 describe("Share", () => {
   it("opens the card preview with a link that carries the referral, or not", async () => {
-    await renderWithProviders(<ShareMarket m={trading} />, { connected: true });
+    await renderWithProviders(<ShareMarket m={trading} title="Will it settle YES?" />, { connected: true });
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     const dialog = await screen.findByRole("dialog", { name: "Share this market" });
     expect(within(dialog).getByRole("img").getAttribute("src")).toBe(`/m/${trading.address}/opengraph-image`);
@@ -428,6 +428,7 @@ describe("Share", () => {
         .getByRole("link", { name: /Post on X/ })
         .getAttribute("href"),
     ).toContain(encodeURIComponent(`/m/${trading.address}`));
+    expect(within(dialog).getByRole("img").getAttribute("alt")).toBe("Share card: Will it settle YES?");
   });
 });
 

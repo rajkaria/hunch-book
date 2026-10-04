@@ -7,6 +7,7 @@ import { appDeployment, appNetworkLabel } from "@/lib/config";
 import { creatorKeys, useCreator, useCreatorFees } from "@/lib/creator/hooks";
 import type { CreatorData } from "@/lib/creator/read";
 import { formatBpsPercent, formatInt, formatUsdc, formatUtc, shortAddress } from "@/lib/format";
+import { useFriendlyQuestions } from "@/lib/market/useQuestion";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, useTxRunner } from "@/lib/wallet/useTxRunner";
 import { INDEXER_DOCS_URL, QUERIES_URL, SourceTag } from "../indexer/SourceTag";
@@ -172,6 +173,7 @@ function Withdrawals({ data }: { data: CreatorData }) {
 
 function Markets({ data }: { data: CreatorData }) {
   const indexed = data.scanned === null;
+  const friendly = useFriendlyQuestions(data.markets.map((m) => m.question));
   return (
     <Panel
       title="Markets created"
@@ -214,9 +216,9 @@ function Markets({ data }: { data: CreatorData }) {
               {data.markets.map((m) => (
                 <tr key={m.market}>
                   <td className={s.market}>
-                    <Link href={`/m/${m.market}`} title={m.question ?? m.market}>
+                    <Link href={`/m/${m.market}`} title={friendly(m.question) ?? m.market}>
                       {m.number !== null ? `#${m.number}` : shortAddress(m.market)}
-                      {m.question ? <span className={s.question}> {m.question}</span> : null}
+                      {m.question ? <span className={s.question}> {friendly(m.question)}</span> : null}
                     </Link>
                   </td>
                   <td>{m.stage}</td>

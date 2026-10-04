@@ -1,10 +1,10 @@
 "use client";
 
-import { templateLabel } from "@hunch-book/shared";
 import Link from "next/link";
 import { useState } from "react";
 import { appDeployment } from "@/lib/config";
-import { formatChance, formatInt, formatUtc } from "@/lib/format";
+import { formatChance, formatInt, formatShortUtc, formatUtc } from "@/lib/format";
+import { usePerpMeta } from "@/lib/hedge/hooks";
 import { useChainClock, useMarkets, useNow } from "@/lib/hooks";
 import {
   groupLadders,
@@ -13,25 +13,55 @@ import {
   liveRungs,
   missingStrikes,
   monotoneBreaks,
+  type PerplUnit,
   rungLabel,
   senseLabel,
 } from "@/lib/ladder/group";
 import { createPrefillPath } from "@/lib/ladder/prefill";
 import { phaseLabel } from "@/lib/market/logic";
+import { templateLabel } from "@/lib/market/params";
+import { blockWindowWords, roundedBlockTime } from "@/lib/market/title";
 import type { ChainClock, MarketView } from "@/lib/market/types";
 import { EmptyState, ErrorState, LoadingRows, NotDeployed } from "../states";
 import { ButtonLink, Notice, Panel } from "../ui";
 import { LadderChart } from "./LadderChart";
 import s from "./ladder.module.css";
 
-function windowText(ladder: Ladder): string {
+/** When the ladder's markets lock and close; block-clock ladders name the blocks and their estimated times. */
+export function windowText(ladder: Pick<Ladder, "window">, clock: ChainClock | null): string {
   const w = ladder.window;
-  return w.blockClock
-    ? `Locks at block ${formatInt(w.lock)}, closes at block ${formatInt(w.close)}`
-    : `Locks ${formatUtc(w.lock)}, closes ${formatUtc(w.close)}`;
+  if (!w.blockClock) return `Locks ${formatUtc(w.lock)}, closes ${formatUtc(w.close)}`;
+  const at = (block: bigint) =>
+    clock
+      ? `about ${formatShortUtc(roundedBlockTime(block, clock))} UTC (block ${formatInt(block)})`
+      : `block ${formatInt(block)}`;
+  return `Locks at ${at(w.lock)}, closes at ${at(w.close)}`;
 }
 
-function MissingStrikes({ ladder, clock, now }: { ladder: Ladder; clock: ChainClock | null; now: number }) {
+/** The ladder's question with its window: block-clock (Perpl) ladders name estimated times. */
+export function ladderTitle(ladder: Pick<Ladder, "title" | "window">, clock: ChainClock | null): string {
+  const w = ladder.window;
+  return w.blockClock ? `${ladder.title}, ${blockWindowWords(w.lock, w.close, clock)}` : ladder.title;
+}
+
+/** Perpl ladders: thresholds in USD per unit, once the perp's decimals are read. */
+function usePerplUnit(ladder: Ladder): PerplUnit | undefined {
+  const meta = usePerpMeta(ladder.perpl?.perpId);
+  if (!ladder.perpl || !meta.data) return undefined;
+  return { decimals: meta.data.priceDecimals + ladder.perpl.scalingExp, symbol: meta.data.symbol };
+}
+
+function MissingStrikes({
+  ladder,
+  clock,
+  now,
+  unit,
+}: {
+  ladder: Ladder;
+  clock: ChainClock | null;
+  now: number;
+  unit?: PerplUnit;
+}) {
   const suggestions = missingStrikes(ladder);
   if (suggestions.length === 0) return null;
   const open = ladderOpen(ladder, clock, now);
@@ -43,7 +73,7 @@ function MissingStrikes({ ladder, clock, now }: { ladder: Ladder; clock: ChainCl
           <p className={s.note}>
             Each link opens the create page on this template and carries this ladder's exact parameters with
             the new {ladder.shape === "range" ? "range" : ladder.axis === "usd" ? "strike" : "threshold"}.
-            Check it there before the first stake. This ladder's window: {windowText(ladder)}.
+            Check it there before the first stake. This ladder's window: {windowText(ladder, clock)}.
           </p>
           <div className={s.chips}>
             {suggestions.map((sg) => (
@@ -56,7 +86,7 @@ function MissingStrikes({ ladder, clock, now }: { ladder: Ladder; clock: ChainCl
                   "ladder",
                 )}
               >
-                + {rungLabel(sg, ladder.axis)}
+                + {rungLabel(sg, ladder.axis, unit)}
               </ButtonLink>
             ))}
           </div>
@@ -71,7 +101,7 @@ function MissingStrikes({ ladder, clock, now }: { ladder: Ladder; clock: ChainCl
   );
 }
 
-function RungTable({ ladder }: { ladder: Ladder }) {
+function RungTable({ ladder, unit }: { ladder: Ladder; unit?: PerplUnit }) {
   return (
     <div className={s.tableWrap}>
       <table className={s.table}>
@@ -90,7 +120,7 @@ function RungTable({ ladder }: { ladder: Ladder }) {
           {ladder.points.map((p) => (
             <tr key={p.market.address}>
               <th scope="row">
-                <Link href={`/m/${p.market.address}`}>{rungLabel(p, ladder.axis)}</Link>
+                <Link href={`/m/${p.market.address}`}>{rungLabel(p, ladder.axis, unit)}</Link>
               </th>
               <td className="mono">{p.chanceBps === null ? "n/a" : formatChance(p.chanceBps)}</td>
               <td>
@@ -115,29 +145,30 @@ export function LadderCard({
   now: number;
 }) {
   const breaks = monotoneBreaks(ladder);
+  const unit = usePerplUnit(ladder);
   return (
     <Panel
       title={`${templateLabel(ladder.templateId)} · ${formatInt(ladder.points.length)} ${ladder.points.length === 1 ? "market" : "markets"}`}
       aside={<span className={s.note}>{formatInt(liveRungs(ladder))} live</span>}
     >
-      <h3 className={s.title}>{ladder.title}</h3>
+      <h3 className={s.title}>{ladderTitle(ladder, clock)}</h3>
       <p className={s.note}>
-        {windowText(ladder)}. The curve is each market's own {senseLabel(ladder.sense)}.
+        {windowText(ladder, clock)}. The curve is each market's own {senseLabel(ladder.sense)}.
       </p>
-      {ladder.points.length > 1 ? <LadderChart ladder={ladder} /> : null}
+      {ladder.points.length > 1 ? <LadderChart ladder={ladder} unit={unit} /> : null}
       {breaks.length > 0 ? (
         <Notice tone="warn" title="The curve runs the wrong way here">
           {breaks.map(([a, b]) => (
             <p key={`${a.market.address}-${b.market.address}`}>
-              {rungLabel(b, ladder.axis)} is priced at {formatChance(b.chanceBps as bigint)}, against{" "}
-              {formatChance(a.chanceBps as bigint)} for {rungLabel(a, ladder.axis)}. At settlement it cannot
-              be more likely, so one of the two is mispriced.
+              {rungLabel(b, ladder.axis, unit)} is priced at {formatChance(b.chanceBps as bigint)}, against{" "}
+              {formatChance(a.chanceBps as bigint)} for {rungLabel(a, ladder.axis, unit)}. At settlement it
+              cannot be more likely, so one of the two is mispriced.
             </p>
           ))}
         </Notice>
       ) : null}
-      <RungTable ladder={ladder} />
-      <MissingStrikes ladder={ladder} clock={clock} now={now} />
+      <RungTable ladder={ladder} unit={unit} />
+      <MissingStrikes ladder={ladder} clock={clock} now={now} unit={unit} />
     </Panel>
   );
 }
@@ -162,7 +193,8 @@ export function LadderList({
           Show single markets too, to start a ladder from one
         </label>
         <span className={s.note}>
-          {formatInt(multi)} {multi === 1 ? "ladder" : "ladders"} among {formatInt(markets.length)} markets
+          {formatInt(multi)} {multi === 1 ? "ladder" : "ladders"} among {formatInt(markets.length)}{" "}
+          {markets.length === 1 ? "market" : "markets"}
         </span>
       </div>
       {ladders.length === 0 ? (

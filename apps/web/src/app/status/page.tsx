@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusView } from "@/components/status/StatusView";
-import { appNetworkLabel } from "@/lib/config";
 import { readIncidentLog } from "@/lib/status/incidentLog";
 
 export const metadata: Metadata = {
@@ -17,7 +17,7 @@ export const dynamic = "force-static";
 export default function StatusPage() {
   return (
     <div className="page">
-      <PageHeader eyebrow={appNetworkLabel} title="Status">
+      <PageHeader eyebrow={<ActiveNetworkLabel />} title="Status">
         <p>
           Is Hunch Book solvent and running right now? Every check below reads the contracts directly, with no
           server in between. Amber means something needs attention; red means a rule is broken.

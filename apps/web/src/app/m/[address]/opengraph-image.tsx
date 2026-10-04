@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { parseAddressParam } from "@/lib/address";
 import { getPublicClient } from "@/lib/chain/client";
-import { readMarket } from "@/lib/chain/reads";
-import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
-import { fallbackHeadline } from "@/lib/market/params";
+import { readMarket, readTitleClock } from "@/lib/chain/reads";
+import { appChain, appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
+import { marketTitle } from "@/lib/market/title";
 import type { MarketView } from "@/lib/market/types";
 import { CARD_COLORS as C, shareCard } from "@/lib/referral/card";
 
@@ -30,10 +30,14 @@ async function loadMarket(raw: string): Promise<{ m: MarketView; headline: strin
     timer = setTimeout(() => resolve(null), READ_TIMEOUT_MS);
   });
   try {
+    // Perpl markets are defined in blocks: their title reads them as estimated times (lib/market/title.ts).
+    // The clock read starts alongside the market read; it never throws.
+    const clockRead = readTitleClock(getPublicClient(), appChain.blockTime ?? 400);
     const result = await Promise.race([readMarket(getPublicClient(), appDeployment, address), timeout]);
     if (result?.status !== "ok") return null;
     const m = result.data;
-    return { m, headline: m.description ?? fallbackHeadline(appDeployment, m.decoded) };
+    const clock = m.window.blockClock ? await Promise.race([clockRead, timeout]) : null;
+    return { m, headline: marketTitle(m, appDeployment, clock) };
   } catch {
     return null;
   } finally {

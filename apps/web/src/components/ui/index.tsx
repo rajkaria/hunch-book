@@ -10,7 +10,7 @@ import type {
 } from "react";
 import type { Address, Hex } from "viem";
 import { appDeployment } from "@/lib/config";
-import { formatChance, shortAddress, shortHash } from "@/lib/format";
+import { chanceComplementBps, formatChance, shortAddress, shortHash } from "@/lib/format";
 import s from "./ui.module.css";
 
 // The Hunch Book design system: small, plain components over the tokens in app/globals.css.
@@ -351,7 +351,7 @@ export function ChanceBar({
           YES <span className="mono">{bps === null ? "n/a" : formatChance(bps)}</span>
         </span>
         <span className={s.barLabelNo}>
-          NO <span className="mono">{bps === null ? "n/a" : formatChance(10_000n - bps)}</span>
+          NO <span className="mono">{bps === null ? "n/a" : formatChance(chanceComplementBps(bps))}</span>
         </span>
       </div>
       {bar}

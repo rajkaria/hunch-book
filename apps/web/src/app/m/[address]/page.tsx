@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { DeployedGate } from "@/components/DeployedGate";
 import { Crumbs, MarketDetail } from "@/components/market/MarketDetail";
-import { NotDeployed } from "@/components/states";
 import { parseAddressParam } from "@/lib/address";
 import { getPublicClient } from "@/lib/chain/client";
 import { readMarketHeadline } from "@/lib/chain/reads";
@@ -32,11 +32,9 @@ export default async function MarketPage({ params }: Props) {
   return (
     <div className="page">
       <Crumbs address={address} />
-      {isDeployed(appDeployment) ? (
+      <DeployedGate willShow={MARKET_WILL_SHOW}>
         <MarketDetail address={address} />
-      ) : (
-        <NotDeployed willShow={MARKET_WILL_SHOW} />
-      )}
+      </DeployedGate>
     </div>
   );
 }

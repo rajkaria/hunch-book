@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import { appNetwork } from "@/lib/config";
+import { useAppNetwork } from "@/lib/wallet/appNetwork";
 import s from "./layout.module.css";
 
 /** The Hunch tile: a lime rounded square with the arch glyph, as in the main Hunch app. */
@@ -23,9 +25,9 @@ export function BrandTile({ size = 32 }: { size?: number }) {
   );
 }
 
-/** Tile, wordmark and, on testnet, a small network pill. Links home. */
+/** Tile, wordmark and, on testnet, a small network pill that follows a network switch. Links home. */
 export function Brand() {
-  const testnet = appNetwork === "monad-testnet";
+  const testnet = useAppNetwork() === "monad-testnet";
   return (
     <Link
       href="/"

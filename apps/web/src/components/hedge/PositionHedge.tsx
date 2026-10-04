@@ -78,7 +78,7 @@ function ProposalCard({
   return (
     <Card as="article" className={s.proposal}>
       <div className={s.proposalHead}>
-        <p className={s.proposalQuestion}>{marketHeadline(m)}</p>
+        <p className={s.proposalQuestion}>{marketHeadline(m, clock)}</p>
         <PhasePill phase={m.phase} outcome={m.outcome} />
       </div>
       <p className="muted" style={{ fontSize: 14 }}>
@@ -468,7 +468,7 @@ export function PositionHedge({
             <ul className={s.skipped}>
               {hedges.skipped.map((k) => (
                 <li key={k.fm.market.address}>
-                  {marketHeadline(k.fm.market)}: {k.why}
+                  {marketHeadline(k.fm.market, clock)}: {k.why}
                 </li>
               ))}
             </ul>

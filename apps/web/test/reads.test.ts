@@ -12,7 +12,7 @@ import {
   readUserPosition,
 } from "../src/lib/chain/reads";
 import { BOOK, deployed, marketAddr, marketHandlers, notDeployed, stubClient } from "./chain";
-import { FACTORY, USDC, USER } from "./fixtures";
+import { FACTORY, perplParams, USDC, USER } from "./fixtures";
 
 describe("listMarkets", () => {
   it("returns not-deployed without touching the chain", async () => {
@@ -123,6 +123,33 @@ describe("readMarket", () => {
       }),
     );
     expect(await readMarketHeadline(broken, deployed, marketAddr(0))).toBeNull();
+  });
+
+  it("reads a Perpl market's blocks as estimated times in its headline", async () => {
+    // Head at block 2,000,000; the pace over the last 10,000 blocks is 300 ms per block.
+    const head = Date.UTC(2026, 9, 4, 12, 0) / 1000;
+    const perpl = (blocks: Record<string, bigint>) =>
+      stubClient(
+        marketHandlers(1, {
+          templateId: () => 1,
+          params: () => perplParams,
+          window: () => ({ blockClock: true, lock: 1_000_000n, close: 1_002_000n, settleDeadline: 0n }),
+          describe: () =>
+            "Will BTC longs pay shorts on net in funding on Perpl (BTC Perp, perp 16) between block 1000000 and block 1002000?",
+        }),
+        blocks,
+      );
+    const clocked = perpl({ "2000000": BigInt(head), "1990000": BigInt(head - 3_000) });
+    // 1,000,000 blocks before the head at 300 ms is 300,000 seconds (3 days, 11 hours, 20 minutes) earlier.
+    expect(await readMarketHeadline(clocked, deployed, marketAddr(0))).toBe(
+      "Will BTC longs pay shorts on net in funding on Perpl between about Oct 1, 00:40 and Oct 1, 00:50 UTC?",
+    );
+    // Without a readable clock, the blocks are named, grouped.
+    const noClock = perpl({});
+    noClock.getBlock = (() => Promise.reject(new Error("rpc"))) as typeof noClock.getBlock;
+    expect(await readMarketHeadline(noClock, deployed, marketAddr(0))).toBe(
+      "Will BTC longs pay shorts on net in funding on Perpl between block 1,000,000 and block 1,002,000?",
+    );
   });
 });
 

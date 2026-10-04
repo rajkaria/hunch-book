@@ -4,7 +4,7 @@ import { Phase } from "@hunch-book/shared";
 import { useId, useState } from "react";
 import { formatChance } from "@/lib/format";
 import { chartGeometry, chartSummary, curvePath } from "@/lib/ladder/chart";
-import { type Ladder, type LadderPoint, rungLabel, senseLabel } from "@/lib/ladder/group";
+import { type Ladder, type LadderPoint, type PerplUnit, rungLabel, senseLabel } from "@/lib/ladder/group";
 import s from "./ladder.module.css";
 
 const SOURCE_LABEL: Record<LadderPoint["chanceSource"], string> = {
@@ -27,14 +27,14 @@ function pointClass(p: LadderPoint): string {
  * Every point is a link to its market and shows its value on hover and on keyboard focus. A data table
  * below repeats every value.
  */
-export function LadderChart({ ladder }: { ladder: Ladder }) {
+export function LadderChart({ ladder, unit }: { ladder: Ladder; unit?: PerplUnit }) {
   const [active, setActive] = useState<number | null>(null);
   const titleId = useId();
   const descId = useId();
-  const g = chartGeometry(ladder.points, ladder.axis);
+  const g = chartGeometry(ladder.points, ladder.axis, undefined, unit);
   const { box } = g;
   const priced = ladder.points.filter((p) => p.chanceBps !== null);
-  const label = (p: LadderPoint) => rungLabel(p, ladder.axis);
+  const label = (p: LadderPoint) => rungLabel(p, ladder.axis, unit);
   const current = active === null ? null : ladder.points[active];
   const bottom = box.height - box.pad.bottom;
 
@@ -89,7 +89,11 @@ export function LadderChart({ ladder }: { ladder: Ladder }) {
               y={box.height - 6}
               textAnchor="middle"
             >
-              {ladder.axis === "usd" ? "Strike" : "Threshold (Perpl raw units)"}
+              {ladder.axis === "usd"
+                ? "Strike"
+                : unit
+                  ? `Threshold, USD per ${unit.symbol}`
+                  : "Threshold (Perpl raw units)"}
             </text>
 
             {ladder.shape === "strike" && priced.length > 1 ? (

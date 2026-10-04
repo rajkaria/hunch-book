@@ -1,5 +1,9 @@
 import { Side } from "@hunch-book/shared";
+import type { Hex } from "viem";
 import { appDeployment } from "../config";
+import { parsePrefill } from "../ladder/prefill";
+import { type LinkSource, parseLinkSource } from "./linked";
+import { templateById } from "./templates";
 
 // Values another page can hand the create form in the query string, for example the hedge
 // assistant's "Create this market" (docs/HEDGE.md):
@@ -33,4 +37,22 @@ export function parseCreatePrefill(query: Query): CreatePrefill {
   if (side === "yes") out.side = Side.Yes;
   if (side === "no") out.side = Side.No;
   return out;
+}
+
+/**
+ * A link that carries a market's exact parameters (lib/ladder/prefill.ts): `?template=<id>&params=<hex>`,
+ * with `from` naming the page that sent it. Undefined when either is missing or malformed, or when the
+ * template is not one this app can build.
+ */
+export function parseCreateLink(
+  query: Query,
+): { templateId: number; params: Hex; from: LinkSource } | undefined {
+  const search = new URLSearchParams();
+  for (const key of ["template", "params", "from"]) {
+    const value = one(query[key]);
+    if (value !== undefined) search.set(key, value);
+  }
+  const link = parsePrefill(search);
+  if (!link || !templateById(link.templateId)) return undefined;
+  return { ...link, from: parseLinkSource(search.get("from")) };
 }

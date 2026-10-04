@@ -5,6 +5,7 @@ import type { Address } from "viem";
 import { appNetwork } from "@/lib/config";
 import { formatInt, formatUsdc, shortAddress } from "@/lib/format";
 import type { PortfolioEntry } from "@/lib/market/types";
+import { useFriendlyQuestions } from "@/lib/market/useQuestion";
 import { csvFilename, downloadText, historyCsv } from "@/lib/pnl/csv";
 import { usePortfolioPnl } from "@/lib/pnl/hooks";
 import type { MarketPnl } from "@/lib/pnl/ledger";
@@ -21,6 +22,14 @@ export function formatSigned(value: bigint): string {
 function Signed({ value }: { value: bigint | null }) {
   if (value === null) return <span className={p.subtle}>n/a</span>;
   return <span className={value > 0n ? p.up : value < 0n ? p.down : undefined}>{formatSigned(value)}</span>;
+}
+
+/** The row's label with its question's block window read as times. */
+function withFriendly(
+  label: { number: number | null; question: string | null } | undefined,
+  friendly: (q: string | null) => string | null,
+): { number: number | null; question: string | null } | undefined {
+  return label ? { ...label, question: friendly(label.question) } : undefined;
 }
 
 function Row({
@@ -72,6 +81,7 @@ function Row({
  */
 export function PnlPanel({ user, entries }: { user: Address; entries: readonly PortfolioEntry[] }) {
   const pnl = usePortfolioPnl(user, entries);
+  const friendly = useFriendlyQuestions([...pnl.labels.values()].map((l) => l.question));
   if (pnl.isPending) {
     return (
       <Panel title="Profit and loss" labelledBy="pnl-title">
@@ -138,7 +148,11 @@ export function PnlPanel({ user, entries }: { user: Address; entries: readonly P
             </thead>
             <tbody>
               {pnl.rows.map((r) => (
-                <Row key={r.market} r={r} label={pnl.labels.get(r.market.toLowerCase())} />
+                <Row
+                  key={r.market}
+                  r={r}
+                  label={withFriendly(pnl.labels.get(r.market.toLowerCase()), friendly)}
+                />
               ))}
             </tbody>
           </table>

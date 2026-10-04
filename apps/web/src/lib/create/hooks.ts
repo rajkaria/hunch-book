@@ -21,7 +21,8 @@ import {
 
 // React Query hooks over the create flow's reads. Query keys never hold bigints.
 
-const deployed = isDeployed(appDeployment);
+/** Read on every render, like lib/hooks.ts, so a network switch in the browser turns the queries on or off. */
+const deployed = (): boolean => isDeployed(appDeployment);
 
 export const createKeys = {
   config: () => ["create", "config", appNetwork] as const,
@@ -50,7 +51,7 @@ export function useCreateConfig() {
   return useQuery({
     queryKey: createKeys.config(),
     queryFn: () => readCreateConfig(getPublicClient(), appDeployment),
-    enabled: deployed,
+    enabled: deployed(),
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
@@ -61,7 +62,7 @@ export function useCreateClock(enabled = true) {
   return useQuery({
     queryKey: createKeys.clock(),
     queryFn: () => readClock(getPublicClient(), appChain.blockTime ?? 400),
-    enabled: deployed && enabled,
+    enabled: deployed() && enabled,
     refetchInterval: 15_000,
   });
 }
@@ -70,7 +71,7 @@ export function usePerpContext(perpId: bigint | null, headBlock: bigint | undefi
   return useQuery({
     queryKey: createKeys.perp(perpId ?? 0n),
     queryFn: () => readPerpContext(getPublicClient(), appDeployment, perpId as bigint, headBlock as bigint),
-    enabled: deployed && perpId !== null && headBlock !== undefined,
+    enabled: deployed() && perpId !== null && headBlock !== undefined,
     staleTime: 5 * 60_000,
   });
 }
@@ -79,7 +80,7 @@ export function usePriceFeeds(resolver: Address | undefined) {
   return useQuery({
     queryKey: createKeys.feeds(resolver ?? "0x"),
     queryFn: () => readPriceFeeds(getPublicClient(), appDeployment, resolver as Address),
-    enabled: deployed && Boolean(resolver),
+    enabled: deployed() && Boolean(resolver),
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
@@ -89,7 +90,7 @@ export function useChallengeBlocks(resolver: Address | undefined) {
   return useQuery({
     queryKey: createKeys.resolverView(resolver ?? "0x", "challengeBlocks"),
     queryFn: () => readChallengeBlocks(getPublicClient(), resolver as Address),
-    enabled: deployed && Boolean(resolver),
+    enabled: deployed() && Boolean(resolver),
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
@@ -99,7 +100,7 @@ export function useFastBlockTime(resolver: Address | undefined) {
   return useQuery({
     queryKey: createKeys.resolverView(resolver ?? "0x", "fastBlockTimeMs"),
     queryFn: () => readFastBlockTime(getPublicClient(), resolver as Address),
-    enabled: deployed && Boolean(resolver),
+    enabled: deployed() && Boolean(resolver),
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
@@ -108,7 +109,7 @@ export function useSpotPrice(option: PriceFeedOption | null) {
   return useQuery({
     queryKey: createKeys.spot(option?.key ?? "none"),
     queryFn: () => readSpotPrice(getPublicClient(), appDeployment, option as PriceFeedOption),
-    enabled: deployed && option !== null,
+    enabled: deployed() && option !== null,
     refetchInterval: 30_000,
   });
 }
@@ -122,7 +123,7 @@ export function usePreview(resolver: Address | undefined, params: Hex | null) {
   const query = useQuery({
     queryKey: createKeys.preview(resolver ?? "0x", settled ?? "0x"),
     queryFn: () => previewMarket(getPublicClient(), resolver as Address, settled as Hex),
-    enabled: deployed && Boolean(resolver) && settled !== null,
+    enabled: deployed() && Boolean(resolver) && settled !== null,
     staleTime: 10_000,
   });
   return { ...query, settling: params !== settled };
@@ -139,7 +140,7 @@ export function useExistingMarket(
   const query = useQuery({
     queryKey: createKeys.marketOf(key ?? "0x"),
     queryFn: () => readMarketOf(getPublicClient(), factory as Address, key as Hex),
-    enabled: deployed && Boolean(factory) && key !== null,
+    enabled: deployed() && Boolean(factory) && key !== null,
     staleTime: 10_000,
   });
   return { ...query, key };

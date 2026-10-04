@@ -209,14 +209,19 @@ describe("with no contracts deployed", () => {
     const header = within(screen.getByRole("banner"));
     expect(header.getByRole("link", { name: "Hunch Book on testnet, home" }).getAttribute("href")).toBe("/");
     const nav = within(header.getByRole("navigation", { name: "Main" }));
+    // Hedge (the trader's weekly job) and Status (is it solvent now?) sit in the bar; the swipe feed is
+    // for phones, so only the mobile menu lists it.
     expect(nav.getAllByRole("link").map((a) => a.textContent)).toEqual([
       "Markets",
       "Create",
+      "Hedge",
       "Portfolio",
       "Proof",
       "Tape",
+      "Status",
       "Docs↗",
     ]);
+    expect(nav.queryByRole("link", { name: "Feed" })).toBeNull();
     expect(nav.getByRole("link", { name: "Markets" }).getAttribute("aria-current")).toBe("page");
     expect(nav.getByRole("link", { name: "Create" }).getAttribute("href")).toBe("/create");
     expect(nav.getByRole("link", { name: "Docs" }).getAttribute("href")).toMatch(/docs\/PROTOCOL\.md$/);
@@ -247,6 +252,11 @@ describe("with no contracts deployed", () => {
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     const sheet = within(dialog);
     expect(sheet.getByRole("link", { name: "Markets" }).getAttribute("aria-current")).toBe("page");
+    expect(
+      Array.from(sheet.getByRole("navigation", { name: "Main" }).querySelectorAll("a"), (a) =>
+        a.textContent?.replace(/[→↗]/g, ""),
+      ),
+    ).toEqual(["Markets", "Feed", "Create", "Hedge", "Portfolio", "Proof", "Tape", "Status", "Docs"]);
     expect(sheet.getByText("Monad testnet: not deployed yet")).toBeTruthy();
     // Focus starts inside the sheet, and Tab from the last item wraps to the first.
     const close = sheet.getByRole("button", { name: "Close" });

@@ -1,6 +1,7 @@
-import { BPS, Outcome, Phase, templateLabel } from "@hunch-book/shared";
+import { BPS, Outcome, Phase } from "@hunch-book/shared";
 import { formatChance, formatUsdc } from "../format";
 import { chanceDisplay, marketChance } from "../market/logic";
+import { templateLabel } from "../market/params";
 import type { MarketView } from "../market/types";
 
 // What a market's share card (app/m/[address]/opengraph-image.tsx) says, as plain data, so the words and

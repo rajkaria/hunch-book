@@ -8,6 +8,7 @@ import { appNetworkLabel } from "@/lib/config";
 import { formatChance, formatInt, formatUsdc } from "@/lib/format";
 import { useMarkets, useNow } from "@/lib/hooks";
 import type { MarketView } from "@/lib/market/types";
+import { useFriendlyQuestions } from "@/lib/market/useQuestion";
 import { type Fill, tapeStats } from "@/lib/tape/fills";
 import { booksOf, TAPE_POLL_MS, type TapeData, useTape } from "@/lib/tape/hooks";
 import { useTxTimings } from "@/lib/wallet/txTiming";
@@ -82,10 +83,12 @@ export function TapeView({ market }: { market?: Address }) {
   const timings = useTxTimings();
   const user = useConnection().address;
   const focus = market ? list?.find((m) => m.address.toLowerCase() === market.toLowerCase()) : undefined;
-
-  if (markets.data?.status === "not-deployed") return null;
   const data = tape.data?.data;
   const fills = data?.fills ?? [];
+  // Perpl markets' questions name block numbers; the tape shows them as estimated times.
+  const friendly = useFriendlyQuestions(fills.map((f) => f.question));
+
+  if (markets.data?.status === "not-deployed") return null;
 
   return (
     <Panel
@@ -131,7 +134,7 @@ export function TapeView({ market }: { market?: Address }) {
             </p>
           ) : (
             <FillTable
-              fills={fills}
+              fills={fills.map((f) => ({ ...f, question: friendly(f.question) }))}
               now={now}
               user={user}
               timings={timings}

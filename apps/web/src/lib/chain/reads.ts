@@ -20,7 +20,8 @@ import {
 } from "viem";
 import { usdcOf } from "../config";
 import { parseBestBidAsk } from "../market/logic";
-import { decodeMarketParams, fallbackHeadline } from "../market/params";
+import { decodeMarketParams } from "../market/params";
+import { marketTitle, type TitleClock } from "../market/title";
 import type { MarketView, PortfolioEntry, ReadResult } from "../market/types";
 import { MULTICALL3, type ReadClient } from "./client";
 import { kuruOrderBookAbi } from "./kuru";
@@ -385,9 +386,42 @@ export async function measureMsPerBlock(
   return ms > 0 ? ms : null;
 }
 
+/** Resolves to `fallback` if `work` has not settled after `ms`, or if it throws. */
+async function within<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } catch {
+    return fallback;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
- * A market's headline for page metadata: the resolver's sentence, else one built from its params.
- * Gives up after `timeoutMs` so a slow RPC never holds the page.
+ * The chain clock a title needs to read block numbers as times: the head and the measured pace (the
+ * chain's nominal block time if it cannot be measured). Null if the head cannot be read.
+ */
+export async function readTitleClock(
+  client: ReadClient,
+  nominalMsPerBlock = 400,
+): Promise<TitleClock | null> {
+  try {
+    const head = await readChainHead(client);
+    const ms = await measureMsPerBlock(client, head.blockNumber).catch(() => null);
+    return { blockNumber: head.blockNumber, timestamp: head.timestamp, msPerBlock: ms ?? nominalMsPerBlock };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A market's title (lib/market/title.ts) for page metadata and share cards. Perpl markets get a chain
+ * clock read too, so their titles name estimated times rather than block numbers; if that read is slow,
+ * the title names the blocks. Gives up after `timeoutMs` so a slow RPC never holds the page.
  */
 export async function readMarketHeadline(
   client: ReadClient,
@@ -395,22 +429,15 @@ export async function readMarketHeadline(
   address: Address,
   timeoutMs = 2_500,
 ): Promise<string | null> {
-  const work = (async () => {
-    const result = await readMarket(client, deployment, address);
-    if (result.status !== "ok") return null;
-    return result.data.description ?? fallbackHeadline(deployment, result.data.decoded);
-  })();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), timeoutMs);
-  });
-  try {
-    return await Promise.race([work, timeout]);
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const started = Date.now();
+  // Started alongside the market read so a slow RPC does not pay for both in turn; it never throws.
+  const clockRead = readTitleClock(client);
+  const result = await within(readMarket(client, deployment, address), timeoutMs, null);
+  if (result?.status !== "ok") return null;
+  const m = result.data;
+  const left = Math.max(0, timeoutMs - (Date.now() - started));
+  const clock = m.window.blockClock ? await within(clockRead, left, null) : null;
+  return marketTitle(m, deployment, clock);
 }
 
 /** Spenders and tokens for one market's wallet reads. Any spender may be missing (not deployed). */

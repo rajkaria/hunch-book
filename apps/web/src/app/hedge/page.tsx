@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { HedgeView } from "@/components/hedge/HedgeView";
+import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge, InlineHelp } from "@/components/ui";
-import { appNetworkLabel, REPO_URL } from "@/lib/config";
+import { REPO_URL } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: "Hedge funding",
@@ -14,7 +15,7 @@ export default function HedgePage() {
   return (
     <div className="page">
       <PageHeader
-        eyebrow={appNetworkLabel}
+        eyebrow={<ActiveNetworkLabel />}
         title="Hedge your funding"
         aside={<Badge tone="warn">building</Badge>}
       >
