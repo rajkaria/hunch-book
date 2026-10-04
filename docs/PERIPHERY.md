@@ -1,9 +1,20 @@
 # Hunch Book periphery contracts
 
-Status: **building**. The code and its tests are in [`contracts/src/periphery/`](../contracts/src/periphery/)
-and [`contracts/test/periphery/`](../contracts/test/periphery/). Nothing on this page is deployed yet. Once
-a network has them, their addresses appear under `hunchBook.periphery` in
+Status: **live on Monad testnet** since 2026-10-04 (deployed with
+[`DeployPeriphery.s.sol`](../contracts/script/DeployPeriphery.s.sol), source verified on Sourcify); mainnet is planned.
+The code and its tests are in [`contracts/src/periphery/`](../contracts/src/periphery/) and
+[`contracts/test/periphery/`](../contracts/test/periphery/). Addresses are under `hunchBook.periphery` in
 [`deployments/<network>.json`](../deployments), the only address source every reader uses.
+
+| Contract | Monad testnet |
+|---|---|
+| AutoRedeemer | [`0x26EF…A534`](https://testnet.monadscan.com/address/0x26EFB3D0d50DCBB97FBb369471fcc59a2677A534) |
+| ConditionalOrders | [`0xDf73…7eB6`](https://testnet.monadscan.com/address/0xDf733F2AD02Fcd3eA1a02d319D720c94d67c7eB6) |
+| ReferralRegistry | [`0x0637…8569`](https://testnet.monadscan.com/address/0x063713eb539f2c9458d4836341ce3a74CF948569) |
+| MerkleDistributor | [`0x1872…c2D9`](https://testnet.monadscan.com/address/0x1872C4AaD2941410F81778467864e113b74Cc2D9) |
+| ImpliedProbabilityOracle | [`0xEc0f…9134`](https://testnet.monadscan.com/address/0xEc0fCfD5ee0fC6Dd8938B72810697f7BbfdA9134) |
+| OutcomeTokenPriceAdapterFactory | [`0x3484…508B`](https://testnet.monadscan.com/address/0x348476c0602C3BEfd1064d54636DD791240B508B) |
+| TemplateTimelock (deployed; not yet the factory guardian) | [`0xCe85…290b`](https://testnet.monadscan.com/address/0xCe858DF2C95851275ed97e9Ba764b22d6394290b) |
 
 The periphery adds features around the core without changing it. Every periphery contract talks to the
 core only through the public functions anyone can call (or, for the timelock, the guardian functions the
