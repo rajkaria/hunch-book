@@ -10,7 +10,7 @@ import {
   issueFor,
   type PerplDraft,
 } from "@/lib/create/build";
-import { blockAt, fromLocalInput, timeAt, uncertaintySeconds } from "@/lib/create/clock";
+import { blockAt, fromLocalInput, timeAt, toLocalInput, uncertaintySeconds } from "@/lib/create/clock";
 import { useChallengeBlocks, useCreateClock, usePerpContext } from "@/lib/create/hooks";
 import {
   type FundingRule,
@@ -26,6 +26,7 @@ import {
   snapWindow,
   suggestThreshold,
 } from "@/lib/create/perpl";
+import type { CreatePrefill } from "@/lib/create/prefill";
 import { toInputString } from "@/lib/create/units";
 import { formatInt } from "@/lib/format";
 import { Button, Field, fieldA11y, Input, Notice, Panel, SegmentedControl, Skeleton } from "../ui";
@@ -53,14 +54,22 @@ export function PerplForm({
   rule,
   resolver,
   onResult,
+  prefill,
 }: {
   now: number;
   rule: FundingRule;
   resolver: Address;
   onResult: (r: FormResult) => void;
+  /** Values from a link (lib/create/prefill.ts), for example the hedge assistant's. */
+  prefill?: CreatePrefill;
 }) {
-  const [draft, setDraft] = useState<PerplDraft>(() => defaultPerplDraft(now, DEFAULT_ASSET));
-  const [thresholdTouched, setThresholdTouched] = useState(false);
+  const [draft, setDraft] = useState<PerplDraft>(() => ({
+    ...defaultPerplDraft(now, prefill?.asset ?? DEFAULT_ASSET),
+    ...(prefill?.start !== undefined ? { start: toLocalInput(prefill.start) } : {}),
+    ...(prefill?.end !== undefined ? { end: toLocalInput(prefill.end) } : {}),
+    ...(prefill?.threshold !== undefined ? { threshold: prefill.threshold } : {}),
+  }));
+  const [thresholdTouched, setThresholdTouched] = useState(prefill?.threshold !== undefined);
   const set = (patch: Partial<PerplDraft>) => setDraft((d) => ({ ...d, ...patch }));
   const spike = rule === "spike";
 
