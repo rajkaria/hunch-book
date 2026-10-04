@@ -89,11 +89,15 @@ describe("with no contracts deployed", () => {
   it("/ is the landing page, and says plainly that nothing is deployed", async () => {
     await renderWithProviders(await Home());
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
-      "Prediction markets that start as pools and graduate to an onchain order book.",
+      "Start as a pool. Graduate to a book. Settle from the chain.",
     );
     expect(screen.getByText("Monad testnet: not deployed yet")).toBeTruthy();
     expect(screen.getByText("The contracts are not deployed on Monad testnet yet.")).toBeTruthy();
-    expect(screen.getAllByRole("link", { name: "Open markets" })[0]?.getAttribute("href")).toBe("/markets");
+    expect(screen.getByText("Contracts are not deployed on Monad testnet yet.")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: "Browse markets" })[0]?.getAttribute("href")).toBe("/markets");
+    // With nothing deployed, no stage claims to be live.
+    expect(screen.getAllByText("Building")).toHaveLength(3);
+    expect(screen.queryByText(/^Live on/)).toBeNull();
   });
 
   it("/markets explains what will appear", async () => {
@@ -127,23 +131,85 @@ describe("with no contracts deployed", () => {
     expect(screen.getByText("Keeper (ours)")).toBeTruthy();
   });
 
-  it("the header offers a wallet and the footer says the factory is not deployed", async () => {
+  it("the header offers a wallet and the main links, and the footer says the factory is not deployed", async () => {
     await renderWithProviders(
       <>
         <Header />
         <Footer />
       </>,
     );
-    expect(screen.getByRole("button", { name: "Connect wallet" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Markets" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByText("Status: building")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Connect wallet" }));
+    const header = within(screen.getByRole("banner"));
+    expect(header.getByRole("link", { name: "Hunch Book on testnet, home" }).getAttribute("href")).toBe("/");
+    const nav = within(header.getByRole("navigation", { name: "Main" }));
+    expect(nav.getAllByRole("link").map((a) => a.textContent)).toEqual([
+      "Markets",
+      "Create",
+      "Portfolio",
+      "Proof",
+      "Docs↗",
+    ]);
+    expect(nav.getByRole("link", { name: "Markets" }).getAttribute("aria-current")).toBe("page");
+    expect(nav.getByRole("link", { name: "Create" }).getAttribute("href")).toBe("/create");
+    expect(nav.getByRole("link", { name: "Docs" }).getAttribute("href")).toMatch(/docs\/PROTOCOL\.md$/);
+    expect(nav.getByRole("link", { name: "Docs" }).getAttribute("target")).toBe("_blank");
+
+    const footer = within(screen.getByRole("contentinfo"));
+    expect(footer.getByText("Factory: not deployed yet")).toBeTruthy();
+    expect(footer.getByText("Monad testnet: live")).toBeTruthy();
+    expect(footer.getByText("Monad mainnet: planned")).toBeTruthy();
+    expect(
+      footer.getByText("Built on Monad, trades on Kuru, settles from Perpl and Chainlink."),
+    ).toBeTruthy();
+    expect(footer.getByRole("link", { name: "MIT licensed" }).getAttribute("href")).toMatch(/LICENSE$/);
+
+    fireEvent.click(header.getByRole("button", { name: "Connect wallet" }));
     expect(screen.getByText("Browser wallets")).toBeTruthy();
+  });
+
+  it("the mobile menu opens a sheet that keeps focus inside and closes on Escape", async () => {
+    await renderWithProviders(<Header />);
+    const menu = screen.getByRole("button", { name: "Menu" });
+    expect(menu.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(menu);
+    const dialog = screen.getByRole("dialog", { name: "Menu" });
+    expect(menu.getAttribute("aria-expanded")).toBe("true");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    const sheet = within(dialog);
+    expect(sheet.getByRole("link", { name: "Markets" }).getAttribute("aria-current")).toBe("page");
+    expect(sheet.getByText("Monad testnet: not deployed yet")).toBeTruthy();
+    // Focus starts inside the sheet, and Tab from the last item wraps to the first.
+    const close = sheet.getByRole("button", { name: "Close" });
+    expect(document.activeElement).toBe(close);
+    const items = dialog.querySelectorAll<HTMLElement>("a[href], button");
+    const last = items[items.length - 1] as HTMLElement;
+    last.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    expect(document.body.style.overflow).toBe("hidden");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(menu);
+    expect(document.body.style.overflow).toBe("");
+
+    // The close button and a tap outside close it too.
+    fireEvent.click(menu);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(menu);
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("the 404 and error boundaries speak plainly", async () => {
     await renderWithProviders(<NotFound />);
-    expect(screen.getByRole("heading", { name: "This page does not exist" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "This page does not exist" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Browse markets" }).getAttribute("href")).toBe("/markets");
+    expect(screen.getByRole("link", { name: "Go home" }).getAttribute("href")).toBe("/");
     const retry = vi.fn();
     await renderWithProviders(
       <ErrorPage error={Object.assign(new Error("boom"), { digest: "abc" })} retry={retry} />,
@@ -283,5 +349,16 @@ describe("with contracts deployed", () => {
   it("the footer links the factory once deployed", async () => {
     await renderWithProviders(<Footer />);
     expect(screen.getByTitle(FACTORY)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /^Factory/ }).getAttribute("href")).toMatch(
+      new RegExp(`${FACTORY}$`),
+    );
+  });
+
+  it("/ says when live figures cannot be read, and the menu says the contracts are live", async () => {
+    await renderWithProviders(await Home());
+    expect(screen.getByText("Could not reach Monad testnet just now.")).toBeTruthy();
+    await renderWithProviders(<Header />);
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    expect(within(screen.getByRole("dialog")).getByText("Monad testnet: live")).toBeTruthy();
   });
 });
