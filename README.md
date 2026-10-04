@@ -45,7 +45,7 @@ Markets whose pool never reaches the graduation rule stay pools and settle as po
 | 4 | Will any single Perpl funding event in a window charge more than X? | A pointer to that funding event | live on testnet |
 | 5 | Will an asset be inside a range at time T? | The bracketing Chainlink round | live on testnet |
 | 6 | Will all of 2 to 5 markets settle YES (a parlay)? | The legs' own outcomes | live on testnet |
-| 7 | Will Perpl open interest or mark price be above K at time T? | A snapshot of Perpl's state taken right after close | live on testnet |
+| 7 | Will Perpl open interest or mark price be above K at time T? | A snapshot of Perpl's state taken right after close | live on testnet ([first settlement](https://testnet.monadscan.com/tx/0x8853ced228ce7d6445580bb843da11dfa431c98d57a2a9e7a382e2a4299923a5), 13 seconds after close) |
 
 Every rule, edge case and source is in [docs/TEMPLATES.md](./docs/TEMPLATES.md).
 
@@ -56,7 +56,7 @@ All on Monad testnet. Activity by our own wallets (the deployer, the keeper, the
 | Piece | Status | Proof |
 |---|---|---|
 | Core contracts | live on testnet | [factory](https://testnet.monadscan.com/address/0x2c30da53F8C384D6eD6603E3138a98fd15E4928A), [vault](https://testnet.monadscan.com/address/0x81b04B3567dcaDaE6a859394248C47ddc403ba37), [router](https://testnet.monadscan.com/address/0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6), [graduator](https://testnet.monadscan.com/address/0x7DC80DB34762A996aae6Ce516F562B2e6142fFE3); every address and deploy transaction in [deployments/monad-testnet.json](./deployments/monad-testnet.json); source verified on Sourcify |
-| Templates 1 to 7 | live on testnet | resolver addresses in [docs/TEMPLATES.md](./docs/TEMPLATES.md), each registered on the factory |
+| Templates 1 to 7 | live on testnet | resolver addresses in [docs/TEMPLATES.md](./docs/TEMPLATES.md), each registered on the factory; a snapshot market (template 7) was [settled by the keeper](https://testnet.monadscan.com/tx/0x8853ced228ce7d6445580bb843da11dfa431c98d57a2a9e7a382e2a4299923a5) 13 seconds after it closed; demo markets in [docs/FACTS.md](./docs/FACTS.md#demo-markets-ours) |
 | Periphery (auto-redeem, orders, referrals, payouts, oracle, price adapter, timelock) | live on testnet | addresses in [docs/PERIPHERY.md](./docs/PERIPHERY.md) |
 | Graduation into a Kuru book | live on testnet | market #1 [graduated](https://testnet.monadscan.com/tx/0xbc9524391134b6a3cba94f33daba323075ff0db030a8d51563d89ee94fcf8d01) into Kuru book [0xdFd0…104a](https://testnet.monadscan.com/address/0xdFd060ac7d3b129261EaB2E3DDd6F76A877D104a). Its pool was filled by our own wallets to meet the rule. |
 | Trading YES and NO through the router | live on testnet | on market #1: [buy YES](https://testnet.monadscan.com/tx/0x64e40cdb81d82301412c84b15586791a59fe21dd291503877054ce0977846ced), [sell YES](https://testnet.monadscan.com/tx/0xd812065e5e64bf2faf44d7111219a56cc0cbcb95f2f03fee6a30da83d3b2cb69), [buy NO](https://testnet.monadscan.com/tx/0xa23645f27ee8cc3bf51ccd6f65bbb545824e3555a4bec957b45be2870cb9ecab), [sell NO](https://testnet.monadscan.com/tx/0xafbee312a270e29d2218bf89890f0d8bc55658e1a9df07b4713113e30b14c72d), all from our own wallet |

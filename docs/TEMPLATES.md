@@ -18,7 +18,7 @@ of truth; every section links to it.
 | 4 | Perpl funding spike | [`PerplFundingSpikeResolver`](../contracts/src/resolvers/PerplFundingSpikeResolver.sol) | blocks | yes | funding event block (YES), empty (NO) | live on testnet ([address](https://testnet.monadscan.com/address/0x3459d8026DD8E7B0f3BE2B1aF21050013b9bCA64)) |
 | 5 | Price range | [`PriceRangeResolver`](../contracts/src/resolvers/PriceRangeResolver.sol) | unix time | no | Chainlink round id, or Pyth update | live on testnet ([address](https://testnet.monadscan.com/address/0xBA86Bcf0915c7E79C7D8a7e170CA76F1d82f8694)) |
 | 6 | Parlay | [`MarketOutcomeResolver`](../contracts/src/resolvers/MarketOutcomeResolver.sol) | unix time | no | empty | live on testnet ([address](https://testnet.monadscan.com/address/0x1a57bafE8161763c51248af40567FCFf266F9168)) |
-| 7 | Snapshot | [`SnapshotResolver`](../contracts/src/resolvers/SnapshotResolver.sol) | unix time | no | empty | live on testnet ([address](https://testnet.monadscan.com/address/0x1E62C389D7c035acfDD971C7E6b7157C1D34D632)) |
+| 7 | Snapshot | [`SnapshotResolver`](../contracts/src/resolvers/SnapshotResolver.sol) | unix time | no | empty | live on testnet ([address](https://testnet.monadscan.com/address/0x1E62C389D7c035acfDD971C7E6b7157C1D34D632)); [first settlement](https://testnet.monadscan.com/tx/0x8853ced228ce7d6445580bb843da11dfa431c98d57a2a9e7a382e2a4299923a5) |
 
 Every resolver address is in [`deployments/<network>.json`](../deployments) under `hunchBook.resolvers`.
 Templates 3 to 6 are deployed and registered with

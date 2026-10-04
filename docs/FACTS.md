@@ -30,6 +30,18 @@ change. This page holds the numbers that do not change, and dated snapshots of t
 | Kuru book | [0xdFd0…104a](https://testnet.monadscan.com/address/0xdFd060ac7d3b129261EaB2E3DDd6F76A877D104a) | `market.book()` |
 | Router trades | 4, one per path, from our own wallet | the four transactions linked in the README |
 
+## Demo markets (ours)
+
+Opened by our own wallets to show each template working. They count as ours wherever activity is counted.
+
+| Market | Template | Opened by | Creation | Result so far |
+|---|---|---|---|---|
+| [0x63Be…D71e](https://testnet.monadscan.com/address/0x63Be009161a92470a9A2C311671F629d9D11D71e) | 7, Perpl MON mark price at or above $0.03352 at 15:06 UTC on 2026-10-04 | deployer, `DemoMarkets.s.sol` | [tx](https://testnet.monadscan.com/tx/0xfbbd2cb1545dbe929da7f9e51a00ef32bfa06dbaa1925f69c2e3e900a152c5ed) | settled NO ($0.03305) by the keeper's snapshot, [13 seconds after close](https://testnet.monadscan.com/tx/0x8853ced228ce7d6445580bb843da11dfa431c98d57a2a9e7a382e2a4299923a5) |
+| [0xD45e…1000](https://testnet.monadscan.com/address/0xD45e536b84169983B908aF3259c10992Dd8A1000) | 3, Chainlink BTC/USD reaches $86,000 by 2026-10-07 13:06 UTC | deployer, `DemoMarkets.s.sol` | [tx](https://testnet.monadscan.com/tx/0x3b67872c992af0bc3b409d8f53b5f2161012e4ee929eae7a2960e64933337560) | open |
+| [0xc723…114a](https://testnet.monadscan.com/address/0xc72315b8C01702Da99b3d60E39EfA587BC6d114a) | 6, parlay of the touch market and the weekly BTC funding market | deployer, `DemoMarkets.s.sol` | [tx](https://testnet.monadscan.com/tx/0xe8a1da313b69a1081d87912a7e343a8a73d0952c467fbe165c20735792922240) | open |
+| [0x2D17…BF74](https://testnet.monadscan.com/address/0x2D1768F57a2eE76bFD23140EdFeBE29F6b91BF74) | 4, any single MON funding event spikes in the next day | keeper, recurring series | [tx](https://testnet.monadscan.com/tx/0x8143b82a2ab7a81a2d3b840c91076006057192ed96298ab40403424996771462) | open |
+| [0x9c50…4CF5](https://testnet.monadscan.com/address/0x9c509488821B90B09139419C925f681AA2D14CF5) | 1, BTC funding this week above the trailing median | keeper, recurring series | [tx](https://testnet.monadscan.com/tx/0x6f9ce824fbf4a8fac6db415316816cdcf2effd632b69fe4a11a968de918f322d) | open |
+
 ## Protocol parameters (v0)
 
 From [PROTOCOL.md §12](./PROTOCOL.md#12-parameters-v0) and the deploy script; the same on every network.
