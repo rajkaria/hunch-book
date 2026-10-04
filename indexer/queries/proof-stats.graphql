@@ -1,0 +1,92 @@
+# The proof page: protocol totals and the last $days days. $chainId is the chain id as a string
+# ("10143" on Monad testnet, "143" on mainnet). Every count that includes our own wallets has an
+# "ours" or "our maker" figure next to it, so the page can show both.
+query ProofStats($chainId: String!, $days: Int = 30) {
+  ProtocolStats_by_pk(id: $chainId) {
+    chainId
+    marketsCreated
+    marketsPool
+    marketsGraduated
+    marketsSettled
+    marketsVoided
+    marketsGraduatedTotal
+    wallets
+    ourWallets
+    externalWallets
+    stakerWallets
+    traderWallets
+    stakeCount
+    stakedUsdc
+    stakeCountOurs
+    stakedUsdcOurs
+    fillCount
+    fillCountOurMaker
+    fillCountOurTrader
+    fillCountBetweenOthers
+    volume
+    volumeOurMaker
+    volumeBetweenOthers
+    ourMakerShareBps
+    ourMakerVolumeShareBps
+    routerTradeCount
+    routerVolume
+    orderCount
+    orderCountOurMaker
+    settlementsTimed
+    avgSettlementLatencySeconds
+    settlementsBlockClock
+    avgSettlementLatencyBlocks
+    earlySettlements
+    redemptionCount
+    redeemedUsdc
+    redemptionFees
+    marketsRedeemed
+    avgSecondsToFirstRedemption
+    poolPaidOut
+    poolFees
+    setsMinted
+    setsMerged
+    flashLoanCount
+    protocolFeesAccrued
+    creatorFeesAccrued
+    vaultPool
+    vaultSets
+    vaultFeesOwed
+    vaultObligations
+    vaultUsdcIn
+    vaultUsdcOut
+    vaultUsdcBalance
+    solvencyMargin
+    updatedAt
+    updatedAtBlock
+  }
+  DailyStats(order_by: { date: desc }, limit: $days) {
+    date
+    dayStart
+    marketsCreated
+    marketsGraduated
+    marketsSettled
+    marketsVoided
+    stakeCount
+    stakedUsdc
+    fillCount
+    fillCountOurMaker
+    fillCountBetweenOthers
+    volume
+    volumeOurMaker
+    routerTradeCount
+    routerVolume
+    redemptionCount
+    redeemedUsdc
+    activeWallets
+    activeOurWallets
+    newWallets
+    vaultUsdcIn
+    vaultUsdcOut
+  }
+  Market(where: { solvencyMargin: { _lt: "0" } }) {
+    id
+    number
+    solvencyMargin
+  }
+}

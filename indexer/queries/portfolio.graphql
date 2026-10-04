@@ -1,0 +1,89 @@
+# A wallet's portfolio: positions in every market (token balances, stakes, claims, payouts and USDC
+# flows), unclaimed stakes, and redemptions. $wallet is the address in lowercase.
+# Tokens still claimable after graduation: Staker rows with tokensClaimed false in graduated markets.
+query Portfolio($wallet: String!) {
+  Wallet_by_pk(id: $wallet) {
+    id
+    ourRole
+    isOurs
+    participant
+    firstActiveAt
+    stakeCount
+    stakedUsdc
+    fillCount
+    fillVolume
+    routerTradeCount
+    routerVolume
+    marketsCreated
+    redemptionCount
+    redeemedUsdc
+  }
+  Position(where: { wallet_id: { _eq: $wallet } }, order_by: { updatedAt: desc }) {
+    id
+    yesBalance
+    noBalance
+    yesStaked
+    noStaked
+    yesClaimed
+    noClaimed
+    poolPaid
+    poolFee
+    redeemedYes
+    redeemedNo
+    redeemedUsdc
+    redemptionFees
+    setsMinted
+    setsMerged
+    usdcSpent
+    usdcReceived
+    updatedAt
+    market {
+      id
+      number
+      question
+      stage
+      outcome
+      graduated
+      blockClock
+      closeAt
+      yesToken
+      noToken
+      lastPriceE6
+      impliedChanceBps
+      redeemFeeYesE6
+      redeemFeeNoE6
+      book {
+        id
+      }
+    }
+  }
+  Staker(where: { wallet_id: { _eq: $wallet } }) {
+    id
+    yesStake
+    noStake
+    tokensClaimed
+    yesClaimed
+    noClaimed
+    poolClaimed
+    poolPaid
+    market {
+      id
+      stage
+      graduated
+    }
+  }
+  Redemption(where: { wallet_id: { _eq: $wallet } }, order_by: { timestamp: desc }) {
+    id
+    side
+    amount
+    paid
+    fee
+    voided
+    timestamp
+    tx
+    market {
+      id
+      number
+    }
+  }
+}

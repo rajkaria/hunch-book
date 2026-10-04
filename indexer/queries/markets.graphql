@@ -1,0 +1,42 @@
+# Markets list for the app's markets page, newest first.
+# Filter with $where, for example { stage: { _eq: "Pool" } } or { asset: { _eq: "MON" } }.
+# BigInt fields come back as strings. Lock and close are block numbers when blockClock is true,
+# unix seconds otherwise; the Pool-or-locked and Trading-or-closed split is derived from the clock.
+query Markets($where: Market_bool_exp = {}, $limit: Int = 50, $offset: Int = 0) {
+  Market(where: $where, order_by: { number: desc }, limit: $limit, offset: $offset) {
+    id
+    number
+    templateId
+    question
+    asset
+    stage
+    blockClock
+    lockAt
+    closeAt
+    settleDeadline
+    yesTotal
+    noTotal
+    poolTotal
+    impliedChanceBps
+    stakerCount
+    graduated
+    openingPriceE6
+    lastPriceE6
+    lastFillAt
+    volume
+    fillCount
+    outcome
+    settledAt
+    voidedAt
+    createdAt
+    creatorIsOurs
+    creator {
+      id
+      isOurs
+    }
+    book {
+      id
+      source
+    }
+  }
+}
