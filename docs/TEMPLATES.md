@@ -14,15 +14,16 @@ of truth; every section links to it.
 |---|---|---|---|---|---|---|
 | 1 | Perpl net funding | [`PerplFundingResolver`](../contracts/src/resolvers/PerplFundingResolver.sol) | blocks | no | empty | live on testnet ([address](https://testnet.monadscan.com/address/0x4ec0077e30EA8B626C5AA087C586E60542150951)) |
 | 2 | Price at a time | [`PriceAtTimeResolver`](../contracts/src/resolvers/PriceAtTimeResolver.sol) | unix time | no | Chainlink round id, or Pyth update | live on testnet ([address](https://testnet.monadscan.com/address/0x5582e5Aeb12e15EAda88402E2903Bc628Cc28B3C)) |
-| 3 | Price touch | [`ChainlinkTouchResolver`](../contracts/src/resolvers/ChainlinkTouchResolver.sol) | unix time | yes | Chainlink round id (YES), empty (NO) | building |
-| 4 | Perpl funding spike | [`PerplFundingSpikeResolver`](../contracts/src/resolvers/PerplFundingSpikeResolver.sol) | blocks | yes | funding event block (YES), empty (NO) | building |
-| 5 | Price range | [`PriceRangeResolver`](../contracts/src/resolvers/PriceRangeResolver.sol) | unix time | no | Chainlink round id, or Pyth update | building |
-| 6 | Parlay | [`MarketOutcomeResolver`](../contracts/src/resolvers/MarketOutcomeResolver.sol) | unix time | no | empty | building |
+| 3 | Price touch | [`ChainlinkTouchResolver`](../contracts/src/resolvers/ChainlinkTouchResolver.sol) | unix time | yes | Chainlink round id (YES), empty (NO) | live on testnet ([address](https://testnet.monadscan.com/address/0x34Ac3F430c8F49735987Efe88634Ef8d9c295727)) |
+| 4 | Perpl funding spike | [`PerplFundingSpikeResolver`](../contracts/src/resolvers/PerplFundingSpikeResolver.sol) | blocks | yes | funding event block (YES), empty (NO) | live on testnet ([address](https://testnet.monadscan.com/address/0x3459d8026DD8E7B0f3BE2B1aF21050013b9bCA64)) |
+| 5 | Price range | [`PriceRangeResolver`](../contracts/src/resolvers/PriceRangeResolver.sol) | unix time | no | Chainlink round id, or Pyth update | live on testnet ([address](https://testnet.monadscan.com/address/0xBA86Bcf0915c7E79C7D8a7e170CA76F1d82f8694)) |
+| 6 | Parlay | [`MarketOutcomeResolver`](../contracts/src/resolvers/MarketOutcomeResolver.sol) | unix time | no | empty | live on testnet ([address](https://testnet.monadscan.com/address/0x1a57bafE8161763c51248af40567FCFf266F9168)) |
 
 Every resolver address is in [`deployments/<network>.json`](../deployments) under `hunchBook.resolvers`.
 Templates 3 to 6 are deployed and registered with
-[`DeployTemplatesV2.s.sol`](../contracts/script/DeployTemplatesV2.s.sol); until that has run on a
-network, they are not available there.
+[`DeployTemplatesV2.s.sol`](../contracts/script/DeployTemplatesV2.s.sol). On Monad testnet that ran on
+2026-10-04 (transactions under `hunchBook.deployTxs`); on a network where it has not run yet, they are
+not available there.
 
 The parameter structs are in [`ITemplates.sol`](../contracts/src/interfaces/ITemplates.sol) (templates
 1 and 2) and [`ITemplatesV2.sol`](../contracts/src/interfaces/ITemplatesV2.sol) (templates 3 to 6).
