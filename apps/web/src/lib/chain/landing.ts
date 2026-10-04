@@ -1,16 +1,56 @@
-import { type Deployment, type GraduationRule, hunchBookFactoryAbi, TemplateId } from "@hunch-book/shared";
-import type { Address } from "viem";
+import {
+  collateralOf,
+  collateralVaultAbi,
+  type Deployment,
+  type GraduationRule,
+  hunchBookFactoryAbi,
+  Phase,
+  TemplateId,
+} from "@hunch-book/shared";
+import { type Address, erc20Abi } from "viem";
 import type { MarketView } from "../market/types";
-import type { ReadClient } from "./client";
-import { measureMsPerBlock, readChainHead, readMarketViews } from "./reads";
+import { MULTICALL3, type ReadClient } from "./client";
+import { listMarkets, MARKET_LIST_LIMIT, measureMsPerBlock, readChainHead } from "./reads";
 
 // What the landing page shows from the chain. Every field is either read now or absent:
 // a failed read hides that line, it never falls back to a made-up number.
+
+export interface VaultBooks {
+  /** USDC the vault holds, in base units. */
+  balance: bigint;
+  /** USDC the vault owes: every pool, every complete set and unpaid fees. Balance never drops below it. */
+  obligations: bigint;
+}
+
+/** Counts over the markets the page read (the newest MARKET_LIST_LIMIT). */
+export interface LandingStats {
+  /** How many markets the counts cover. Equal to marketCount unless there are more than the limit. */
+  listed: number;
+  /** Markets that graduated into their own Kuru book. */
+  graduated: number;
+  /** Of those, how many were created by Hunch Book's own wallets. */
+  graduatedByUs: number;
+  /** Markets created by Hunch Book's own wallets. */
+  createdByUs: number;
+  /** Markets open right now: pools taking stakes plus books trading. */
+  open: number;
+  /** Markets settled with an answer from their resolver. */
+  settled: number;
+}
 
 export interface LandingSnapshot {
   marketCount: number;
   /** The newest market from the factory, or null when there are none. */
   newest: MarketView | null;
+  /** The market the hero shows: a live book first, then the biggest open pool (see pickFeatured). */
+  featured: MarketView | null;
+  /** Counts over the listed markets, or null if the list could not be read. */
+  stats: LandingStats | null;
+  /**
+   * The vault's books, read in one call so both numbers come from the same block: the USDC it holds
+   * (USDC.balanceOf(vault)) and what it owes (vault.totalObligations: pools, sets and fees).
+   */
+  vault: VaultBooks | null;
   /** The graduation rule new Perpl funding markets get, from factory.templateOf. */
   rule: GraduationRule | null;
   /** Average block time over the last 10,000 blocks, in milliseconds. */
@@ -40,9 +80,77 @@ export function isSeededByUs(deployment: Deployment, creator: Address): boolean 
   return ourAddresses(deployment).some((a) => a.toLowerCase() === c);
 }
 
+/** Lower comes first: a live book, then a pool taking stakes, then markets waiting to settle, then done. */
+const PHASE_RANK: Record<Phase, number> = {
+  [Phase.Graduated]: 0,
+  [Phase.Pool]: 1,
+  [Phase.Closed]: 2,
+  [Phase.PoolLocked]: 3,
+  [Phase.Settled]: 4,
+  [Phase.Voided]: 5,
+};
+
+/**
+ * The market to put in the hero: the most active one by a simple, stated rule. A market trading on
+ * its Kuru book beats a pool, a pool beats one waiting to settle, and within a phase the bigger pool
+ * wins (newest first on a tie).
+ */
+export function pickFeatured(markets: readonly MarketView[]): MarketView | null {
+  let best: MarketView | null = null;
+  for (const m of markets) {
+    if (!best) {
+      best = m;
+      continue;
+    }
+    const rank = (PHASE_RANK[m.phase] ?? 9) - (PHASE_RANK[best.phase] ?? 9);
+    if (rank < 0) best = m;
+    else if (rank === 0) {
+      if (m.pool.total > best.pool.total) best = m;
+      else if (m.pool.total === best.pool.total && m.marketId > best.marketId) best = m;
+    }
+  }
+  return best;
+}
+
+/** Counts for the live numbers strip, with our own markets counted apart. */
+export function summarize(deployment: Deployment, markets: readonly MarketView[]): LandingStats {
+  let graduated = 0;
+  let graduatedByUs = 0;
+  let createdByUs = 0;
+  let open = 0;
+  let settledCount = 0;
+  for (const m of markets) {
+    const ours = isSeededByUs(deployment, m.creator);
+    if (ours) createdByUs++;
+    if (m.graduated) {
+      graduated++;
+      if (ours) graduatedByUs++;
+    }
+    if (m.phase === Phase.Pool || m.phase === Phase.Graduated) open++;
+    if (m.phase === Phase.Settled) settledCount++;
+  }
+  return { listed: markets.length, graduated, graduatedByUs, createdByUs, open, settled: settledCount };
+}
+
 const settled = <T>(r: PromiseSettledResult<T>): T | null => (r.status === "fulfilled" ? r.value : null);
 
-/** Reads the landing page's live panel. Never throws. */
+/** The vault's balance and obligations in one eth_call (Multicall3), so they describe the same block. */
+export async function readVaultBooks(client: ReadClient, vault: Address, usdc: Address): Promise<VaultBooks> {
+  const [balance, obligations] = await client.multicall({
+    contracts: [
+      { address: usdc, abi: erc20Abi, functionName: "balanceOf", args: [vault] },
+      { address: vault, abi: collateralVaultAbi, functionName: "totalObligations" },
+    ],
+    allowFailure: true,
+    multicallAddress: MULTICALL3,
+  });
+  if (balance?.status !== "success" || obligations?.status !== "success") {
+    throw new Error("Could not read the vault's books.");
+  }
+  return { balance: balance.result, obligations: obligations.result };
+}
+
+/** Reads the landing page's live data. Never throws. */
 export async function readLandingSnapshot(
   client: ReadClient,
   deployment: Deployment,
@@ -55,17 +163,13 @@ export async function readLandingSnapshot(
     const count = Number(
       await client.readContract({ address: factory, abi: hunchBookFactoryAbi, functionName: "marketCount" }),
     );
-    const [newest, template, pace] = await Promise.allSettled([
+    const vault = deployment.hunchBook.vault;
+    const usdc = collateralOf(deployment);
+    const [list, template, pace, books] = await Promise.allSettled([
       (async () => {
-        if (count === 0) return null;
-        const address = await client.readContract({
-          address: factory,
-          abi: hunchBookFactoryAbi,
-          functionName: "marketAt",
-          args: [BigInt(count - 1)],
-        });
-        const [view] = await readMarketViews(client, [address]);
-        return view ?? null;
+        if (count === 0) return [];
+        const result = await listMarkets(client, deployment, { limit: MARKET_LIST_LIMIT });
+        return result.status === "ok" ? result.data.markets : [];
       })(),
       client.readContract({
         address: factory,
@@ -77,6 +181,7 @@ export async function readLandingSnapshot(
         const head = await readChainHead(client);
         return { block: head.blockNumber, ms: await measureMsPerBlock(client, head.blockNumber) };
       })(),
+      vault && usdc ? readVaultBooks(client, vault, usdc) : Promise.resolve(null),
     ]);
     const tmpl = settled(template);
     const rule: GraduationRule | null =
@@ -88,11 +193,15 @@ export async function readLandingSnapshot(
             maxChanceBps: Number(tmpl.rule.maxChanceBps),
           }
         : null;
+    const markets = settled(list);
     return {
       status: "ok",
       data: {
         marketCount: count,
-        newest: settled(newest),
+        newest: markets?.[0] ?? null,
+        featured: markets ? pickFeatured(markets) : null,
+        stats: markets ? summarize(deployment, markets) : null,
+        vault: settled(books),
         rule,
         msPerBlock: settled(pace)?.ms ?? null,
         block: settled(pace)?.block ?? null,
