@@ -17,6 +17,14 @@ export const NAV_LINKS: readonly NavLink[] = [
   { href: "/tape", label: "Tape", match: ["/tape"] },
 ];
 
+/** Further product pages, listed in the footer. */
+export const MORE_LINKS: readonly NavLink[] = [
+  { href: "/feed", label: "Feed", match: ["/feed"] },
+  { href: "/ladder", label: "Ladders", match: ["/ladder"] },
+  { href: "/parlay", label: "Parlays", match: ["/parlay"] },
+  { href: "/rewards", label: "Rewards", match: ["/rewards"] },
+];
+
 /** The protocol docs on GitHub. */
 export const DOCS_URL = `${REPO_URL}/blob/main/docs/PROTOCOL.md`;
 

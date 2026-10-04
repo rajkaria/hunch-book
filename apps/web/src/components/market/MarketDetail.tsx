@@ -11,6 +11,9 @@ import { phaseLabel, phaseTone } from "@/lib/market/logic";
 import { templateLabel } from "@/lib/market/params";
 import type { ChainClock, MarketView } from "@/lib/market/types";
 import { Countdown, marketHeadline } from "../markets/MarketCard";
+import { OrdersPanel } from "../orders/OrdersPanel";
+import { ReferralBindPrompt } from "../referral/ReferralBindPrompt";
+import { ShareMarket } from "../referral/ShareMarket";
 import { EmptyState, ErrorState, LoadingRows, NotDeployed } from "../states";
 import { MarketTape } from "../tape/MarketTape";
 import { Badge } from "../ui";
@@ -18,6 +21,7 @@ import { ActionsPanel } from "./ActionsPanel";
 import { BookPanel } from "./BookPanel";
 import s from "./market.module.css";
 import { PositionPanel } from "./PositionPanel";
+import { SnapshotPanel } from "./SnapshotPanel";
 import { StakeTicket } from "./StakeTicket";
 import {
   ChancePanel,
@@ -63,6 +67,7 @@ export function MarketBody({
             Created by <span className="mono">{shortAddress(m.creator)}</span>
             {isSeededByUs(appDeployment, m.creator) ? " (ours)" : ""}
           </Link>
+          <ShareMarket m={m} />
         </div>
         <h1 className={s.headline}>{marketHeadline(m)}</h1>
         {m.description === null ? (
@@ -81,13 +86,16 @@ export function MarketBody({
           <GraduationPanel m={m} />
           <TimelinePanel m={m} clock={clock} now={now} />
           <SourcePanel m={m} />
+          {m.decoded.kind === "snapshot" ? <SnapshotPanel m={m} now={now} /> : null}
           <VoidTermsPanel m={m} />
           <ContractsPanel m={m} />
         </div>
         <div className={s.sideCol}>
+          <ReferralBindPrompt />
           <StakeTicket m={m} />
           <PositionPanel m={m} />
           <ActionsPanel m={m} head={clock ? { block: clock.blockNumber, time: clock.timestamp } : null} />
+          <OrdersPanel m={m} />
         </div>
       </div>
     </>
