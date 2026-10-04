@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { appDeployment } from "@/lib/config";
 import { formatChance, formatInt, formatUtc } from "@/lib/format";
 import { useFundingHistory, usePerpMeta } from "@/lib/hedge/hooks";
 import {
@@ -19,9 +20,11 @@ import {
   sizeUnits,
   suggestNewMarket,
   type ThresholdChoice,
+  thresholdText,
   usdPerUnit,
 } from "@/lib/hedge/math";
 import { estimateBlockTime } from "@/lib/market/logic";
+import { perpName } from "@/lib/market/params";
 import type { ChainClock, MarketView } from "@/lib/market/types";
 import { marketHeadline } from "../markets/MarketCard";
 import { ErrorState, LoadingRows } from "../states";
@@ -195,13 +198,19 @@ function NewMarket({
     suggestion.thresholdRaw === 0n
       ? `Will ${meta.symbol} longs pay shorts on net between block ${formatInt(suggestion.startBlock)} and block ${formatInt(suggestion.endBlock)}?`
       : `Will ${meta.symbol} longs pay more than ${formatUsdNumber(threshold)} per ${meta.symbol} between block ${formatInt(suggestion.startBlock)} and block ${formatInt(suggestion.endBlock)}?`;
-  const href = createPrefillUrl({
-    perpId: meta.perpId,
-    startBlock: suggestion.startBlock,
-    endBlock: suggestion.endBlock,
-    thresholdRaw: suggestion.thresholdRaw,
-    side: suggestion.buy,
-  });
+  // The create form takes clock times and snaps them back to Perpl's grid with its own block pace.
+  const at = (block: bigint) =>
+    clock ? estimateBlockTime(block, clock) : Date.now() / 1000 + (Number(block - head) * msPerBlock) / 1000;
+  const asset = perpName(appDeployment, meta.perpId);
+  const href = asset
+    ? createPrefillUrl({
+        asset,
+        startUnix: at(suggestion.startBlock),
+        endUnix: at(suggestion.endBlock),
+        threshold: thresholdText(suggestion.thresholdRaw, meta),
+        side: suggestion.buy,
+      })
+    : "/create?template=1";
   return (
     <Notice tone="accent" title={`No open market covers ${meta.symbol} funding for this position`}>
       <div className={s.controls}>

@@ -29,6 +29,7 @@ import {
   sizePoolHedge,
   sizeUnits,
   suggestNewMarket,
+  thresholdText,
   usdPerUnit,
 } from "../src/lib/hedge/math";
 import { perpIdsFromBanks, readFundingHistory, readPerplPositions } from "../src/lib/hedge/perpl";
@@ -353,10 +354,19 @@ describe("a new market when none fits", () => {
     ).toBe(0n);
   });
 
-  it("builds the create link", () => {
+  it("builds the create link in the create form's terms", () => {
     expect(
-      createPrefillUrl({ perpId: 16n, startBlock: 10n, endBlock: 20n, thresholdRaw: -5n, side: "no" }),
-    ).toBe("/create?template=1&perp=16&start=10&end=20&threshold=-5&side=no");
+      createPrefillUrl({ asset: "BTC", startUnix: 1_800_000_000.4, endUnix: 1_800_086_400, threshold: "-0.5", side: "no" }),
+    ).toBe("/create?template=1&asset=BTC&start=1800000000&end=1800086400&threshold=-0.5&side=no");
+  });
+
+  it("writes raw thresholds as exact USD per unit", () => {
+    expect(thresholdText(134n, BTC)).toBe("13.4");
+    expect(thresholdText(130n, BTC)).toBe("13");
+    expect(thresholdText(-5n, BTC)).toBe("-0.5");
+    expect(thresholdText(0n, BTC)).toBe("0");
+    expect(thresholdText(120n, { priceDecimals: 0, scalingExp: 0 })).toBe("120");
+    expect(thresholdText(1_234n, { priceDecimals: 2, scalingExp: 1 })).toBe("1.234");
   });
 });
 

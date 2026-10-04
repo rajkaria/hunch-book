@@ -514,23 +514,35 @@ export function suggestNewMarket(args: {
   };
 }
 
+/** A raw threshold as the create form's USD-per-unit text, exact to Perpl's own decimals. */
+export function thresholdText(raw: bigint, meta: Pick<PerpMeta, "priceDecimals" | "scalingExp">): string {
+  const decimals = meta.priceDecimals + meta.scalingExp;
+  const negative = raw < 0n;
+  const abs = negative ? -raw : raw;
+  const base = 10n ** BigInt(decimals);
+  const frac = decimals > 0 ? (abs % base).toString().padStart(decimals, "0").replace(/0+$/, "") : "";
+  const body = frac ? `${abs / base}.${frac}` : `${abs / base}`;
+  return negative && abs !== 0n ? `-${body}` : body;
+}
+
 /**
- * The create page prefilled with a template 1 market. Query: template, perp, start, end (blocks),
- * threshold (raw Perpl units, signed) and side (the side the hedger takes with the first stake).
+ * The create page prefilled with a template 1 market, in the create form's own terms: the asset as
+ * named in deployments, the window as unix seconds (the form snaps it to Perpl's funding grid), the
+ * threshold in USD per unit, and the side for the first stake.
  */
 export function createPrefillUrl(args: {
-  perpId: bigint;
-  startBlock: bigint;
-  endBlock: bigint;
-  thresholdRaw: bigint;
+  asset: string;
+  startUnix: number;
+  endUnix: number;
+  threshold: string;
   side: "yes" | "no";
 }): string {
   const q = new URLSearchParams({
     template: String(TemplateId.PerplFunding),
-    perp: args.perpId.toString(),
-    start: args.startBlock.toString(),
-    end: args.endBlock.toString(),
-    threshold: args.thresholdRaw.toString(),
+    asset: args.asset,
+    start: String(Math.round(args.startUnix)),
+    end: String(Math.round(args.endUnix)),
+    threshold: args.threshold,
     side: args.side,
   });
   return `/create?${q.toString()}`;

@@ -159,7 +159,7 @@ describe("hedge page", () => {
     expect(screen.getByText("No open market covers BTC funding for this position")).toBeTruthy();
     const link = screen.getByRole("link", { name: /Create this market/ });
     expect(link.getAttribute("href")).toMatch(
-      /^\/create\?template=1&perp=16&start=\d+&end=\d+&threshold=\d+&side=yes$/,
+      /^\/create\?template=1&asset=BTC&start=\d+&end=\d+&threshold=[\d.]+&side=yes$/,
     );
   });
 

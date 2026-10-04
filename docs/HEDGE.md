@@ -116,7 +116,9 @@ The page builds a template 1 market and links to `/create` with it filled in:
 | threshold `X` | 0 ("longs pay at all"), or half or all of `|r| × n` in raw units; positive for a long, negative for a short |
 | side | YES for a long, NO for a short |
 
-Query string: `/create?template=1&perp=<id>&start=<block>&end=<block>&threshold=<raw, signed>&side=<yes|no>`.
+The link speaks the create form's own language, which snaps the window back onto the grid with its own
+measured block pace: `/create?template=1&asset=<BTC|ETH|SOL|MON>&start=<unix>&end=<unix>&threshold=<USD
+per unit, signed>&side=<yes|no>`. The threshold is written exactly, to Perpl's own decimals.
 
 ## Tracking
 
