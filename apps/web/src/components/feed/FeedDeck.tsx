@@ -1,6 +1,6 @@
 "use client";
 
-import { ONE_USDC, Phase, Side, templateLabel } from "@hunch-book/shared";
+import { ONE_USDC, Phase, Side } from "@hunch-book/shared";
 import Link from "next/link";
 import {
   type KeyboardEvent,
@@ -21,9 +21,10 @@ import {
   stampOpacity,
   withSkip,
 } from "@/lib/feed/deck";
-import { formatChance, formatUsdc } from "@/lib/format";
+import { chanceComplementBps, formatChance, formatUsdc } from "@/lib/format";
 import { useChainClock, useMarkets, useNow } from "@/lib/hooks";
 import { chanceDisplay, marketChance, PRICE_SCALE } from "@/lib/market/logic";
+import { templateLabel } from "@/lib/market/params";
 import type { ChainClock, MarketView } from "@/lib/market/types";
 import { formatPriceE6 } from "@/lib/trade/ticket";
 import { StakeTicket } from "../market/StakeTicket";
@@ -52,7 +53,7 @@ export function sidePrices(m: MarketView): { yes: string; no: string; source: "p
   const bps = marketChance(m).bps;
   return {
     yes: bps === null ? "n/a" : formatChance(bps),
-    no: bps === null ? "n/a" : formatChance(10_000n - bps),
+    no: bps === null ? "n/a" : formatChance(chanceComplementBps(bps)),
     source: "pool",
   };
 }

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import s from "./layout.module.css";
 import { DOCS_URL, isActive, NAV_LINKS } from "./nav";
 
-/** The desktop navigation bar. Under 720px the mobile sheet takes over. */
+/** The desktop navigation bar. Under 1100px the mobile sheet takes over. */
 export function NavLinks() {
   const pathname = usePathname() ?? "/";
   return (

@@ -157,7 +157,7 @@ export function ParlayForm({
           </p>
           <Input
             type="search"
-            placeholder="Search by question or #id"
+            placeholder="Search by question or #number"
             aria-label="Search open markets"
             value={query}
             onChange={(e) => setQuery(e.target.value)}

@@ -16,7 +16,7 @@ import {
   TouchDirection,
 } from "@hunch-book/shared";
 import type { Address, Hex } from "viem";
-import { formatE8Usd, formatInt, formatUtc } from "../format";
+import { formatE8Usd, formatFixed, formatInt, formatUtc } from "../format";
 import { type ChanceSource, marketChance, windowMoment } from "../market/logic";
 import { chainlinkFeedName, perpName, pythFeedName } from "../market/params";
 import type { ChainClock, MarketView } from "../market/types";
@@ -43,9 +43,18 @@ export interface LadderSpec {
   x: bigint;
   upper: bigint | null;
   asset: string;
+  /** The question without its window: the page names the window, as clock times where it can. */
   title: string;
+  /** Perpl ladders: the perp and the funding scale, to show thresholds in USD once the perp is read. */
+  perpl: { perpId: bigint; scalingExp: number } | null;
   /** The same params with another strike (or bucket): the market a "missing strike" would create. */
   withStrike: (x: bigint, upper?: bigint | null) => Hex;
+}
+
+/** How a Perpl threshold reads in USD: 10^decimals raw units per dollar, per one unit of `symbol`. */
+export interface PerplUnit {
+  decimals: number;
+  symbol: string;
 }
 
 const lower = (a: string): string => a.toLowerCase();
@@ -77,7 +86,8 @@ export function ladderSpec(
           x: p.threshold,
           upper: null,
           asset,
-          title: `${asset} longs pay more than a threshold in funding, block ${formatInt(p.startBlock)} to ${formatInt(p.endBlock)}`,
+          title: `${asset} longs pay more than a threshold in funding`,
+          perpl: { perpId: p.perpId, scalingExp: p.expectedScalingExp },
           withStrike: (x) => encodePerplFundingParams({ ...p, threshold: x }),
         };
       }
@@ -93,7 +103,8 @@ export function ladderSpec(
           x: p.threshold,
           upper: null,
           asset,
-          title: `One ${asset} funding event charges longs more than a threshold, block ${formatInt(p.startBlock)} to ${formatInt(p.endBlock)}`,
+          title: `One ${asset} funding event charges longs more than a threshold`,
+          perpl: { perpId: p.perpId, scalingExp: p.expectedScalingExp },
           withStrike: (x) => encodePerplFundingSpikeParams({ ...p, threshold: x }),
         };
       }
@@ -110,6 +121,7 @@ export function ladderSpec(
           upper: null,
           asset,
           title: `${asset} at or above a strike at ${formatUtc(p.closeTime)}`,
+          perpl: null,
           withStrike: (x) => encodePriceAtTimeParams({ ...p, strikeE8: x }),
         };
       }
@@ -127,6 +139,7 @@ export function ladderSpec(
           upper: null,
           asset,
           title: `${asset} ${up ? "reaches" : "falls to"} a level between ${formatUtc(p.startTime)} and ${formatUtc(p.endTime)}`,
+          perpl: null,
           withStrike: (x) => encodeChainlinkTouchParams({ ...p, strikeE8: x }),
         };
       }
@@ -143,6 +156,7 @@ export function ladderSpec(
           upper: p.upperE8,
           asset,
           title: `${asset} in a price range at ${formatUtc(p.closeTime)}`,
+          perpl: null,
           withStrike: (x, upper) => encodePriceRangeParams({ ...p, lowerE8: x, upperE8: upper ?? p.upperE8 }),
         };
       }
@@ -171,6 +185,7 @@ export interface Ladder {
   sense: LadderSense;
   asset: string;
   title: string;
+  perpl: LadderSpec["perpl"];
   /** Sorted by strike (or lower bound), lowest first. */
   points: LadderPoint[];
   /** The params of one rung, to re-encode with a missing strike. */
@@ -214,6 +229,7 @@ export function groupLadders(
       sense: spec.sense,
       asset: spec.asset,
       title: spec.title,
+      perpl: spec.perpl,
       points,
       sample: spec,
       window: first.market.window,
@@ -330,15 +346,23 @@ export function missingStrikes(
 // ---------------------------------------------------------------- labels and timing
 
 /** A strike as text: "$120,000" for prices, "33 raw units" for Perpl thresholds. */
-export function strikeLabel(x: bigint, axis: LadderAxis): string {
-  return axis === "usd" ? formatE8Usd(x).replace(/\.00$/, "") : `${formatInt(x)} raw units`;
+export function strikeLabel(x: bigint, axis: LadderAxis, unit?: PerplUnit): string {
+  if (axis === "usd") return formatE8Usd(x).replace(/\.00$/, "");
+  if (!unit) return `${formatInt(x)} raw units`;
+  return `${perplUsd(x, unit.decimals)} per ${unit.symbol}`;
+}
+
+/** A Perpl funding amount in raw units as USD: "$0.000015", "-$2.5". */
+export function perplUsd(x: bigint, decimals: number): string {
+  const body = formatFixed(x < 0n ? -x : x, decimals);
+  return x < 0n ? `-$${body}` : `$${body}`;
 }
 
 /** "$80,000 to $85,000" for a bucket, or the strike alone. */
-export function rungLabel(p: Pick<LadderPoint, "x" | "upper">, axis: LadderAxis): string {
+export function rungLabel(p: Pick<LadderPoint, "x" | "upper">, axis: LadderAxis, unit?: PerplUnit): string {
   return p.upper === null
-    ? strikeLabel(p.x, axis)
-    : `${strikeLabel(p.x, axis)} to ${strikeLabel(p.upper, axis)}`;
+    ? strikeLabel(p.x, axis, unit)
+    : `${strikeLabel(p.x, axis, unit)} to ${strikeLabel(p.upper, axis, unit)}`;
 }
 
 /** What YES means at one rung, in a few words. */

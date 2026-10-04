@@ -2,12 +2,12 @@ import { addressUrl, blockUrl } from "@hunch-book/shared";
 import type { LandingRead, LandingSnapshot } from "@/lib/chain/landing";
 import { appDeployment, appNetwork, appNetworkLabel, factoryOf } from "@/lib/config";
 import { TESTNET_MONEY } from "@/lib/copy";
-import { formatInt, formatUsdc } from "@/lib/format";
+import { formatCount, formatInt, formatUsdc } from "@/lib/format";
 import { LiveDot, Stat } from "../ui";
 import { ContractLinks } from "./Hero";
 import s from "./landing.module.css";
 
-const plural = (n: number, one: string, many: string): string => `${formatInt(n)} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many: string): string => formatCount(n, one, many);
 
 /** What the vault figure includes: test money on testnet, and our own seed stakes when there are any. */
 export function vaultHint(data: Pick<LandingSnapshot, "vault" | "stats">): string | undefined {

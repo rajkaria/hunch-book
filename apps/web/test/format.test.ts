@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  chanceComplementBps,
   formatBpsPercent,
   formatChance,
+  formatCount,
   formatDuration,
   formatE8Usd,
   formatFixed,
@@ -54,6 +56,15 @@ describe("formatE8Usd", () => {
   });
 });
 
+describe("formatCount", () => {
+  it("uses the singular for exactly one", () => {
+    expect(formatCount(1, "fill")).toBe("1 fill");
+    expect(formatCount(0, "fill")).toBe("0 fills");
+    expect(formatCount(2_500n, "block")).toBe("2,500 blocks");
+    expect(formatCount(1n, "market", "markets")).toBe("1 market");
+  });
+});
+
 describe("formatChance", () => {
   it("turns basis points into a percent with one decimal, truncated", () => {
     expect(formatChance(6_250n)).toBe("62.5%");
@@ -62,6 +73,14 @@ describe("formatChance", () => {
     expect(formatChance(9_999n)).toBe("99.9%");
     expect(formatChance(10_000n)).toBe("100.0%");
     expect(formatChance(0n)).toBe("0.0%");
+  });
+
+  it("writes NO beside YES so the two always add up to 100%", () => {
+    expect(formatChance(chanceComplementBps(8_625n))).toBe("13.8%");
+    expect(formatChance(8_625n)).toBe("86.2%");
+    expect(chanceComplementBps(6_250)).toBe(3_750);
+    expect(chanceComplementBps(0n)).toBe(10_000);
+    expect(chanceComplementBps(12_000n)).toBe(0);
   });
 
   it("clamps out-of-range values and handles missing ones", () => {

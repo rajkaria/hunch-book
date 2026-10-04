@@ -5,7 +5,15 @@ import Link from "next/link";
 import { type ReactNode, useMemo } from "react";
 import type { Address } from "viem";
 import { appDeployment, factoryOf } from "@/lib/config";
-import { formatChance, formatDuration, formatInt, formatUsdc, formatUtc, shortAddress } from "@/lib/format";
+import {
+  formatChance,
+  formatCount,
+  formatDuration,
+  formatInt,
+  formatUsdc,
+  formatUtc,
+  shortAddress,
+} from "@/lib/format";
 import type { DataSource } from "@/lib/indexer/source";
 import { latestFinal } from "@/lib/proof/chain";
 import { type ProofView as ProofModel, useChainTimings, useProof } from "@/lib/proof/hooks";
@@ -245,9 +253,9 @@ function TradesPanel({ data }: { data: ProofModel }) {
         items={[
           {
             label: "Against our maker (ours)",
-            value: `${formatInt(t.fillsOurMaker)} fills, ${formatUsdc(t.volumeOurMaker)} USDC`,
+            value: `${formatCount(t.fillsOurMaker, "fill")}, ${formatUsdc(t.volumeOurMaker)} USDC`,
           },
-          { label: "Our wallets taking", value: `${formatInt(t.fillsOurTrader)} fills` },
+          { label: "Our wallets taking", value: formatCount(t.fillsOurTrader, "fill") },
           {
             label: "Router trades",
             value: `${formatInt(t.routerTrades)}, ${formatUsdc(t.routerVolume)} USDC`,
@@ -262,7 +270,7 @@ function latencyText(t: SettlementTiming): string {
   if (t.latency === null) return "n/a";
   if (t.early) return "early, from a touch proof";
   return t.latencyUnit === "blocks"
-    ? `${formatInt(t.latency)} blocks after close`
+    ? `${formatCount(t.latency, "block")} after close`
     : `${formatDuration(t.latency)} after close`;
 }
 
@@ -361,7 +369,7 @@ function TimingPanel({ data }: { data: ProofModel }) {
         />
         <Stat
           label="Perpl markets"
-          value={t.avgSettleBlocks === null ? "n/a" : `${formatInt(t.avgSettleBlocks)} blocks`}
+          value={t.avgSettleBlocks === null ? "n/a" : formatCount(t.avgSettleBlocks, "block")}
           hint={`average over ${formatInt(t.settlementsBlockClock)}`}
           source={fromIndexer("ProtocolStats.avgSettlementLatencyBlocks")}
         />

@@ -41,12 +41,6 @@ export function Footer() {
                   {link.label}
                 </Link>
               ))}
-              <Link className={s.footerLink} href="/hedge">
-                Hedge funding
-              </Link>
-              <Link className={s.footerLink} href="/status">
-                Status
-              </Link>
             </nav>
             <FooterContracts />
             <nav className={s.footerCol} aria-label="Docs">

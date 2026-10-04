@@ -50,6 +50,16 @@ export function formatChance(bps: bigint | number | null | undefined): string {
   return `${whole}.${tenth}%`;
 }
 
+/**
+ * NO's chance as shown beside YES's: 100% minus YES as formatChance writes it, so the two always add up
+ * to 100.0% (8,625 bps reads YES 86.2% and NO 13.8%, not 13.7%).
+ */
+export function chanceComplementBps(bps: bigint | number): number {
+  const n = typeof bps === "bigint" ? Number(bps) : bps;
+  const yesTenths = Math.trunc(Math.min(10_000, Math.max(0, Math.trunc(n))) / 10);
+  return (1_000 - yesTenths) * 10;
+}
+
 /** Basis points to a short whole percent, for rules like "3% to 97%". */
 export function formatBpsPercent(bps: number | bigint): string {
   const n = Number(bps);
@@ -96,6 +106,12 @@ export function formatShortUtc(unixSeconds: number | bigint): string {
 export function formatInt(value: number | bigint): string {
   const v = typeof value === "bigint" ? value : BigInt(Math.trunc(value));
   return v < 0n ? `-${group((-v).toString())}` : group(v.toString());
+}
+
+/** A count with its noun, singular for exactly one: "1 fill", "2,500 fills", "1 block". */
+export function formatCount(value: number | bigint, one: string, many = `${one}s`): string {
+  const n = typeof value === "bigint" ? value : BigInt(Math.trunc(value));
+  return `${formatInt(n)} ${n === 1n ? one : many}`;
 }
 
 /** "0x1234…abcd". */

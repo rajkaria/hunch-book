@@ -1,6 +1,6 @@
 import { BPS } from "@hunch-book/shared";
 import { formatChance, formatInt } from "../format";
-import { type LadderAxis, type LadderPoint, niceStep } from "./group";
+import { type LadderAxis, type LadderPoint, niceStep, type PerplUnit, perplUsd } from "./group";
 
 // The geometry of the ladder chart (chance of YES against strike), as pure functions: scales, ticks and
 // the curve's path. The component draws it as inline SVG.
@@ -35,9 +35,12 @@ export interface ChartGeometry {
   yTicks: Tick[];
 }
 
-/** "$120k", "$1.2M", "$950" for USD strikes with 8 decimals; plain integers for Perpl units. */
-export function compactStrike(x: bigint, axis: LadderAxis): string {
-  if (axis === "perpl") return formatInt(x);
+/**
+ * "$120k", "$1.2M", "$950" for USD strikes with 8 decimals. Perpl thresholds read in USD once the perp's
+ * unit is known ("$0.000015"), else as plain integers in Perpl's raw units.
+ */
+export function compactStrike(x: bigint, axis: LadderAxis, unit?: PerplUnit): string {
+  if (axis === "perpl") return unit ? perplUsd(x, unit.decimals) : formatInt(x);
   const usd = Number(x) / 1e8;
   const abs = Math.abs(usd);
   const trim = (n: number) => n.toFixed(n >= 100 || Number.isInteger(n) ? 0 : 1).replace(/\.0$/, "");
@@ -76,6 +79,7 @@ export function chartGeometry(
   points: readonly Pick<LadderPoint, "x" | "upper">[],
   axis: LadderAxis,
   box: ChartBox = DEFAULT_BOX,
+  unit?: PerplUnit,
 ): ChartGeometry {
   const { min, max } = xDomain(points);
   const innerW = box.width - box.pad.left - box.pad.right;
@@ -86,7 +90,7 @@ export function chartGeometry(
   const xTicks = niceTicks(min, max).map((value) => ({
     value,
     pos: x(value),
-    label: compactStrike(value, axis),
+    label: compactStrike(value, axis, unit),
   }));
   const yTicks = [0n, 2_500n, 5_000n, 7_500n, 10_000n].map((value) => ({
     value,

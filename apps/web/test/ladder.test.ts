@@ -17,6 +17,7 @@ import {
 } from "@hunch-book/shared";
 import type { Address, Hex } from "viem";
 import { describe, expect, it } from "vitest";
+import { ladderTitle, windowText } from "../src/components/ladder/LadderView";
 import { chartGeometry, compactStrike, curvePath, niceTicks, xDomain } from "../src/lib/ladder/chart";
 import {
   groupLadders,
@@ -26,6 +27,7 @@ import {
   missingStrikes,
   monotoneBreaks,
   niceStep,
+  perplUsd,
   rungLabel,
   strikeLabel,
 } from "../src/lib/ladder/group";
@@ -129,6 +131,9 @@ describe("ladderSpec", () => {
       testnet,
     );
     expect(funding).toMatchObject({ axis: "perpl", sense: "more", asset: "BTC", x: 5n });
+    // The title leaves the window to the page, which names it as clock times; the spec keeps the perp.
+    expect(funding?.title).toBe("BTC longs pay more than a threshold in funding");
+    expect(funding?.perpl).toEqual({ perpId: 16n, scalingExp: 0 });
     const spike = ladderSpec(
       makeMarket({ templateId: TemplateId.PerplFundingSpike, params: encodePerplFundingSpikeParams(perpl) }),
       testnet,
@@ -254,6 +259,32 @@ describe("ladder checks", () => {
     expect(strikeLabel(120_000n * E8, "usd")).toBe("$120,000");
     expect(strikeLabel(33n, "perpl")).toBe("33 raw units");
     expect(rungLabel({ x: 80_000n * E8, upper: 85_000n * E8 }, "usd")).toBe("$80,000 to $85,000");
+  });
+
+  it("reads Perpl thresholds in USD per unit once the perp's decimals are known", () => {
+    const mon = { decimals: 8, symbol: "MON" };
+    expect(perplUsd(1_500n, 8)).toBe("$0.000015");
+    expect(perplUsd(-250_000_000n, 8)).toBe("-$2.5");
+    expect(strikeLabel(1_500n, "perpl", mon)).toBe("$0.000015 per MON");
+    expect(rungLabel({ x: 1_500n, upper: null }, "perpl", mon)).toBe("$0.000015 per MON");
+    expect(compactStrike(2_000n, "perpl", mon)).toBe("$0.00002");
+  });
+
+  it("names a Perpl ladder's window as estimated times, with its blocks", () => {
+    // The fixture clock: block 999,000 at 1,799,000,000 (2027-01-03 18:13:20 UTC), 400 ms per block.
+    const ladder = {
+      title: "MON longs pay more than a threshold in funding",
+      window: { blockClock: true, lock: 1_000_000n, close: 1_009_000n, settleDeadline: 0n },
+    };
+    expect(ladderTitle(ladder, clock)).toBe(
+      "MON longs pay more than a threshold in funding, between about Jan 3, 18:20 and Jan 3, 19:20 UTC",
+    );
+    expect(windowText(ladder, clock)).toBe(
+      "Locks at about Jan 3, 18:20 UTC (block 1,000,000), closes at about Jan 3, 19:20 UTC (block 1,009,000)",
+    );
+    expect(windowText(ladder, null)).toBe("Locks at block 1,000,000, closes at block 1,009,000");
+    const timed = { title: "BTC/USD at or above a strike", window: { ...ladder.window, blockClock: false } };
+    expect(ladderTitle(timed, clock)).toBe("BTC/USD at or above a strike");
   });
 });
 
