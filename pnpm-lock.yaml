@@ -17,6 +17,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@hunch-book/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@hunch-book/shared':
         specifier: workspace:*
         version: link:../../packages/shared
