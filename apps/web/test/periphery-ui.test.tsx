@@ -238,7 +238,10 @@ describe("/feed", () => {
     state.markets = listOf([priceMarket(120_000n, 4_000)]);
     await renderWithProviders(<FeedPage />);
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-    expect(await screen.findByRole("heading", { name: "You have seen every open market" })).toBeTruthy();
+    // The card flies out for 240 ms first (motion is allowed here); a busy machine can stretch that.
+    expect(
+      await screen.findByRole("heading", { name: "You have seen every open market" }, { timeout: 10_000 }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Start over" }));
     expect(screen.getByText("Market 1 of 1")).toBeTruthy();
   });
