@@ -1,6 +1,7 @@
 import { Outcome, Phase } from "@hunch-book/shared";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import CreatorPage from "../src/app/creator/[address]/page";
 import ErrorPage from "../src/app/error";
 import MarketPage from "../src/app/m/[address]/page";
 import MarketsPage from "../src/app/markets/page";
@@ -12,7 +13,7 @@ import TapePage from "../src/app/tape/page";
 import VerifyPage from "../src/app/verify/[address]/page";
 import { Footer } from "../src/components/layout/Footer";
 import { Header } from "../src/components/layout/Header";
-import { FACTORY, MARKET, makeEntry, makeMarket, USDC } from "./fixtures";
+import { FACTORY, MARKET, makeEntry, makeMarket, USDC, USER } from "./fixtures";
 import { renderWithProviders } from "./render";
 
 // Every route renders against mocked chain data: the hooks are replaced, and the deployment is
@@ -27,13 +28,18 @@ const state = vi.hoisted(() => ({
   position: {} as QueryState,
   tape: {} as QueryState,
   proof: {} as QueryState,
+  creator: {} as QueryState,
+  creatorFees: {} as QueryState,
 }));
 
 vi.mock("@/lib/config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/config")>();
   const withFactory = {
     ...actual.appDeployment,
-    hunchBook: { factory: "0x00000000000000000000000000000000000000f1" },
+    hunchBook: {
+      factory: "0x00000000000000000000000000000000000000f1",
+      vault: "0x00000000000000000000000000000000000000aa",
+    },
   };
   const without = { ...actual.appDeployment, hunchBook: {} };
   return {
@@ -116,6 +122,22 @@ vi.mock("@/lib/proof/hooks", async (importOriginal) => {
   };
 });
 
+// The creator page reads the indexer or the chain, and the vault's fees; here they are fixed.
+vi.mock("@/lib/creator/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/creator/hooks")>();
+  const fixed = (q: QueryState) => ({
+    isPending: !q.error && q.data === undefined,
+    isError: Boolean(q.error),
+    data: q.data,
+    refetch: vi.fn(),
+  });
+  return {
+    ...actual,
+    useCreator: () => fixed(state.creator),
+    useCreatorFees: () => fixed(state.creatorFees),
+  };
+});
+
 const ok = <T,>(data: T) => ({ data: { status: "ok", data } });
 const params = (address: string) => ({ params: Promise.resolve({ address }) });
 const noSearch = { searchParams: Promise.resolve({}) };
@@ -128,6 +150,8 @@ beforeEach(() => {
   state.position = {};
   state.tape = {};
   state.proof = {};
+  state.creator = {};
+  state.creatorFees = {};
 });
 
 describe("with no contracts deployed", () => {
@@ -546,6 +570,79 @@ describe("with contracts deployed", () => {
     );
     expect(screen.getByText("sets = YES = NO")).toBeTruthy();
     expect(screen.getAllByText("0.50").length).toBeGreaterThan(0);
+  });
+
+  it("/m/[address] links the market's creator page", async () => {
+    state.market = ok(pool);
+    await renderWithProviders(await MarketPage(params(MARKET)));
+    expect(screen.getByRole("link", { name: /Created by/ }).getAttribute("href")).toBe(
+      `/creator/${pool.creator}`,
+    );
+  });
+
+  const creatorData = (over: Record<string, unknown> = {}) => ({
+    source: "chain",
+    data: {
+      creator: USER,
+      isOurs: false,
+      markets: [
+        {
+          market: MARKET,
+          number: 7,
+          question: pool.description,
+          stage: "Pool",
+          pool: USDC(400),
+          stakers: 4,
+          volume: null,
+          fills: null,
+          earned: null,
+          createdAt: null,
+          createdTx: null,
+        },
+      ],
+      scanned: { covered: 1, total: 1 },
+      earned: null,
+      withdrawn: null,
+      withdrawals: null,
+      ...over,
+    },
+  });
+
+  it("/creator/[address] shows the markets, live fees and a withdraw button for the creator", async () => {
+    state.creator = { data: creatorData() };
+    state.creatorFees = { data: USDC(1.5) };
+    await renderWithProviders(await CreatorPage(params(USER)), { connected: true });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(/^Creator 0x/);
+    expect(screen.getByText("1.50")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /vault.creatorFees/ })).toBeTruthy();
+    expect(screen.getAllByText("needs the indexer")).toHaveLength(2);
+    expect(screen.getByText(/The list of past withdrawals needs the indexer/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /#7/ }).getAttribute("href")).toBe(`/m/${MARKET}`);
+    const withdraw = screen.getByRole("button", { name: "Withdraw my fees" }) as HTMLButtonElement;
+    expect(withdraw.disabled).toBe(false);
+  });
+
+  it("/creator/[address] offers no withdraw button to anyone else, and lists indexed withdrawals", async () => {
+    state.creator = {
+      data: creatorData({
+        creator: "0x00000000000000000000000000000000000000d1",
+        scanned: null,
+        earned: USDC(2.5),
+        withdrawn: USDC(1),
+        withdrawals: [{ amount: USDC(1), time: 1_799_000_000, block: 100n, tx: `0x${"77".repeat(32)}` }],
+      }),
+    };
+    state.creatorFees = { data: 0n };
+    await renderWithProviders(await CreatorPage(params("0x00000000000000000000000000000000000000d1")), {
+      connected: true,
+    });
+    expect(screen.queryByRole("button", { name: "Withdraw my fees" })).toBeNull();
+    expect(screen.getByText("2.50")).toBeTruthy();
+    expect(screen.getAllByText("1.00").length).toBeGreaterThan(0);
+  });
+
+  it("/creator/[address] is a 404 for anything that is not an address", async () => {
+    await expect(CreatorPage(params("nope"))).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
   it("/ says when live figures cannot be read, and the menu says the contracts are live", async () => {

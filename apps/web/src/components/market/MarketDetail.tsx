@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import type { Address } from "viem";
-import { appNetworkLabel } from "@/lib/config";
+import { isSeededByUs } from "@/lib/chain/landing";
+import { appDeployment, appNetworkLabel } from "@/lib/config";
 import { MARKET_WILL_SHOW } from "@/lib/copy";
 import { shortAddress } from "@/lib/format";
 import { useChainClock, useMarket, useNow } from "@/lib/hooks";
@@ -58,6 +59,10 @@ export function MarketBody({
           <span className="mono">
             <Countdown m={m} clock={clock} now={now} />
           </span>
+          <Link href={`/creator/${m.creator}`}>
+            Created by <span className="mono">{shortAddress(m.creator)}</span>
+            {isSeededByUs(appDeployment, m.creator) ? " (ours)" : ""}
+          </Link>
         </div>
         <h1 className={s.headline}>{marketHeadline(m)}</h1>
         {m.description === null ? (
