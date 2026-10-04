@@ -63,6 +63,6 @@ From [PROTOCOL.md §12](./PROTOCOL.md#12-parameters-v0) and the deploy script; t
 |---|---|---|
 | Contracts: unit, fuzz and invariant | 548 | `cd contracts && forge test` |
 | Contracts: fork tests on live Monad | separate profile | `FOUNDRY_PROFILE=fork forge test` |
-| TypeScript: app, shared, SDK, MCP, keeper, maker, indexer, notifier, watchdog, rewards, examples | 1,278 passing | `pnpm test` |
+| TypeScript: app, shared, SDK, MCP, keeper, maker, indexer, notifier, watchdog, rewards, examples | 1,344 passing | `pnpm test` |
 
 The full gate is `bash scripts/verify-all.sh`; CI runs it on every push, plus the fork suites.

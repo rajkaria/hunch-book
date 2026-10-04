@@ -121,7 +121,8 @@ cd contracts
 forge script script/GuardianBatch.s.sol --rpc-url "$MONAD_MAINNET_RPC"
 ```
 
-This writes `deployments/guardian/monad-mainnet-add-templates.json` in the Safe Transaction Builder
+This writes `deployments/guardian/monad-mainnet-add-templates.json` (run
+`pnpm exec biome format --write deployments/` before committing it) in the Safe Transaction Builder
 format, one `addTemplate(templateId, resolver, rule)` call per template that is deployed (ids 1 to 7). In the Safe app, open
 Transaction Builder, drop the file in, check every call against this document, and sign. Templates
 that are already registered are skipped, so the file can be regenerated at any time.
