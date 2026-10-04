@@ -412,3 +412,57 @@ export async function readMarketHeadline(
     clearTimeout(timer);
   }
 }
+
+/** Spenders and tokens for one market's wallet reads. Any spender may be missing (not deployed). */
+export interface WalletTargets {
+  usdc: Address;
+  vault: Address;
+  router?: Address;
+  yes: Address;
+  no: Address;
+}
+
+/** What a wallet holds for one market, and what it has approved the router and the vault to move. */
+export interface WalletBalances {
+  usdc: bigint;
+  yes: bigint;
+  no: bigint;
+  allowance: {
+    usdcToRouter: bigint;
+    usdcToVault: bigint;
+    yesToRouter: bigint;
+    noToRouter: bigint;
+  };
+}
+
+/** One multicall: USDC, YES and NO balances plus the four allowances trades, mints and stakes use. */
+export async function readWalletBalances(
+  client: ReadClient,
+  t: WalletTargets,
+  user: Address,
+): Promise<WalletBalances> {
+  const router = t.router ?? zeroAddress;
+  const erc20 = erc20Abi as Abi;
+  const results = await multicall(client, [
+    { address: t.usdc, abi: erc20, functionName: "balanceOf", args: [user] },
+    { address: t.yes, abi: erc20, functionName: "balanceOf", args: [user] },
+    { address: t.no, abi: erc20, functionName: "balanceOf", args: [user] },
+    { address: t.usdc, abi: erc20, functionName: "allowance", args: [user, router] },
+    { address: t.usdc, abi: erc20, functionName: "allowance", args: [user, t.vault] },
+    { address: t.yes, abi: erc20, functionName: "allowance", args: [user, router] },
+    { address: t.no, abi: erc20, functionName: "allowance", args: [user, router] },
+  ]);
+  const usdc = ok<bigint>(results[0]);
+  if (usdc === undefined) throw new Error("Could not read your USDC balance.");
+  return {
+    usdc,
+    yes: ok<bigint>(results[1]) ?? 0n,
+    no: ok<bigint>(results[2]) ?? 0n,
+    allowance: {
+      usdcToRouter: ok<bigint>(results[3]) ?? 0n,
+      usdcToVault: ok<bigint>(results[4]) ?? 0n,
+      yesToRouter: ok<bigint>(results[5]) ?? 0n,
+      noToRouter: ok<bigint>(results[6]) ?? 0n,
+    },
+  };
+}
