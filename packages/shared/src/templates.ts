@@ -6,12 +6,16 @@ import {
   type Hex,
   keccak256,
 } from "viem";
-import { templateParamsCodecAbi, templateParamsCodecV2Abi } from "./abis/generated.js";
+import {
+  templateParamsCodecAbi,
+  templateParamsCodecV2Abi,
+  templateParamsCodecV3Abi,
+} from "./abis/generated.js";
 import { TemplateId } from "./types.js";
 
 // Encoders for market params. The ABI shapes come from contracts/src/interfaces/ITemplates.sol
-// (templates 1 and 2) and ITemplatesV2.sol (templates 3 to 6), so TypeScript and Solidity cannot
-// drift apart. docs/TEMPLATES.md describes every template.
+// (templates 1 and 2), ITemplatesV2.sol (templates 3 to 6) and ITemplatesV3.sol (template 7), so
+// TypeScript and Solidity cannot drift apart. docs/TEMPLATES.md describes every template.
 
 // ---------------------------------------------------------------- template ids
 
@@ -69,6 +73,14 @@ export const TEMPLATES: Readonly<Record<TemplateId, TemplateInfo>> = {
     id: TemplateId.Parlay,
     label: "Parlay",
     question: "Will every one of these Hunch Book markets settle YES?",
+    clock: "time",
+    earlyYes: false,
+  },
+  [TemplateId.Snapshot]: {
+    id: TemplateId.Snapshot,
+    label: "Snapshot",
+    question:
+      "Will a value read onchain right after close, such as Perpl open interest or mark price, be above or below a level?",
     clock: "time",
     earlyYes: false,
   },
@@ -242,6 +254,57 @@ export function decodeParlayParams(data: Hex): ParlayParams {
   return decoded;
 }
 
+// ---------------------------------------------------------------- template 7
+
+/** Template 7: how the snapshot value is compared with the threshold. */
+export const SnapshotComparator = { Above: 0, AtOrAbove: 1, Below: 2, AtOrBelow: 3 } as const;
+export type SnapshotComparator = (typeof SnapshotComparator)[keyof typeof SnapshotComparator];
+
+/**
+ * Template 7, snapshot: YES if the source's value, read once in the first snapshot taken in
+ * [closeTime, closeTime + snapshotWindow], meets `threshold` under `comparator`. `sourceId` indexes the
+ * resolver's source list (read it with `sourceCount()` and `source(id)`); `threshold` is in the
+ * source's raw units.
+ */
+export interface SnapshotParams {
+  sourceId: number;
+  threshold: bigint;
+  comparator: SnapshotComparator;
+  lockTime: bigint;
+  closeTime: bigint;
+  snapshotWindow: number;
+}
+
+/** SnapshotResolver.MIN_SNAPSHOT_WINDOW and MAX_SNAPSHOT_WINDOW, in seconds. */
+export const SNAPSHOT_MIN_WINDOW = 60;
+export const SNAPSHOT_MAX_WINDOW = 1_800;
+/** The window the app offers by default: ten minutes. */
+export const SNAPSHOT_DEFAULT_WINDOW = 600;
+
+const snapshotInputs = getAbiItem({ abi: templateParamsCodecV3Abi, name: "snapshot" }).inputs;
+
+export function encodeSnapshotParams(params: SnapshotParams): Hex {
+  return encodeAbiParameters(snapshotInputs, [params]);
+}
+
+export function decodeSnapshotParams(data: Hex): SnapshotParams {
+  const [decoded] = decodeAbiParameters(snapshotInputs, data);
+  return { ...decoded, comparator: decoded.comparator as SnapshotComparator };
+}
+
+/**
+ * Same as SnapshotStore.snapshotKey: keccak256(abi.encode(uint16 sourceId, uint64 closeTime,
+ * uint32 snapshotWindow)). Every market on one source, close time and window shares this snapshot.
+ */
+export function snapshotKey(sourceId: number, closeTime: bigint, snapshotWindow: number): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [{ type: "uint16" }, { type: "uint64" }, { type: "uint32" }],
+      [sourceId, closeTime, snapshotWindow],
+    ),
+  );
+}
+
 // ---------------------------------------------------------------- evidence
 
 /**
@@ -257,7 +320,7 @@ export function encodeFundingEventEvidence(eventBlock: bigint): Hex {
   return encodeAbiParameters([{ type: "uint64" }], [eventBlock]);
 }
 
-/** Empty evidence: templates 1 and 6 always, and the NO path of templates 3 and 4. */
+/** Empty evidence: templates 1, 6 and 7 always, and the NO path of templates 3 and 4. */
 export const EMPTY_EVIDENCE: Hex = "0x";
 
 /** Same as HunchBookFactory.marketKey: keccak256(abi.encode(templateId, params)). */
