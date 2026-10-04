@@ -6,6 +6,7 @@ import {
   chainlinkOutcome,
   chainlinkPhase,
   type Deployment,
+  EMPTY_EVIDENCE,
   marketAbi,
   type Outcome,
   PERPL_EVIDENCE,
@@ -29,6 +30,7 @@ import {
 import { MULTICALL3 } from "../chain/client";
 import { dryRunResolve, findChainlinkBracket } from "../market/settle";
 import type { MarketView } from "../market/types";
+import { checkSnapshot, type SnapshotCheck } from "../snapshot";
 import { describeTxError } from "../wallet/errors";
 
 // The settlement verifier (roadmap A-4): the exact reads a market's resolver makes, done again from the
@@ -44,7 +46,7 @@ export const perplResolverAbi = parseAbi([
 
 export type VerifyClient = Pick<
   PublicClient,
-  "readContract" | "multicall" | "simulateContract" | "getLogs" | "getTransaction" | "getBlock"
+  "readContract" | "multicall" | "simulateContract" | "getLogs" | "getTransaction" | "getBlock" | "call"
 >;
 
 export interface ResolverRun {
@@ -95,7 +97,13 @@ export interface OtherRead {
   template: "pyth" | "unknown";
 }
 
-export type SourceRead = PerplRead | ChainlinkRead | OtherRead;
+export type SourceRead = PerplRead | ChainlinkRead | SnapshotCheck | OtherRead;
+
+/** The reads this page can rebuild an outcome and an evidence hash from. */
+export type CheckedRead = PerplRead | ChainlinkRead | SnapshotCheck;
+
+export const isCheckedRead = (read: SourceRead): read is CheckedRead =>
+  read.template === "perpl" || read.template === "chainlink" || read.template === "snapshot";
 
 export interface Verification {
   /** "settled": compare with what the market stored. "preview": what the read says now. */
@@ -279,6 +287,9 @@ async function readChainlink(client: VerifyClient, m: MarketView): Promise<Chain
  */
 export function evidenceFor(read: SourceRead): Hex | null {
   if (read.template === "perpl") return read.final ? PERPL_EVIDENCE : null;
+  // Template 7 always settles with empty evidence: from the stored snapshot, or inside the window by
+  // taking it (the re-run is a call, so nothing is stored).
+  if (read.template === "snapshot") return read.snapshot || read.window === "open" ? EMPTY_EVIDENCE : null;
   if (read.template === "chainlink") {
     const b = read.bracket;
     return b?.status === "found" || b?.status === "stale" ? chainlinkEvidence(b.round.roundId) : null;
@@ -297,6 +308,9 @@ export async function runVerification(
   if (m.decoded.kind === "perpl-funding") read = await readPerpl(client, deployment, m, head);
   else if (m.decoded.kind === "price-at-time" && m.decoded.params.source === PriceSource.Chainlink) {
     read = await readChainlink(client, m);
+  } else if (m.decoded.kind === "snapshot") {
+    const block = await client.getBlock({ blockNumber: head });
+    read = await checkSnapshot(client, m.resolver, m.params, m.decoded.params, block.timestamp);
   } else read = { template: m.decoded.kind === "price-at-time" ? "pyth" : "unknown" };
 
   const mode = m.phase === Phase.Settled ? "settled" : m.phase === Phase.Voided ? "voided" : "preview";
@@ -311,8 +325,8 @@ export async function runVerification(
     }
   }
 
-  const expectedHash = read.template === "perpl" || read.template === "chainlink" ? read.expectedHash : null;
-  const outcome = read.template === "perpl" || read.template === "chainlink" ? read.outcome : null;
+  const expectedHash = isCheckedRead(read) ? read.expectedHash : null;
+  const outcome = isCheckedRead(read) ? read.outcome : null;
   const matches =
     mode === "settled"
       ? {

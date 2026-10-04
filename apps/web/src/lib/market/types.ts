@@ -5,6 +5,7 @@ import type {
   PerplFundingParams,
   Phase,
   PriceAtTimeParams,
+  SnapshotParams,
   Window,
 } from "@hunch-book/shared";
 import type { Address, Hex } from "viem";
@@ -13,6 +14,7 @@ import type { Address, Hex } from "viem";
 export type DecodedParams =
   | { kind: "perpl-funding"; params: PerplFundingParams }
   | { kind: "price-at-time"; params: PriceAtTimeParams }
+  | { kind: "snapshot"; params: SnapshotParams }
   | { kind: "unknown"; raw: Hex };
 
 /** Kuru's best bid and ask for the YES/USDC book, in 1e18 price units. Null means that side is empty. */

@@ -5,7 +5,7 @@ import { type Network, TemplateId } from "@hunch-book/shared";
 // app has a form for it. Adding a template is one entry here plus its form and parameter builder.
 
 /** Every template id the picker asks the factory about. */
-export const TEMPLATE_IDS = [1, 2, 3, 4, 5, 6] as const;
+export const TEMPLATE_IDS = [1, 2, 3, 4, 5, 6, 7] as const;
 
 export type TemplateKind =
   | "perpl-funding"
@@ -13,7 +13,8 @@ export type TemplateKind =
   | "price-at-time"
   | "price-range"
   | "price-touch"
-  | "parlay";
+  | "parlay"
+  | "snapshot";
 
 export interface CreateTemplate {
   id: number;
@@ -90,6 +91,17 @@ export const CREATE_TEMPLATES: readonly CreateTemplate[] = [
     example: "Will MON funding this week and BTC at $90,000 on Friday both settle YES?",
     source: "The legs' own outcomes, read from their market contracts",
     speed: "NO as soon as any leg settles NO; YES once every leg settles YES",
+    clock: "time",
+  },
+  {
+    id: TemplateId.Snapshot,
+    kind: "snapshot",
+    title: "Perpl open interest or mark price at a time",
+    summary:
+      "Will a Perpl perp's open interest or mark price be above or below a level right after a set time?",
+    example: "Will Perpl's BTC open interest be above 10 BTC at 12:00 UTC tomorrow?",
+    source: "Perpl's current state, read once onchain in the first snapshot after the close",
+    speed: "Settles in the first block after the close: settling takes the snapshot",
     clock: "time",
   },
 ];

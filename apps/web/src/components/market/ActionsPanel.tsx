@@ -45,7 +45,7 @@ export function settleNote(plan: SettlePlan | undefined, pending: boolean): { re
         : "";
     return {
       ready: true,
-      text: `The resolver answers ${OUTCOME_NAME[plan.outcome] ?? "?"} with this evidence, so settling now records that outcome.${round}`,
+      text: `The resolver answers ${OUTCOME_NAME[plan.outcome] ?? "?"} with this evidence, so settling now records that outcome.${round}${plan.note ? ` ${plan.note}` : ""}`,
     };
   }
   return { ready: false, text: plan.reason };
