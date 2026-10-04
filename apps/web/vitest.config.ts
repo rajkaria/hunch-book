@@ -9,6 +9,7 @@ export default defineConfig({
       { find: /^@\//, replacement: `${here("./src")}/` },
       // Test against the shared package's source, so `pnpm test` needs no prior build.
       { find: /^@hunch-book\/shared$/, replacement: here("../../packages/shared/src/index.ts") },
+      { find: /^@hunch-book\/sdk$/, replacement: here("../../packages/sdk/src/index.ts") },
     ],
   },
   test: {
