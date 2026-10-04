@@ -5,13 +5,21 @@ import { useCallback, useState } from "react";
 import type { Abi, Address, Hex } from "viem";
 import { useWriteContract } from "wagmi";
 import { getPublicClient } from "../chain/client";
-import { appChain } from "../config";
+import { appChain, appNetwork, parseNetwork } from "../config";
 import { describeTxError, withKnownErrors } from "./errors";
 
 export interface TxRecord {
   hash: Hex;
   label: string;
   status: "pending" | "confirmed" | "failed";
+}
+
+/**
+ * A refresh key aimed at the network active now. Callers may build their keys once, at import, with the
+ * network of that moment; the network element (the second one, by convention) follows any switch since.
+ */
+export function forActiveNetwork(key: QueryKey): QueryKey {
+  return key.length > 1 && parseNetwork(String(key[1])) ? [key[0], appNetwork, ...key.slice(2)] : key;
 }
 
 export interface WriteRequest {
@@ -62,7 +70,10 @@ export function useTxRunner(refresh: QueryKey[]) {
   );
 
   const refreshAll = useCallback(
-    () => Promise.all(refresh.map((queryKey) => queryClient.invalidateQueries({ queryKey }))),
+    () =>
+      Promise.all(
+        refresh.map((queryKey) => queryClient.invalidateQueries({ queryKey: forActiveNetwork(queryKey) })),
+      ),
     [queryClient, refresh],
   );
 

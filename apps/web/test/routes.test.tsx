@@ -70,6 +70,14 @@ vi.mock("@/lib/hooks", async (importOriginal) => {
     useUsdcState: () => query({}),
     useChainClock: () => null,
     useNow: () => 1_799_000_000,
+    // The verifier's own reads stay idle here: no test talks to a real RPC.
+    useVerification: () => query({}),
+    useSettlementTx: () => query({}),
+    useBook: () => query({}),
+    useWalletBalances: () => query({}),
+    useMonBalance: () => query({}),
+    useSettlePlan: () => query({}),
+    useTestUsdcFaucet: () => query({}),
   };
 });
 

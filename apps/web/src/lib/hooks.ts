@@ -24,7 +24,8 @@ import { findSettlementTx, runVerification } from "./verify/read";
 
 // React Query hooks over the read layer. Query keys never hold bigints.
 
-const deployed = isDeployed(appDeployment);
+/** Read on every render, so a network switch in the browser turns the queries on or off. */
+const deployed = (): boolean => isDeployed(appDeployment);
 
 export const queryKeys = {
   markets: () => ["markets", appNetwork] as const,
@@ -66,7 +67,7 @@ export function useMarkets() {
   return useQuery({
     queryKey: queryKeys.markets(),
     queryFn: () => listMarkets(getPublicClient(), appDeployment),
-    enabled: deployed,
+    enabled: deployed(),
     refetchInterval: 15_000,
   });
 }
@@ -75,7 +76,7 @@ export function useMarket(address: Address) {
   return useQuery({
     queryKey: queryKeys.market(address),
     queryFn: () => readMarket(getPublicClient(), appDeployment, address),
-    enabled: deployed,
+    enabled: deployed(),
     refetchInterval: 6_000,
   });
 }
@@ -84,7 +85,7 @@ export function usePortfolio(user: Address | undefined) {
   return useQuery({
     queryKey: queryKeys.portfolio(user ?? "0x"),
     queryFn: () => readPortfolio(getPublicClient(), appDeployment, user as Address),
-    enabled: deployed && Boolean(user),
+    enabled: deployed() && Boolean(user),
     refetchInterval: 15_000,
   });
 }
@@ -93,7 +94,7 @@ export function useUserPosition(market: Address, user: Address | undefined) {
   return useQuery({
     queryKey: queryKeys.position(market, user ?? "0x"),
     queryFn: () => readUserPosition(getPublicClient(), market, user as Address),
-    enabled: deployed && Boolean(user),
+    enabled: deployed() && Boolean(user),
     refetchInterval: 10_000,
   });
 }
@@ -102,7 +103,7 @@ export function useProtocolAddresses() {
   return useQuery({
     queryKey: queryKeys.protocol(),
     queryFn: () => readProtocolAddresses(getPublicClient(), appDeployment),
-    enabled: deployed,
+    enabled: deployed(),
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
@@ -166,7 +167,7 @@ export function useBook(book: Address | null) {
   return useQuery({
     queryKey: queryKeys.book(book ?? "0x"),
     queryFn: () => readBookSnapshot(getPublicClient(), book as Address, appDeployment.wallets.maker),
-    enabled: deployed && book !== null,
+    enabled: deployed() && book !== null,
     refetchInterval: 5_000,
   });
 }
@@ -188,7 +189,7 @@ export function useWalletBalances(user: Address | undefined, market: MarketView)
         },
         user as Address,
       ),
-    enabled: deployed && Boolean(user && protocol.data),
+    enabled: deployed() && Boolean(user && protocol.data),
     refetchInterval: 10_000,
   });
 }
@@ -208,7 +209,7 @@ export function useSettlePlan(market: MarketView, enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.settlePlan(market.address),
     queryFn: () => planSettlement(getPublicClient(), market),
-    enabled: deployed && enabled,
+    enabled: deployed() && enabled,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
@@ -227,7 +228,7 @@ export function useVerification(market: MarketView) {
       const head = await client.getBlockNumber();
       return runVerification(client, appDeployment, market, head);
     },
-    enabled: deployed,
+    enabled: deployed(),
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnWindowFocus: false,
     retry: 1,
@@ -246,7 +247,7 @@ export function useSettlementTx(market: MarketView, final: boolean) {
         : BigInt(appDeployment.hunchBook.deployBlock ?? 0);
       return findSettlementTx(client, market, from, head);
     },
-    enabled: deployed && final,
+    enabled: deployed() && final,
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnWindowFocus: false,
     retry: 1,
