@@ -12,6 +12,7 @@ import {
 } from "@/lib/create/build";
 import { fromLocalInput } from "@/lib/create/clock";
 import { useSpotPrice } from "@/lib/create/hooks";
+import { type TouchLinked, toExactLocalInput } from "@/lib/create/linked";
 import { type PriceFeedOption, touchLevel } from "@/lib/create/price";
 import { toInputString } from "@/lib/create/units";
 import { formatE8Usd } from "@/lib/format";
@@ -25,29 +26,56 @@ export function TouchForm({
   now,
   resolver,
   onResult,
+  linked,
 }: {
   now: number;
   resolver: Address;
   onResult: (r: FormResult) => void;
+  /** A market's exact params from a link (lib/create/linked.ts), for example a ladder's missing strike. */
+  linked?: TouchLinked;
 }) {
   return (
     <FeedsGate resolver={resolver}>
-      {(options) => <TouchFields now={now} options={options} onResult={onResult} />}
+      {(options) => <TouchFields now={now} options={options} onResult={onResult} linked={linked} />}
     </FeedsGate>
   );
+}
+
+/** The draft a link describes, on top of the defaults. A feed this resolver does not list is left out. */
+function linkedTouchDraft(
+  base: TouchDraft,
+  linked: TouchLinked,
+  options: readonly PriceFeedOption[],
+): TouchDraft {
+  return {
+    ...base,
+    feed: options.some((o) => o.key === linked.feedKey) ? linked.feedKey : base.feed,
+    direction: linked.direction,
+    strike: toInputString(linked.strikeE8, 8),
+    start: toExactLocalInput(linked.startTime),
+    end: toExactLocalInput(linked.endTime),
+    lockAtStart: linked.lockTime === linked.startTime,
+    lock: toExactLocalInput(linked.lockTime),
+  };
 }
 
 function TouchFields({
   now,
   options,
   onResult,
+  linked,
 }: {
   now: number;
   options: PriceFeedOption[];
   onResult: (r: FormResult) => void;
+  linked?: TouchLinked;
 }) {
-  const [draft, setDraft] = useState<TouchDraft>(() => defaultTouchDraft(now, options));
-  const [strikeTouched, setStrikeTouched] = useState(false);
+  const [draft, setDraft] = useState<TouchDraft>(() =>
+    linked
+      ? linkedTouchDraft(defaultTouchDraft(now, options), linked, options)
+      : defaultTouchDraft(now, options),
+  );
+  const [strikeTouched, setStrikeTouched] = useState(linked !== undefined);
   const set = (patch: Partial<TouchDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
   const build = buildTouchParams(draft, { options, now });

@@ -13,6 +13,7 @@ import {
 } from "@/lib/create/build";
 import { fromLocalInput, toLocalInput } from "@/lib/create/clock";
 import { useSpotPrice } from "@/lib/create/hooks";
+import { lockLeadOf, type PriceLinked, toExactLocalInput } from "@/lib/create/linked";
 import { type LockLead, type PriceFeedOption, rangeAround } from "@/lib/create/price";
 import { roundSignificant, toInputString } from "@/lib/create/units";
 import { formatE8Usd } from "@/lib/format";
@@ -36,17 +37,41 @@ export function PriceForm({
   rule,
   resolver,
   onResult,
+  linked,
 }: {
   now: number;
   rule: PriceRule;
   resolver: Address;
   onResult: (r: FormResult) => void;
+  /** A market's exact params from a link (lib/create/linked.ts), for example a ladder's missing strike. */
+  linked?: PriceLinked;
 }) {
   return (
     <FeedsGate resolver={resolver}>
-      {(options) => <PriceFields now={now} rule={rule} options={options} onResult={onResult} />}
+      {(options) => (
+        <PriceFields now={now} rule={rule} options={options} onResult={onResult} linked={linked} />
+      )}
     </FeedsGate>
   );
+}
+
+/** The draft a link describes, on top of the defaults. A feed this resolver does not list is left out. */
+function linkedPriceDraft(
+  base: PriceDraft,
+  linked: PriceLinked,
+  options: readonly PriceFeedOption[],
+): PriceDraft {
+  const lead = lockLeadOf(linked.lockTime, linked.closeTime);
+  return {
+    ...base,
+    feed: options.some((o) => o.key === linked.feedKey) ? linked.feedKey : base.feed,
+    strike: linked.strikeE8 !== null ? toInputString(linked.strikeE8, 8) : base.strike,
+    lower: linked.lowerE8 !== null ? toInputString(linked.lowerE8, 8) : base.lower,
+    upper: linked.upperE8 !== null ? toInputString(linked.upperE8, 8) : base.upper,
+    close: toExactLocalInput(linked.closeTime),
+    lockLead: lead,
+    lock: toExactLocalInput(linked.lockTime),
+  };
 }
 
 function PriceFields({
@@ -54,14 +79,20 @@ function PriceFields({
   rule,
   options,
   onResult,
+  linked,
 }: {
   now: number;
   rule: PriceRule;
   options: PriceFeedOption[];
   onResult: (r: FormResult) => void;
+  linked?: PriceLinked;
 }) {
-  const [draft, setDraft] = useState<PriceDraft>(() => defaultPriceDraft(now, options));
-  const [levelsTouched, setLevelsTouched] = useState(false);
+  const [draft, setDraft] = useState<PriceDraft>(() =>
+    linked
+      ? linkedPriceDraft(defaultPriceDraft(now, options), linked, options)
+      : defaultPriceDraft(now, options),
+  );
+  const [levelsTouched, setLevelsTouched] = useState(linked !== undefined);
   const set = (patch: Partial<PriceDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
   const build = buildPriceParams(draft, { options, now, rule });

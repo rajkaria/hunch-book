@@ -13,6 +13,7 @@ import {
 } from "@/lib/create/build";
 import { fromLocalInput, toLocalInput } from "@/lib/create/clock";
 import { useCreateClock, useFastBlockTime } from "@/lib/create/hooks";
+import { type ParlayLinked, toExactLocalInput } from "@/lib/create/linked";
 import { parlayCandidates, searchCandidates } from "@/lib/create/parlay";
 import { formatDuration } from "@/lib/format";
 import { useMarkets } from "@/lib/hooks";
@@ -25,16 +26,29 @@ export function ParlayForm({
   now,
   resolver,
   onResult,
+  linked,
 }: {
   now: number;
   resolver: Address;
   onResult: (r: FormResult) => void;
+  /** A parlay's exact legs and times from a link (lib/create/linked.ts), sent by the parlay page. */
+  linked?: ParlayLinked;
 }) {
   const markets = useMarkets();
   const clock = useCreateClock();
   const fast = useFastBlockTime(resolver);
-  const [draft, setDraft] = useState<ParlayDraft>({ legs: [], lock: "", close: "" });
-  const [timesTouched, setTimesTouched] = useState(false);
+  const [draft, setDraft] = useState<ParlayDraft>(() =>
+    linked
+      ? {
+          legs: linked.legs.slice(0, PARLAY_MAX_LEGS),
+          lock: toExactLocalInput(linked.lockTime),
+          close: toExactLocalInput(linked.closeTime),
+        }
+      : { legs: [], lock: "", close: "" },
+  );
+  const [timesTouched, setTimesTouched] = useState(linked !== undefined);
+  // Linked legs that can no longer be legs (locked, settled, or locking too soon), once checked.
+  const [dropped, setDropped] = useState<Address[] | null>(linked ? null : []);
   const [query, setQuery] = useState("");
 
   const list = markets.data?.status === "ok" ? markets.data.data.markets : null;
@@ -55,6 +69,19 @@ export function ParlayForm({
       ? { legs: candidates, head: clock.data.head, pace: clock.data.pace, now, fastBlockTimeMs: fast.data }
       : null;
   const build = ctx ? buildParlayParams(draft, ctx) : null;
+
+  // A link's legs are checked once the open markets are read: the ones that cannot be legs come out.
+  const ready = list !== null && ctx !== null;
+  useEffect(() => {
+    if (dropped !== null || !ready) return;
+    const usable = (a: Address) => candidates.some((c) => c.address.toLowerCase() === a.toLowerCase());
+    setDropped(draft.legs.filter((a) => !usable(a)));
+    setDraft((d) => ({ ...d, legs: d.legs.filter(usable) }));
+  }, [dropped, ready, candidates, draft.legs]);
+  const droppedLabels = (dropped ?? []).map((a) => {
+    const m = list?.find((x) => x.address.toLowerCase() === a.toLowerCase());
+    return m ? `#${m.marketId.toString()}` : a;
+  });
 
   // Until the creator edits the times, lock just before the first leg can and close with the last leg.
   const chosen = useMemo(
@@ -181,6 +208,13 @@ export function ParlayForm({
               {shown.length === 0 ? <li className={s.small}>No open market matches that search.</li> : null}
             </ul>
           )}
+          {droppedLabels.length > 0 ? (
+            <p className={s.error} role="status">
+              From the link, {droppedLabels.length === 1 ? "this market" : "these markets"} can no longer be a
+              leg, because {droppedLabels.length === 1 ? "it has" : "each has"} locked, settled or locks too
+              soon: {droppedLabels.join(", ")}.
+            </p>
+          ) : null}
           {legsError ? (
             <p className={s.error} role="alert">
               {legsError}

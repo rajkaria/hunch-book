@@ -6,6 +6,7 @@ import type { Address } from "viem";
 import { type FormResult, issueFor } from "@/lib/create/build";
 import { fromLocalInput, toLocalInput } from "@/lib/create/clock";
 import { describeCreateError } from "@/lib/create/errors";
+import { lockLeadOf, type SnapshotLinked, toExactLocalInput } from "@/lib/create/linked";
 import type { LockLead } from "@/lib/create/price";
 import {
   buildSnapshotParams,
@@ -15,6 +16,7 @@ import {
   snapshotLockTime,
   suggestedThreshold,
 } from "@/lib/create/snapshot";
+import { toInputString } from "@/lib/create/units";
 import { formatUtc } from "@/lib/format";
 import {
   COMPARATOR_TEXT,
@@ -41,10 +43,13 @@ export function SnapshotForm({
   now,
   resolver,
   onResult,
+  linked,
 }: {
   now: number;
   resolver: Address;
   onResult: (r: FormResult) => void;
+  /** A market's exact params from a link (lib/create/linked.ts). */
+  linked?: SnapshotLinked;
 }) {
   const sources = useSnapshotSources(resolver);
   if (sources.isError) {
@@ -81,7 +86,39 @@ export function SnapshotForm({
       </Panel>
     );
   }
-  return <SnapshotFields now={now} resolver={resolver} sources={sources.data} onResult={onResult} />;
+  return (
+    <SnapshotFields
+      now={now}
+      resolver={resolver}
+      sources={sources.data}
+      onResult={onResult}
+      linked={linked}
+    />
+  );
+}
+
+/** The draft a link describes, on top of the defaults. A source this resolver does not list is left out. */
+function linkedSnapshotDraft(
+  base: SnapshotDraft,
+  linked: SnapshotLinked,
+  sources: readonly SnapshotSourceView[],
+): SnapshotDraft {
+  const source = sources.find((src) => src.id === linked.sourceId);
+  return {
+    ...base,
+    sourceId: source ? String(source.id) : base.sourceId,
+    threshold: source ? toInputString(linked.threshold, source.decimals) : base.threshold,
+    comparator: linked.comparator,
+    close: toExactLocalInput(linked.closeTime),
+    lockLead: lockLeadOf(linked.lockTime, linked.closeTime),
+    lock: toExactLocalInput(linked.lockTime),
+    window: linked.window,
+  };
+}
+
+/** "10 minutes", or "90 seconds" for a window that is not whole minutes. */
+function windowLabel(seconds: number): string {
+  return seconds % 60 === 0 ? `${seconds / 60} minutes` : `${seconds} seconds`;
 }
 
 export function SnapshotFields({
@@ -89,14 +126,24 @@ export function SnapshotFields({
   resolver,
   sources,
   onResult,
+  linked,
 }: {
   now: number;
   resolver: Address;
   sources: SnapshotSourceView[];
   onResult: (r: FormResult) => void;
+  linked?: SnapshotLinked;
 }) {
-  const [draft, setDraft] = useState<SnapshotDraft>(() => defaultSnapshotDraft(now, sources));
-  const [touched, setTouched] = useState(false);
+  const [draft, setDraft] = useState<SnapshotDraft>(() =>
+    linked
+      ? linkedSnapshotDraft(defaultSnapshotDraft(now, sources), linked, sources)
+      : defaultSnapshotDraft(now, sources),
+  );
+  const [touched, setTouched] = useState(linked !== undefined);
+  // A linked window that is not one of the usual lengths is offered too, so the link's market stays exact.
+  const windows = SNAPSHOT_WINDOWS.includes(draft.window)
+    ? SNAPSHOT_WINDOWS
+    : [...SNAPSHOT_WINDOWS, draft.window].sort((a, b) => a - b);
   const set = (patch: Partial<SnapshotDraft>) => setDraft((d) => ({ ...d, ...patch }));
 
   const build = buildSnapshotParams(draft, { sources, now });
@@ -256,7 +303,7 @@ export function SnapshotFields({
             size="sm"
             value={String(draft.window)}
             onChange={(v) => set({ window: Number(v) })}
-            options={SNAPSHOT_WINDOWS.map((w) => ({ value: String(w), label: `${w / 60} minutes` }))}
+            options={windows.map((w) => ({ value: String(w), label: windowLabel(w) }))}
           />
           <p className={s.small} style={{ marginTop: 8 }}>
             {closeTime !== null

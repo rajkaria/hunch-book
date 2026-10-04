@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { appNetworkLabel } from "@/lib/config";
+import { useCallback, useMemo, useState } from "react";
+import type { Hex } from "viem";
+import { appDeployment, appNetworkLabel } from "@/lib/config";
 import { EMPTY_RESULT, type FormResult } from "@/lib/create/build";
 import { useCreateConfig, useExistingMarket, usePreview } from "@/lib/create/hooks";
+import { decodeLinkedParams, type LinkedParams, type LinkSource } from "@/lib/create/linked";
 import type { CreatePrefill } from "@/lib/create/prefill";
 import { availableTemplates, type CreateTemplate } from "@/lib/create/templates";
 import { useNow } from "@/lib/hooks";
@@ -71,41 +73,88 @@ function TemplateForm({
   now,
   onResult,
   prefill,
+  linked,
 }: {
   template: CreateTemplate;
   resolver: `0x${string}`;
   now: number;
   onResult: (r: FormResult) => void;
   prefill?: CreatePrefill;
+  linked?: LinkedParams;
 }) {
+  const props = { now, resolver, onResult };
   switch (template.kind) {
     case "perpl-funding":
-      return <PerplForm now={now} rule="window" resolver={resolver} onResult={onResult} prefill={prefill} />;
     case "perpl-spike":
-      return <PerplForm now={now} rule="spike" resolver={resolver} onResult={onResult} prefill={prefill} />;
+      return (
+        <PerplForm
+          {...props}
+          rule={template.kind === "perpl-spike" ? "spike" : "window"}
+          prefill={prefill}
+          linked={linked?.kind === "perpl" ? linked : undefined}
+        />
+      );
     case "price-at-time":
-      return <PriceForm now={now} rule="at" resolver={resolver} onResult={onResult} />;
     case "price-range":
-      return <PriceForm now={now} rule="range" resolver={resolver} onResult={onResult} />;
+      return (
+        <PriceForm
+          {...props}
+          rule={template.kind === "price-range" ? "range" : "at"}
+          linked={linked?.kind === "price" ? linked : undefined}
+        />
+      );
     case "price-touch":
-      return <TouchForm now={now} resolver={resolver} onResult={onResult} />;
+      return <TouchForm {...props} linked={linked?.kind === "touch" ? linked : undefined} />;
     case "parlay":
-      return <ParlayForm now={now} resolver={resolver} onResult={onResult} />;
+      return <ParlayForm {...props} linked={linked?.kind === "parlay" ? linked : undefined} />;
     case "snapshot":
-      return <SnapshotForm now={now} resolver={resolver} onResult={onResult} />;
+      return <SnapshotForm {...props} linked={linked?.kind === "snapshot" ? linked : undefined} />;
     default:
       return null;
   }
+}
+
+const LINK_FROM: Record<LinkSource, string> = {
+  ladder:
+    "The ladder page sent this market's parameters: the same question and window as its ladder, with a new strike.",
+  parlay: "The parlay page sent this parlay's legs and times.",
+  link: "A link sent these values.",
+};
+
+/** Says that the form was filled from a link, and what to check. */
+function PrefilledNotice({ from, unreadable }: { from: LinkSource | "hedge"; unreadable: boolean }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <Notice
+        tone={unreadable ? "warn" : "accent"}
+        title="Prefilled from a link: check every field"
+        role="status"
+      >
+        <p>
+          {unreadable
+            ? "The link's parameters do not read as this template's, so the form starts from its defaults."
+            : from === "hedge"
+              ? "The hedge assistant sent these values."
+              : LINK_FROM[from]}{" "}
+          Nothing is sent until you make the first stake, and the preview shows the exact rule the resolver
+          will apply.
+        </p>
+      </Notice>
+    </div>
+  );
 }
 
 /** /create: pick a template, fill its parameters, preview the exact rule, make the first stake. */
 export function CreateFlow({
   initialTemplate,
   prefill,
+  link,
 }: {
   initialTemplate: number | null;
   /** Values handed over in the query string; used only for the template the link named. */
   prefill?: CreatePrefill;
+  /** A market's exact ABI-encoded params from a link (`?template=&params=`), for the template it names. */
+  link?: { templateId: number; params: Hex; from: LinkSource };
 }) {
   const config = useCreateConfig();
   const now = useNow(30_000);
@@ -118,6 +167,16 @@ export function CreateFlow({
   const selected = templates.find((t) => t.id === templateId) ?? null;
   const registration = selected && config.data ? config.data.templates[selected.id] : undefined;
   const activePrefill = selected && selected.id === initialTemplate ? prefill : undefined;
+  const linkFor = selected && link && link.templateId === selected.id ? link : undefined;
+  const linked = useMemo(
+    () => (linkFor ? decodeLinkedParams(linkFor.templateId, linkFor.params, appDeployment) : null),
+    [linkFor],
+  );
+  const prefilledFrom: LinkSource | "hedge" | null = linkFor
+    ? linkFor.from
+    : activePrefill && Object.keys(activePrefill).length > 0
+      ? "hedge"
+      : null;
 
   const preview = usePreview(registration?.resolver, result.params);
   const existing = useExistingMarket(config.data?.factory, selected?.id ?? null, result.params);
@@ -160,6 +219,10 @@ export function CreateFlow({
         </div>
       ) : null}
 
+      {selected && registration && prefilledFrom ? (
+        <PrefilledNotice from={prefilledFrom} unreadable={linkFor !== undefined && linked === null} />
+      ) : null}
+
       <section aria-labelledby="pick-title">
         <div className={s.sectionHead}>
           <h2 className={s.sectionTitle} id="pick-title">
@@ -191,6 +254,7 @@ export function CreateFlow({
               now={now}
               onResult={onResult}
               prefill={activePrefill}
+              linked={linked ?? undefined}
             />
           </div>
           <div className={s.previewArea}>
