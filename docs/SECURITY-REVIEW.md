@@ -29,8 +29,9 @@ slither . --filter-paths "lib/|test/|script/|src/mocks/" --exclude-dependencies
 
 ## Slither: High and Medium results
 
-Slither reported 156 results: 7 High, 30 Medium, 85 Low, 34 Informational. None is an exploitable
-bug. Each High and Medium result is explained here.
+Slither reported 165 results: 7 High, 30 Medium, 90 Low, 38 Informational. None is an exploitable
+bug. (Re-run on 2026-10-04 after template 7, the snapshot resolver, landed: its only new results are
+five timestamp comparisons, which are the snapshot window itself, and three style notes.) Each High and Medium result is explained here.
 
 ### arbitrary-send-erc20 (High, 5 results): not exploitable
 
@@ -90,13 +91,13 @@ parlay `describe` functions, the factory's market init parameters, a balance del
 
 | Detector | Count | Verdict |
 |---|---|---|
-| timestamp | 31 | Price, touch and parlay markets run on unix time by design (PROTOCOL.md §6.2). Monad timestamps cannot run ahead of real time by more than a few seconds; a bracketing round or a funding block decides the answer, never the timestamp alone. |
+| timestamp | 36 | Price, touch, parlay and snapshot markets run on unix time by design (PROTOCOL.md §6.2; the snapshot window is a time window). Monad timestamps cannot run ahead of real time by more than a few seconds; a bracketing round or a funding block decides the answer, never the timestamp alone. |
 | calls-loop | 19 | Batch helpers (`claimTokensFor`, `claimPoolFor`, `redeemManyFor`, parlay legs, the router's quote walk) call contracts we control or that the factory registered. One failing holder in `redeemManyFor` is caught and skipped. |
 | reentrancy-benign, reentrancy-events | 20 | Events emitted after calls to our own tokens or Kuru; no state at risk. |
 | missing-zero-check | 7 | Constructor and two-step transfer arguments. `transferGuardian(0)` only clears a pending transfer; the adapter and token initialisers are called by our own factories with checked values. |
 | shadowing-local | 7 | Interface parameter names that match state variable names. Cosmetic. |
 | events-maths | 1 | `CollateralVault.setCollateralCap` emits nothing, but the only caller, `HunchBookFactory.setCollateralCap`, emits `CollateralCapUpdated`. |
-| naming-convention, too-many-digits, assembly, low-level-calls, cyclomatic-complexity, costly-loop, unindexed-event-address | 34 | Style. The assembly reads one word of returned data; low-level calls are `staticcall`s that tolerate contracts without the function. |
+| naming-convention, too-many-digits, assembly, low-level-calls, cyclomatic-complexity, costly-loop, unindexed-event-address | 37 | Style. The assembly reads single words of returned data (the router, and the snapshot resolver copying one word from a source call); low-level calls are `staticcall`s that tolerate contracts without the function. |
 | unimplemented-functions | 1 | False positive: `adapterOf` is implemented by a public mapping. |
 
 ## Manual review
