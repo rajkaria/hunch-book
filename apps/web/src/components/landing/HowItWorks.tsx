@@ -85,11 +85,9 @@ export function lifecycleSteps(
   ];
 }
 
-const STATUS_WORDS: Record<Stage["status"], string> = {
-  live: `Live on ${appNetworkLabel}`,
-  building: "Building",
-  planned: "Planned",
-};
+/** Read at render, so "Live on ..." names the network the visitor switched to. */
+const statusWords = (status: Stage["status"]): string =>
+  status === "live" ? `Live on ${appNetworkLabel}` : status === "building" ? "Building" : "Planned";
 
 /**
  * The lifecycle as a picture: Pool, Book, Settle, and the path a pool takes when it never graduates.
@@ -263,7 +261,7 @@ export function HowItWorks({ rule, stats }: { rule: GraduationRule | null; stats
               <div className={s.stageHead}>
                 <span className={s.stageIndex}>{`0${i + 1}`}</span>
                 <Badge tone={stage.status === "live" ? "accent" : "warn"} dot>
-                  {STATUS_WORDS[stage.status]}
+                  {statusWords(stage.status)}
                 </Badge>
               </div>
               <h3 className={s.stageTitle}>{stage.title}</h3>

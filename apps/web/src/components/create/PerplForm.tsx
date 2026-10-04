@@ -34,10 +34,16 @@ import { Button, Field, fieldA11y, Input, Notice, Panel, SegmentedControl, Skele
 import s from "./create.module.css";
 import { When } from "./When";
 
-const PERPS = appDeployment.external.perpl.perps;
-const ASSETS = Object.keys(PERPS);
-/** MON first where it exists: it is the chain's own asset and the most active Perpl market on testnet. */
-const DEFAULT_ASSET = ASSETS.includes("MON") ? "MON" : (ASSETS[0] ?? "");
+/**
+ * The active network's Perpl perps (perp ids differ between testnet and mainnet), read at render so a
+ * network switch in the browser never builds params with the other network's ids. MON comes first where
+ * it exists: it is the chain's own asset and the most active Perpl market on testnet.
+ */
+function perpsOf(deployment: typeof appDeployment) {
+  const perps = deployment.external.perpl.perps;
+  const assets = Object.keys(perps);
+  return { perps, assets, defaultAsset: assets.includes("MON") ? "MON" : (assets[0] ?? "") };
+}
 
 /** How many recent funding events to show as chips. */
 const RECENT_SHOWN = 8;
@@ -67,16 +73,17 @@ export function PerplForm({
   /** A market's exact params from a link (lib/create/linked.ts), for example a ladder's missing strike. */
   linked?: PerplLinked;
 }) {
+  const { perps, assets, defaultAsset } = perpsOf(appDeployment);
   const [draft, setDraft] = useState<PerplDraft>(() =>
     linked
       ? {
-          ...defaultPerplDraft(now, linked.asset ?? DEFAULT_ASSET),
+          ...defaultPerplDraft(now, linked.asset ?? defaultAsset),
           start: "",
           end: "",
           pinned: { startBlock: linked.startBlock, endBlock: linked.endBlock },
         }
       : {
-          ...defaultPerplDraft(now, prefill?.asset ?? DEFAULT_ASSET),
+          ...defaultPerplDraft(now, prefill?.asset ?? defaultAsset),
           ...(prefill?.start !== undefined ? { start: toLocalInput(prefill.start) } : {}),
           ...(prefill?.end !== undefined ? { end: toLocalInput(prefill.end) } : {}),
           ...(prefill?.threshold !== undefined ? { threshold: prefill.threshold } : {}),
@@ -91,7 +98,7 @@ export function PerplForm({
   const spike = rule === "spike";
 
   const clock = useCreateClock();
-  const perpId = PERPS[draft.asset] !== undefined ? BigInt(PERPS[draft.asset] as number) : null;
+  const perpId = perps[draft.asset] !== undefined ? BigInt(perps[draft.asset] as number) : null;
   const perp = usePerpContext(perpId, clock.data?.head.number);
 
   // Linked blocks: show their estimated times in the inputs once the chain clock is read.
@@ -215,7 +222,7 @@ export function PerplForm({
               setLinkedThreshold(null);
               set({ asset, threshold: "" });
             }}
-            options={ASSETS.map((a) => ({ value: a, label: a }))}
+            options={assets.map((a) => ({ value: a, label: a }))}
           />
           {assetError ? (
             <p className={s.error} role="alert">
