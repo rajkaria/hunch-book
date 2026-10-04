@@ -14,8 +14,8 @@ export default function GlobalError({
         style={{
           margin: 0,
           minHeight: "100vh",
-          background: "#0e0f0c",
-          color: "#ecefe6",
+          background: "#0b0b0f",
+          color: "#fafaf7",
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
           display: "grid",
           placeItems: "center",
@@ -24,9 +24,9 @@ export default function GlobalError({
       >
         <title>Something went wrong | Hunch Book</title>
         <main style={{ maxWidth: 480 }}>
-          <p style={{ fontFamily: "ui-monospace, monospace", color: "#c6f432", margin: 0 }}>HUNCH BOOK</p>
+          <p style={{ fontFamily: "ui-monospace, monospace", color: "#cbff5d", margin: 0 }}>HUNCH BOOK</p>
           <h1 style={{ fontSize: 24, margin: "12px 0" }}>Something went wrong</h1>
-          <p style={{ color: "#a2a797", lineHeight: 1.5 }}>
+          <p style={{ color: "#b4b4ad", lineHeight: 1.5 }}>
             The app hit an error it could not recover from. Nothing was sent from your wallet.
             {error.digest ? ` Reference: ${error.digest}.` : ""}
           </p>
@@ -36,8 +36,8 @@ export default function GlobalError({
             style={{
               marginTop: 16,
               padding: "10px 16px",
-              background: "#c6f432",
-              color: "#0e0f0c",
+              background: "#cbff5d",
+              color: "#0b0b0f",
               border: 0,
               borderRadius: 4,
               fontWeight: 600,
