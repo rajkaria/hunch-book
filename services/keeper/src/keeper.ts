@@ -1,0 +1,681 @@
+import {
+  chainsByNetwork,
+  type Deployment,
+  graduatorAbi,
+  loadDeployment,
+  marketAbi,
+  PHASE_LABEL,
+  Phase,
+} from "@hunch-book/shared";
+import {
+  type Account,
+  type Address,
+  createPublicClient,
+  createWalletClient,
+  encodeFunctionData,
+  formatEther,
+  http,
+  isAddressEqual,
+  keccak256,
+  type PublicClient,
+  parseEther,
+  parseGwei,
+  zeroAddress,
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { kuruRouterComputeAbi, marketWithResolverErrorsAbi } from "./abis.js";
+import { Alerter } from "./alerts.js";
+import { chunks, claimableUsers, halves, uniqueAddresses } from "./batch.js";
+import { type KeeperConfig, secretsOf } from "./config.js";
+import { Health, type HealthJob, JOBS } from "./health.js";
+import { errorMessage, log, setRedactions } from "./log.js";
+import { type Globals, MarketDirectory, type MarketSnapshot, readGlobals } from "./markets.js";
+import { type ActionKind, type Decision, isFinal, needsBookLookup, planMarket } from "./plan.js";
+import { rateLimitedFetch } from "./rpc.js";
+import { ScanBudget, type ScanContext } from "./scan.js";
+import { type ChainNow, defaultSettlers, type SettlerRegistry } from "./settlers/index.js";
+import { IndexerStakerSource, RpcStakerSource, type StakerSource } from "./stakers.js";
+import { StateStore } from "./state.js";
+import {
+  accountAddress,
+  bufferedGas,
+  sendTx,
+  simulate,
+  type TxContext,
+  type TxRequest,
+  type TxResult,
+} from "./tx.js";
+
+// The long-running keeper. Each cycle it reads every live market at one block, plans each job with the
+// pure functions in plan.ts, and sends what is due through sendTx (which honours the kill switch).
+// It only ever calls permissionless functions: graduate, registerBook, claimTokensFor, settle,
+// voidIfExpired and claimPoolFor. It never holds user funds and never decides an outcome: `settle`
+// passes evidence to the market's resolver, which reads the source and answers, or refuses.
+
+/** In dry-run, the same intended transaction is logged again at most this often. */
+const DRY_RUN_REPEAT_MS = 10 * 60 * 1000;
+
+/** A transaction went out, or in a dry run would have gone out (its simulation passed). */
+const sent = (result: TxResult) =>
+  result.status === "dry-run" ? result.simulation.ok : result.status !== "skipped";
+
+export interface KeeperDeps {
+  settlers?: SettlerRegistry;
+  stakerSource?: StakerSource;
+  /** Used for Hermes, the indexer and the alert webhook (tests pass a fake). */
+  fetchFn?: typeof fetch;
+}
+
+export interface CycleSummary {
+  block: bigint;
+  markets: number;
+  decisions: number;
+  sent: number;
+  scanRequests: number;
+}
+
+interface Retry {
+  at: number;
+  delaySeconds: number;
+}
+
+type BookParams = {
+  sizePrecision: bigint;
+  pricePrecision: number;
+  tickSize: number;
+  minSize: bigint;
+  takerFeeBps: bigint;
+  makerFeeBps: bigint;
+  kuruAmmSpread: bigint;
+};
+
+export class Keeper {
+  readonly deployment: Deployment;
+  readonly client: PublicClient;
+  readonly tx: TxContext;
+  readonly health: Health;
+  readonly settlers: SettlerRegistry;
+  readonly store: StateStore | undefined;
+  private readonly directory: MarketDirectory | undefined;
+  private readonly stakerSource: StakerSource | undefined;
+  private readonly alerter: Alerter;
+  private readonly fetchFn: typeof fetch;
+  private readonly settleRetry = new Map<Address, Retry>();
+  private readonly lastPlan = new Map<string, string>();
+  private readonly dryRunSeen = new Map<string, number>();
+  private readonly exhausted = new Set<Address>();
+  private readonly unknownTemplates = new Set<number>();
+  private bookParamsCache: BookParams | undefined;
+  private cycles = 0;
+  /** Log every plan line (the `once` mode), not just the ones that changed. */
+  verbosePlan = false;
+
+  /** `deployment` defaults to deployments/<network>.json; tests pass one with their own addresses. */
+  constructor(
+    readonly config: KeeperConfig,
+    deployment: Deployment = loadDeployment(config.network),
+    deps: KeeperDeps = {},
+  ) {
+    setRedactions(secretsOf(config));
+    this.deployment = deployment;
+    this.fetchFn = deps.fetchFn ?? fetch;
+    const chain = chainsByNetwork[config.network];
+    const transport = http(config.rpcUrl, {
+      retryCount: 5,
+      retryDelay: 500,
+      timeout: 20_000,
+      fetchFn: rateLimitedFetch(config.rpcRequestsPerSecond),
+    });
+    this.client = createPublicClient({ chain, transport }) as PublicClient;
+    const account: Account | Address = config.privateKey
+      ? privateKeyToAccount(config.privateKey)
+      : this.deployment.wallets.keeper;
+    const walletClient =
+      typeof account === "string" ? undefined : createWalletClient({ account, chain, transport });
+    this.tx = {
+      publicClient: this.client,
+      walletClient,
+      account,
+      chain,
+      deployment: this.deployment,
+      enabled: config.enabled,
+      maxGasPriceWei: parseGwei(String(config.maxGasPriceGwei)),
+      maxGasPerTx: config.maxGasPerTx,
+    };
+    this.settlers = deps.settlers ?? defaultSettlers();
+    const factory = this.deployment.hunchBook.factory;
+    if (factory) {
+      this.directory = new MarketDirectory(this.client, factory, config.markets);
+      this.store = new StateStore(config.stateFile, config.network, factory);
+      const rpcSource = new RpcStakerSource(factory, this.deployment.hunchBook.deployBlock);
+      this.stakerSource =
+        deps.stakerSource ??
+        (config.indexerUrl
+          ? new IndexerStakerSource(config.indexerUrl, rpcSource, undefined, this.fetchFn)
+          : rpcSource);
+    }
+    this.health = new Health(config.healthFile, {
+      network: config.network,
+      keeper: accountAddress(this.tx),
+      enabled: config.enabled,
+      minMon: config.minMon,
+    });
+    this.alerter = new Alerter(
+      config.alertWebhook,
+      {
+        service: "hunch-book-keeper",
+        network: config.network,
+        keeper: accountAddress(this.tx),
+        enabled: config.enabled,
+      },
+      config.alertRepeatSeconds,
+      this.fetchFn,
+    );
+  }
+
+  get keeper(): Address {
+    return accountAddress(this.tx);
+  }
+
+  /** Warns when the address the keeper runs as is not the one published in deployments/<network>.json. */
+  checkPublishedAddress(): void {
+    if (!isAddressEqual(this.keeper, this.deployment.wallets.keeper)) {
+      log(
+        "unpublished-address",
+        {
+          keeper: this.keeper,
+          published: this.deployment.wallets.keeper,
+          note: "transactions are only labelled as the keeper's when the address matches wallets.keeper",
+        },
+        "warn",
+      );
+    }
+  }
+
+  /** One pass over every live market. An error in one market or job never stops the others. */
+  async cycle(): Promise<CycleSummary> {
+    const started = Date.now();
+    const factory = this.deployment.hunchBook.factory;
+    if (!this.directory || !this.store || !factory) {
+      log(
+        "idle",
+        { reason: `hunchBook.factory is not in deployments/${this.config.network}.json yet` },
+        "warn",
+      );
+      this.health.update({ lastCycleAt: new Date().toISOString(), lastError: "factory not deployed" });
+      return { block: 0n, markets: 0, decisions: 0, sent: 0, scanRequests: 0 };
+    }
+    const head = await this.client.getBlock();
+    const now: ChainNow = { block: head.number, timestamp: head.timestamp };
+    const globals = await readGlobals(this.client, factory, now.block);
+    const markets = await this.directory.refresh(now.block, globals.graduator);
+    const runAt = new Date().toISOString();
+    // Every job looks at every live market each cycle, even when none has anything for it to do.
+    for (const job of JOBS) this.health.jobRan(job, runAt);
+
+    // No stake can land after a block where the market was already past staking.
+    for (const m of markets) {
+      if (m.phase !== Phase.Pool && this.store.market(m.address).stakingClosedAt === undefined) {
+        this.store.update(m.address, (s) => {
+          s.stakingClosedAt = Number(now.block);
+        });
+      }
+    }
+
+    const budget = new ScanBudget(this.config.scanRequestsPerCycle);
+    const scan: ScanContext = {
+      client: this.client,
+      store: this.store,
+      head: now.block,
+      range: this.config.logRange,
+      budget,
+    };
+    const due: Partial<Record<HealthJob, number>> = {};
+    let decisions = 0;
+    let sent = 0;
+    for (const m of markets) {
+      const settler = this.settlers.get(m.templateId);
+      if (!settler && !this.unknownTemplates.has(m.templateId)) {
+        this.unknownTemplates.add(m.templateId);
+        log(
+          "unknown-template",
+          { templateId: m.templateId, market: m.address, note: "no settler; settle skipped" },
+          "warn",
+        );
+      }
+      let predictedBook: { address: Address; deployed: boolean } | undefined;
+      if (needsBookLookup(m, globals)) {
+        try {
+          predictedBook = await this.predictBook(m, globals);
+        } catch (error) {
+          this.jobFailed("graduate", m.address, error);
+        }
+      }
+      const plan = planMarket({ market: m, now, globals, settler, predictedBook });
+      decisions += plan.length;
+      for (const d of plan) {
+        this.logPlan(m, d);
+        if (!d.action) continue;
+        due[d.job] = (due[d.job] ?? 0) + 1;
+        try {
+          if (await this.execute(m, d.action, now, globals, scan, predictedBook)) sent++;
+        } catch (error) {
+          this.jobFailed(d.job, m.address, error);
+        }
+      }
+      if (isFinal(m.phase) && (plan.every((d) => !d.action) || this.exhausted.has(m.address))) {
+        this.directory.retire(m.address);
+        log("market-done", { market: m.address, phase: PHASE_LABEL[m.phase] });
+      }
+    }
+    this.store.save();
+    this.cycles++;
+
+    const balance = await this.client.getBalance({ address: this.keeper });
+    const lowBalance = balance < parseEther(String(this.config.minMon));
+    if (lowBalance) {
+      const fields = { keeper: this.keeper, balance: formatEther(balance), minimum: this.config.minMon };
+      log("low-mon", fields, "warn");
+      await this.alerter.send("low-mon", "low-mon", fields, "warn");
+    }
+    const byPhase: Record<string, number> = {};
+    for (const m of markets) byPhase[PHASE_LABEL[m.phase]] = (byPhase[PHASE_LABEL[m.phase]] ?? 0) + 1;
+    this.health.setDue(due);
+    const summary: CycleSummary = {
+      block: now.block,
+      markets: markets.length,
+      decisions,
+      sent,
+      scanRequests: this.config.scanRequestsPerCycle - budget.remaining,
+    };
+    this.health.update({
+      cycles: this.cycles,
+      lastCycleAt: new Date().toISOString(),
+      lastCycleMs: Date.now() - started,
+      block: now.block.toString(),
+      monBalance: formatEther(balance),
+      lowBalance,
+      markets: { total: this.directory.known, done: this.directory.retiredCount, byPhase },
+      scan: { factoryCursor: this.store.factoryCursor, requestsLastCycle: summary.scanRequests },
+    });
+    return summary;
+  }
+
+  /** Records an error for a job, logs it, and alerts (rate-limited per job and market). */
+  jobFailed(job: HealthJob, market: Address | undefined, error: unknown): void {
+    const message = errorMessage(error);
+    log("job-error", { job, market, error: message }, "error");
+    this.health.jobError(job, message);
+    void this.alerter.send(`error:${job}:${market ?? "-"}`, "job-error", { job, market, error: message });
+  }
+
+  private logPlan(m: MarketSnapshot, d: Decision): void {
+    const key = `${m.address}:${d.job}`;
+    const text = `${d.action ?? "-"}|${d.reason}`;
+    if (!this.verbosePlan && this.lastPlan.get(key) === text) return;
+    this.lastPlan.set(key, text);
+    log("plan", {
+      market: m.address,
+      template: m.templateId,
+      phase: PHASE_LABEL[m.phase],
+      job: d.job,
+      action: d.action ?? "wait",
+      reason: d.reason,
+    });
+  }
+
+  /** Runs one action. Returns true if a transaction was sent (or, in dry-run, would have been). */
+  private async execute(
+    m: MarketSnapshot,
+    action: ActionKind,
+    now: ChainNow,
+    globals: Globals,
+    scan: ScanContext,
+    predictedBook: { address: Address; deployed: boolean } | undefined,
+  ): Promise<boolean> {
+    switch (action) {
+      case "graduate":
+        return this.sendFor("graduate", m.address, {
+          to: m.address,
+          data: encodeFunctionData({ abi: marketAbi, functionName: "graduate" }),
+          abi: marketAbi,
+          action: "graduate",
+          fields: { market: m.address },
+        });
+      case "register-book":
+        if (!predictedBook) return false;
+        return this.sendFor("graduate", m.address, {
+          to: globals.graduator,
+          data: encodeFunctionData({
+            abi: graduatorAbi,
+            functionName: "registerBook",
+            args: [m.address, predictedBook.address],
+          }),
+          abi: graduatorAbi,
+          action: "registerBook",
+          fields: { market: m.address, book: predictedBook.address },
+        });
+      case "book-request":
+        return this.requestBook(m, globals, predictedBook);
+      case "claim-tokens":
+        return this.pushClaims(m, "tokens", scan);
+      case "claim-pool":
+        return this.pushClaims(m, "pool", scan);
+      case "settle":
+        return this.settle(m, now);
+      case "void":
+        return this.sendFor("void", m.address, {
+          to: m.address,
+          data: encodeFunctionData({ abi: marketAbi, functionName: "voidIfExpired" }),
+          abi: marketAbi,
+          action: "voidIfExpired",
+          fields: { market: m.address, settleDeadline: m.window.settleDeadline },
+        });
+    }
+  }
+
+  /** sendTx, plus the health record. Returns true if the transaction went out (or would have, in dry-run). */
+  private async sendFor(job: HealthJob, market: Address, request: TxRequest): Promise<boolean> {
+    const result = await this.sendWithResult(job, market, request);
+    return result !== undefined && sent(result);
+  }
+
+  /**
+   * sendTx with the dry-run repeat filter: in a dry run that keeps running, the same intended
+   * transaction is logged once per DRY_RUN_REPEAT_MS, not every cycle. Undefined when filtered.
+   */
+  private async sendWithResult(
+    job: HealthJob,
+    market: Address,
+    request: TxRequest,
+  ): Promise<TxResult | undefined> {
+    if (!this.tx.enabled && !this.verbosePlan) {
+      const key = `${request.action}:${market}:${keccak256(request.data)}`;
+      const last = this.dryRunSeen.get(key);
+      if (last !== undefined && Date.now() - last < DRY_RUN_REPEAT_MS) return undefined;
+      this.dryRunSeen.set(key, Date.now());
+    }
+    const result = await sendTx(this.tx, request);
+    this.recordResult(job, market, request.action, result);
+    return result;
+  }
+
+  private recordResult(job: HealthJob, market: Address, action: string, result: TxResult): void {
+    const base = { market, action, status: result.status };
+    if (result.status === "success" || result.status === "reverted" || result.status === "unknown") {
+      this.health.jobAction(job, {
+        ...base,
+        hash: result.hash,
+        url: `${this.deployment.explorer}/tx/${result.hash}`,
+      });
+    } else {
+      this.health.jobAction(job, base);
+    }
+    if (result.status === "reverted" || result.status === "unknown") {
+      this.jobFailed(job, market, new Error(`${action} ${result.status}: ${result.hash}`));
+    }
+  }
+
+  // ---- settlement ----------------------------------------------------------------------------
+
+  private backoff(market: Address, reason: string, longest = false): void {
+    const prev = this.settleRetry.get(market);
+    const delaySeconds = longest
+      ? this.config.settleRetryMaxSeconds
+      : Math.min(
+          prev ? prev.delaySeconds * 2 : this.config.settleRetrySeconds,
+          this.config.settleRetryMaxSeconds,
+        );
+    this.settleRetry.set(market, { at: Date.now() + delaySeconds * 1000, delaySeconds });
+    log("settle-later", { market, reason, retryInSeconds: delaySeconds }, longest ? "warn" : "info");
+  }
+
+  private async settle(m: MarketSnapshot, now: ChainNow): Promise<boolean> {
+    const retry = this.settleRetry.get(m.address);
+    if (retry && Date.now() < retry.at) return false;
+    const settler = this.settlers.get(m.templateId);
+    if (!settler) return false;
+    const evidence = await settler.evidence(m, now, {
+      client: this.client,
+      deployment: this.deployment,
+      pythApiKey: this.config.pythApiKey,
+      hermesUrl: this.config.hermesUrl,
+      fetchFn: this.fetchFn,
+    });
+    if (evidence.status !== "ready") {
+      const unsettleable = evidence.status === "unsettleable";
+      if (unsettleable) {
+        await this.alerter.send(
+          `unsettleable:${m.address}`,
+          "unsettleable",
+          {
+            market: m.address,
+            reason: evidence.reason,
+            note: "the resolver will not answer; the market voids after its settlement deadline",
+          },
+          "warn",
+        );
+      }
+      this.backoff(m.address, evidence.reason, unsettleable);
+      return false;
+    }
+    const request: TxRequest = {
+      to: m.address,
+      data: encodeFunctionData({ abi: marketAbi, functionName: "settle", args: [evidence.evidence] }),
+      value: evidence.value,
+      abi: marketWithResolverErrorsAbi,
+      action: "settle",
+      fields: { market: m.address, template: m.templateId, settler: settler.name, ...evidence.detail },
+    };
+    const result = await this.sendWithResult("settle", m.address, request);
+    if (result === undefined) return false;
+    if (result.status === "success") {
+      this.settleRetry.delete(m.address);
+    } else if (result.status === "dry-run") {
+      if (!result.simulation.ok) this.backoff(m.address, `settle would revert: ${result.simulation.reason}`);
+    } else {
+      // Skipped (the simulation failed, for example NotResolved), reverted, or unknown.
+      this.backoff(m.address, result.status === "skipped" ? result.reason : `settle ${result.status}`);
+    }
+    return sent(result);
+  }
+
+  // ---- token claims and pool payouts ------------------------------------------------------------
+
+  private async pushClaims(m: MarketSnapshot, kind: "tokens" | "pool", scan: ScanContext): Promise<boolean> {
+    const job: HealthJob = kind === "tokens" ? "claims" : "payouts";
+    if (!this.stakerSource) return false;
+    const list = await this.stakerSource.stakers(m.address, scan);
+    const users = uniqueAddresses(list.users);
+    const claimable = users.length ? await this.claimable(m.address, kind, users) : [];
+    if (claimable.length === 0) {
+      if (list.complete) {
+        // Every staker was checked onchain and none has anything left: whatever the market still holds
+        // (tokens sent to it by someone else) nobody can claim.
+        this.exhausted.add(m.address);
+        log(kind === "tokens" ? "claims-done" : "payouts-done", {
+          market: m.address,
+          stakers: users.length,
+          note: "no staker has anything left to claim",
+        });
+      } else {
+        log("claims-waiting", {
+          market: m.address,
+          kind,
+          source: this.stakerSource.name,
+          detail: list.detail,
+        });
+      }
+      return false;
+    }
+    log("claims-found", {
+      market: m.address,
+      kind,
+      claimable: claimable.length,
+      stakers: users.length,
+      source: this.stakerSource.name,
+      detail: list.detail,
+    });
+    let sent = false;
+    for (const batch of chunks(claimable, this.config.claimBatch)) {
+      if (await this.sendClaimBatch(job, m.address, kind, batch)) sent = true;
+    }
+    return sent;
+  }
+
+  /** The users with something to claim, read onchain in one multicall. */
+  private async claimable(market: Address, kind: "tokens" | "pool", users: Address[]): Promise<Address[]> {
+    if (kind === "tokens") {
+      const results = await this.client.multicall({
+        allowFailure: false,
+        batchSize: 16_384,
+        contracts: users.map((u) => ({
+          address: market,
+          abi: marketAbi,
+          functionName: "claimableTokens" as const,
+          args: [u] as const,
+        })),
+      });
+      return claimableUsers(
+        users,
+        results.map(([yes, no]) => yes + no),
+      );
+    }
+    const results = await this.client.multicall({
+      allowFailure: false,
+      batchSize: 16_384,
+      contracts: users.map((u) => ({
+        address: market,
+        abi: marketAbi,
+        functionName: "claimablePool" as const,
+        args: [u] as const,
+      })),
+    });
+    return claimableUsers(
+      users,
+      results.map(([paid]) => paid),
+    );
+  }
+
+  /** One claimTokensFor / claimPoolFor; halves the batch while its gas estimate is over the cap. */
+  private async sendClaimBatch(
+    job: HealthJob,
+    market: Address,
+    kind: "tokens" | "pool",
+    users: Address[],
+  ): Promise<boolean> {
+    const functionName = kind === "tokens" ? "claimTokensFor" : "claimPoolFor";
+    const request: TxRequest = {
+      to: market,
+      data: encodeFunctionData({ abi: marketAbi, functionName, args: [users] }),
+      abi: marketAbi,
+      action: functionName,
+      fields: { market, users: users.length },
+    };
+    if (users.length > 1) {
+      const sim = await simulate(this.tx, request);
+      if (sim.ok && bufferedGas(sim.gas) > this.config.maxGasPerTx) {
+        log("batch-split", { market, action: functionName, users: users.length, gasEstimate: sim.gas });
+        const [a, b] = halves(users);
+        const sentA = await this.sendClaimBatch(job, market, kind, a);
+        const sentB = await this.sendClaimBatch(job, market, kind, b);
+        return sentA || sentB;
+      }
+    }
+    return this.sendFor(job, market, request);
+  }
+
+  // ---- books on networks where only Kuru can create them (mainnet) ------------------------------
+
+  private async bookParams(graduator: Address): Promise<BookParams> {
+    if (!this.bookParamsCache) {
+      const p = await this.client.readContract({
+        address: graduator,
+        abi: graduatorAbi,
+        functionName: "bookParams",
+      });
+      this.bookParamsCache = {
+        sizePrecision: BigInt(p.sizePrecision),
+        pricePrecision: Number(p.pricePrecision),
+        tickSize: Number(p.tickSize),
+        minSize: BigInt(p.minSize),
+        takerFeeBps: BigInt(p.takerFeeBps),
+        makerFeeBps: BigInt(p.makerFeeBps),
+        kuruAmmSpread: BigInt(p.kuruAmmSpread),
+      };
+    }
+    return this.bookParamsCache;
+  }
+
+  /** The address Kuru's deployProxy gives this market's book, and whether a book is already there. */
+  private async predictBook(m: MarketSnapshot, g: Globals): Promise<{ address: Address; deployed: boolean }> {
+    const p = await this.bookParams(g.graduator);
+    const address = await this.client.readContract({
+      address: this.deployment.external.kuru.router,
+      abi: kuruRouterComputeAbi,
+      functionName: "computeAddress",
+      args: [
+        m.yes,
+        g.usdc,
+        p.sizePrecision,
+        p.pricePrecision,
+        p.tickSize,
+        p.minSize,
+        m.caps.poolCap,
+        p.takerFeeBps,
+        p.makerFeeBps,
+        p.kuruAmmSpread,
+        zeroAddress,
+        false,
+      ],
+    });
+    const code = await this.client.getCode({ address });
+    return { address, deployed: code !== undefined && code !== "0x" };
+  }
+
+  /**
+   * Logs (and posts to the webhook) the exact Kuru deployProxy call that creates this market's book,
+   * at most once per KEEPER_BOOK_REQUEST_SECONDS per market. Once Kuru deploys it, the graduate job
+   * finds the book at the predicted address and registers it.
+   */
+  private async requestBook(
+    m: MarketSnapshot,
+    g: Globals,
+    predictedBook: { address: Address; deployed: boolean } | undefined,
+  ): Promise<boolean> {
+    if (!this.store) return false;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const last = this.store.market(m.address).bookRequestedAt;
+    if (last !== undefined && nowSeconds - last < this.config.bookRequestSeconds) return false;
+    const p = await this.bookParams(g.graduator);
+    const request = {
+      market: m.address,
+      network: this.config.network,
+      kuruRouter: this.deployment.external.kuru.router,
+      call: "deployProxy",
+      args: {
+        _type: 0,
+        _baseAssetAddress: m.yes,
+        _quoteAssetAddress: g.usdc,
+        _sizePrecision: p.sizePrecision,
+        _pricePrecision: p.pricePrecision,
+        _tickSize: p.tickSize,
+        _minSize: p.minSize,
+        _maxSize: m.caps.poolCap,
+        _takerFeeBps: p.takerFeeBps,
+        _makerFeeBps: p.makerFeeBps,
+        _kuruAmmSpread: p.kuruAmmSpread,
+      },
+      expectedBook: predictedBook?.address,
+      afterwards: `anyone calls registerBook(${m.address}, <book>) on the graduator ${g.graduator}, then graduate() on the market`,
+      pool: { yes: m.yesTotal, no: m.noTotal, stakers: m.stakers },
+    };
+    log("book-request", request, "warn");
+    await this.alerter.send(`book-request:${m.address}`, "book-request", request, "warn");
+    this.store.update(m.address, (s) => {
+      s.bookRequestedAt = nowSeconds;
+    });
+    this.health.jobAction("graduate", { market: m.address, action: "book-request", status: "requested" });
+    return true;
+  }
+}

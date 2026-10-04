@@ -1,0 +1,25 @@
+{
+  "name": "@hunch-book/keeper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hunch Book's keeper: graduates pools, pushes claims, settles and voids markets. Calls only permissionless functions.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts run",
+    "once": "tsx src/main.ts once",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hunch-book/shared": "workspace:*",
+    "viem": "2.57.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  }
+}

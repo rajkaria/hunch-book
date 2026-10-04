@@ -1,0 +1,90 @@
+import { describeConfig, loadEnvFile, parseConfig, REPO_ENV_FILE } from "./config.js";
+import { Keeper } from "./keeper.js";
+import { errorMessage, log } from "./log.js";
+
+// Usage: tsx src/main.ts <run | once> [--env-file <path>]
+//   run   keep every market moving until SIGINT/SIGTERM (finishes the current cycle, then exits)
+//   once  one cycle with every plan line printed, then exit (with KEEPER_ENABLED off: a dry run)
+
+function parseArgs(argv: string[]): { mode: string; envFile: string | undefined } {
+  const [mode = "run", ...rest] = argv;
+  let envFile: string | undefined;
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i];
+    const value = rest[i + 1];
+    if (arg === "--env-file" && value) {
+      envFile = value;
+      i++;
+    } else {
+      throw new Error(`unknown argument: ${arg}`);
+    }
+  }
+  if (!["run", "once"].includes(mode)) throw new Error(`unknown mode: ${mode}`);
+  return { mode, envFile };
+}
+
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const envFile = args.envFile ?? process.env.KEEPER_ENV_FILE ?? REPO_ENV_FILE;
+  const loaded = loadEnvFile(envFile);
+  const config = parseConfig(process.env);
+  const keeper = new Keeper(config);
+  log("start", {
+    mode: args.mode,
+    envFile,
+    envLoaded: loaded,
+    keeper: keeper.keeper,
+    ...describeConfig(config),
+  });
+  keeper.checkPublishedAddress();
+
+  if (args.mode === "once") {
+    keeper.verbosePlan = true;
+    const summary = await keeper.cycle();
+    log("cycle", { ...summary, enabled: config.enabled });
+    return;
+  }
+
+  if (config.healthPort) keeper.health.serve(config.healthPort);
+  const stop = new AbortController();
+  let signals = 0;
+  const onSignal = (signal: string) => {
+    signals += 1;
+    if (signals > 1) {
+      log("forced-exit", { signal }, "warn");
+      process.exit(1);
+    }
+    log("stopping", { signal, note: "finishing the current cycle; send again to force" });
+    stop.abort();
+  };
+  process.on("SIGINT", () => onSignal("SIGINT"));
+  process.on("SIGTERM", () => onSignal("SIGTERM"));
+
+  while (!stop.signal.aborted) {
+    try {
+      const summary = await keeper.cycle();
+      if (summary.sent > 0) log("cycle", { ...summary });
+    } catch (error) {
+      keeper.jobFailed("discover", undefined, error);
+      keeper.health.update({});
+    }
+    await sleep(config.pollSeconds * 1000, stop.signal);
+  }
+  keeper.store?.save();
+  keeper.health.close();
+  log("stopped", {});
+}
+
+main().catch((error) => {
+  log("fatal", { error: errorMessage(error) }, "error");
+  process.exitCode = 1;
+});
