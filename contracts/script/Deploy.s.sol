@@ -40,6 +40,9 @@ contract Deploy is Script {
     uint32 internal constant TEMPLATE_PERPL_FUNDING = 1;
     uint32 internal constant TEMPLATE_PRICE_AT_TIME = 2;
 
+    /// Most USDC the vault may hold across all markets during the beta (PROTOCOL.md §10.3).
+    uint256 public constant COLLATERAL_CAP = 50_000e6;
+
     /// Conservative milliseconds per Monad block, used only for S-1 settlement deadlines.
     uint256 internal constant BLOCK_TIME_MS = 1000;
 
@@ -61,17 +64,25 @@ contract Deploy is Script {
     uint256 internal pk;
 
     function run() external {
-        string memory path = _deploymentPath();
-        json = vm.readFile(path);
+        uint256 key = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        address deployer = vm.addr(key);
+        Deployed memory d = deploy(key, vm.envOr("GUARDIAN", deployer), vm.envOr("FEE_RECIPIENT", deployer));
+        _write(_deploymentPath(), d);
+    }
+
+    /// Deploys everything from `key` and returns the addresses without writing them anywhere.
+    /// `run` calls it; the mainnet rehearsal fork test calls it directly.
+    function deploy(uint256 key, address guardian, address feeRecipient) public returns (Deployed memory d) {
+        json = vm.readFile(_deploymentPath());
         require(!vm.keyExistsJson(json, ".hunchBook.factory"), "already deployed on this network");
 
-        pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        pk = key;
         address deployer = vm.addr(pk);
-        Deployed memory d;
-        d.guardian = vm.envOr("GUARDIAN", deployer);
-        d.feeRecipient = vm.envOr("FEE_RECIPIENT", deployer);
+        d.guardian = guardian;
+        d.feeRecipient = feeRecipient;
         if (block.chainid == MAINNET) {
             require(d.guardian != deployer, "mainnet guardian must be a separate multisig, not the deployer");
+            require(d.feeRecipient != address(0), "fee recipient required");
         }
         d.deployBlock = block.number;
 
@@ -81,8 +92,6 @@ contract Deploy is Script {
         _deployTrading(d);
         if (d.guardian == deployer) _addTemplates(d);
         vm.stopBroadcast();
-
-        _write(path, d);
     }
 
     // ---- steps ----
@@ -90,8 +99,9 @@ contract Deploy is Script {
     function _deployCore(Deployed memory d) internal {
         d.usdc = block.chainid == TESTNET ? address(new TestUSDC()) : vm.parseJsonAddress(json, ".external.usdc");
         d.marketImplementation = address(new Market());
-        HunchBookFactory factory =
-            new HunchBookFactory(d.usdc, d.marketImplementation, d.guardian, d.feeRecipient, _caps(), 50_000e6);
+        HunchBookFactory factory = new HunchBookFactory(
+            d.usdc, d.marketImplementation, d.guardian, d.feeRecipient, betaCaps(), COLLATERAL_CAP
+        );
         d.factory = address(factory);
         d.vault = factory.vault();
     }
@@ -156,17 +166,17 @@ contract Deploy is Script {
 
     function _addTemplates(Deployed memory d) internal {
         HunchBookFactory factory = HunchBookFactory(d.factory);
-        factory.addTemplate(TEMPLATE_PERPL_FUNDING, IResolver(d.perplFunding), _rule());
-        factory.addTemplate(TEMPLATE_PRICE_AT_TIME, IResolver(d.priceAtTime), _rule());
+        factory.addTemplate(TEMPLATE_PERPL_FUNDING, IResolver(d.perplFunding), graduationRule());
+        factory.addTemplate(TEMPLATE_PRICE_AT_TIME, IResolver(d.priceAtTime), graduationRule());
     }
 
     // ---- parameters (PROTOCOL.md §10.3, §12) ----
 
-    function _caps() internal pure returns (MarketCaps memory) {
+    function betaCaps() public pure returns (MarketCaps memory) {
         return MarketCaps({poolCap: 5000e6, walletCap: 1000e6, minStake: 1e6, creatorMinStake: 5e6});
     }
 
-    function _rule() internal pure returns (GraduationRule memory) {
+    function graduationRule() public pure returns (GraduationRule memory) {
         return GraduationRule({minPool: 500e6, minStakers: 10, minChanceBps: 300, maxChanceBps: 9700});
     }
 
