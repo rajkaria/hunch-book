@@ -108,3 +108,6 @@ contracts/broadcast/
 
 # Next.js generates this on dev/build
 apps/web/next-env.d.ts
+
+# Local service runs (scripts/run-local-services.sh): pid and log files
+/.run/

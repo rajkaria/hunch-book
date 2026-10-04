@@ -1,0 +1,292 @@
+import {
+  encodePerplFundingParams,
+  encodePriceAtTimeParams,
+  Phase,
+  PriceSource,
+  TemplateId,
+  type Window,
+} from "@hunch-book/shared";
+import { type Address, zeroAddress } from "viem";
+import { describe, expect, it } from "vitest";
+import type { Globals } from "../src/markets.js";
+import {
+  closeReached,
+  type Decision,
+  needsBookLookup,
+  type PlanInput,
+  type PlanMarket,
+  planMarket,
+  ruleShortfall,
+} from "../src/plan.js";
+import { defaultSettlers } from "../src/settlers/index.js";
+
+const USDC = 1_000_000n;
+const settlers = defaultSettlers();
+const GRADUATOR = "0x7DC80DB34762A996aae6Ce516F562B2e6142fFE3" as Address;
+const BOOK = "0xdFd060ac7d3b129261EaB2E3DDd6F76A877D104a" as Address;
+const DEADLINE = 1_792_049_704n;
+
+// Market #1 on Monad testnet: Perpl MON funding, lock at block 68,058,301, close at block 68,264,005.
+const perplWindow: Window = {
+  blockClock: true,
+  lock: 68_058_301n,
+  close: 68_264_005n,
+  settleDeadline: DEADLINE,
+};
+const perplParams = encodePerplFundingParams({
+  perpId: 64n,
+  startBlock: perplWindow.lock,
+  endBlock: perplWindow.close,
+  threshold: 1_500n,
+  expectedScalingExp: 6,
+});
+
+const testnetGlobals: Globals = {
+  graduationPaused: false,
+  graduator: GRADUATOR,
+  canCreateBooks: true,
+  usdc: "0x13c5B2e982F437566991c4d9aC0a30F9f9aC15Ed",
+};
+const mainnetGlobals: Globals = { ...testnetGlobals, canCreateBooks: false };
+
+function market(over: Partial<PlanMarket> = {}): PlanMarket {
+  return {
+    templateId: TemplateId.PerplFunding,
+    params: perplParams,
+    window: perplWindow,
+    rule: { minPool: 500n * USDC, minStakers: 10, minChanceBps: 300, maxChanceBps: 9_700 },
+    phase: Phase.Pool,
+    graduated: false,
+    yesTotal: 410n * USDC,
+    noTotal: 280n * USDC,
+    stakers: 11,
+    ruleMet: true,
+    graduatorBook: zeroAddress,
+    heldYes: 0n,
+    heldNo: 0n,
+    poolOwed: 690n * USDC,
+    ...over,
+  };
+}
+
+const at = (block: bigint, timestamp = 1_791_000_000n) => ({ block, timestamp });
+
+function plan(m: PlanMarket, now = at(68_000_000n), extra: Partial<PlanInput> = {}): Decision[] {
+  return planMarket({
+    market: m,
+    now,
+    globals: testnetGlobals,
+    settler: settlers.get(m.templateId),
+    ...extra,
+  });
+}
+
+const byJob = (decisions: Decision[]) => Object.fromEntries(decisions.map((d) => [d.job, d]));
+
+describe("graduate", () => {
+  it("graduates a pool that meets its rule when the graduator can create the book", () => {
+    expect(plan(market())).toEqual([
+      {
+        job: "graduate",
+        action: "graduate",
+        reason: "rule met; the graduator creates the Kuru book in the same transaction",
+      },
+    ]);
+  });
+
+  it("graduates into a book that is already registered", () => {
+    const [d] = plan(market({ graduatorBook: BOOK }), at(68_000_000n), { globals: mainnetGlobals });
+    expect(d).toMatchObject({ action: "graduate", reason: `rule met and Kuru book ${BOOK} is ready` });
+  });
+
+  it("explains which part of the rule is missing", () => {
+    const [d] = plan(market({ ruleMet: false, yesTotal: 100n * USDC, noTotal: 20n * USDC, stakers: 4 }));
+    expect(d).toEqual({ job: "graduate", reason: "rule not met: pool 120 of 500 USDC; 4 of 10 stakers" });
+  });
+
+  it("waits while graduation is paused or no graduator is set", () => {
+    expect(plan(market(), at(1n), { globals: { ...testnetGlobals, graduationPaused: true } })[0]).toEqual({
+      job: "graduate",
+      reason: "rule met, but graduation is paused",
+    });
+    expect(
+      plan(market(), at(1n), { globals: { ...testnetGlobals, graduator: zeroAddress } })[0]?.action,
+    ).toBe(undefined);
+  });
+
+  it("on mainnet asks Kuru for the book, then registers it once Kuru has deployed it", () => {
+    const m = market();
+    expect(needsBookLookup(m, mainnetGlobals)).toBe(true);
+    expect(needsBookLookup(m, testnetGlobals)).toBe(false);
+    expect(needsBookLookup({ ...m, graduatorBook: BOOK }, mainnetGlobals)).toBe(false);
+    expect(needsBookLookup({ ...m, ruleMet: false }, mainnetGlobals)).toBe(false);
+
+    const notYet = plan(m, at(1n), {
+      globals: mainnetGlobals,
+      predictedBook: { address: BOOK, deployed: false },
+    });
+    expect(notYet[0]?.action).toBe("book-request");
+    const deployed = plan(m, at(1n), {
+      globals: mainnetGlobals,
+      predictedBook: { address: BOOK, deployed: true },
+    });
+    expect(deployed[0]).toMatchObject({ action: "register-book" });
+    expect(deployed[0]?.reason).toContain(BOOK);
+  });
+
+  it("does nothing for graduation outside the Pool phase", () => {
+    const decisions = plan(market({ phase: Phase.PoolLocked }), at(68_100_000n));
+    expect(decisions.map((d) => d.job)).toEqual(["settle"]);
+  });
+});
+
+describe("token claims", () => {
+  it("pushes claims while the market still holds tokens, in any phase after graduation", () => {
+    for (const phase of [Phase.Graduated, Phase.Closed, Phase.Settled, Phase.Voided]) {
+      const m = market({ phase, graduated: true, heldYes: 5n * USDC, heldNo: 1_500_000n, poolOwed: 0n });
+      expect(byJob(plan(m, at(68_300_000n))).claims).toEqual({
+        job: "claims",
+        action: "claim-tokens",
+        reason: "the market still holds 5 YES and 1.5 NO for stakers",
+      });
+    }
+  });
+
+  it("is done once the market holds no tokens", () => {
+    const m = market({ phase: Phase.Graduated, graduated: true, poolOwed: 0n });
+    expect(byJob(plan(m)).claims).toEqual({ job: "claims", reason: "every staker has their tokens" });
+  });
+});
+
+describe("settle", () => {
+  it("market #1 on testnet: waits for the block after endBlock", () => {
+    const m = market({ phase: Phase.Graduated, graduated: true, poolOwed: 0n });
+    expect(plan(m, at(68_012_925n))).toEqual([
+      { job: "claims", reason: "every staker has their tokens" },
+      { job: "settle", reason: "waiting for block > 68264005" },
+    ]);
+    // At endBlock itself the market is Closed, but Perpl's last event may still change: wait one more.
+    expect(byJob(plan({ ...m, phase: Phase.Closed }, at(68_264_005n))).settle).toEqual({
+      job: "settle",
+      reason: "waiting for block > 68264005",
+    });
+    expect(byJob(plan({ ...m, phase: Phase.Closed }, at(68_264_006n))).settle).toEqual({
+      job: "settle",
+      action: "settle",
+      reason: "close passed: settle the market",
+    });
+  });
+
+  it("settles a pool that never graduated", () => {
+    const decisions = plan(market({ phase: Phase.PoolLocked, ruleMet: false }), at(68_264_006n));
+    expect(decisions).toEqual([{ job: "settle", action: "settle", reason: "close passed: settle the pool" }]);
+  });
+
+  it("price markets wait for time > T", () => {
+    const closeTime = 1_791_100_000n;
+    const m = market({
+      templateId: TemplateId.PriceAtTime,
+      params: encodePriceAtTimeParams({
+        source: PriceSource.Chainlink,
+        feed: "0x12C0F44368a02081ce58a936d1C1F606BB301715",
+        pythId: `0x${"00".repeat(32)}`,
+        strikeE8: 100_000n * 10n ** 8n,
+        lockTime: closeTime - 3_600n,
+        closeTime,
+      }),
+      window: {
+        blockClock: false,
+        lock: closeTime - 3_600n,
+        close: closeTime,
+        settleDeadline: closeTime + 604_800n,
+      },
+      phase: Phase.Closed,
+      graduated: true,
+      poolOwed: 0n,
+    });
+    expect(byJob(plan(m, at(1n, closeTime))).settle).toEqual({
+      job: "settle",
+      reason: "waiting for time > 1791100000 (2026-10-04T07:46:40.000Z)",
+    });
+    expect(byJob(plan(m, at(1n, closeTime + 1n))).settle?.action).toBe("settle");
+  });
+
+  it("skips templates with no settler", () => {
+    const m = market({ templateId: 9, phase: Phase.Closed, graduated: true, poolOwed: 0n });
+    expect(byJob(plan(m, at(68_300_000n), { settler: undefined })).settle).toEqual({
+      job: "settle",
+      reason: "no settler for template 9: skipped",
+    });
+  });
+});
+
+describe("void", () => {
+  it("voids any unsettled market after its settlement deadline, instead of settling", () => {
+    for (const phase of [Phase.PoolLocked, Phase.Graduated, Phase.Closed]) {
+      const decisions = plan(
+        market({ phase, graduated: phase !== Phase.PoolLocked }),
+        at(68_300_000n, DEADLINE + 1n),
+      );
+      expect(byJob(decisions).void).toEqual({
+        job: "void",
+        action: "void",
+        reason: `past the settlement deadline (${DEADLINE}) with no answer`,
+      });
+      expect(byJob(decisions).settle).toBeUndefined();
+    }
+  });
+
+  it("settles right up to the deadline", () => {
+    const decisions = plan(market({ phase: Phase.Closed, graduated: true }), at(68_300_000n, DEADLINE));
+    expect(byJob(decisions).settle?.action).toBe("settle");
+    expect(byJob(decisions).void).toBeUndefined();
+  });
+
+  it("never voids a settled or voided market", () => {
+    for (const phase of [Phase.Settled, Phase.Voided]) {
+      expect(byJob(plan(market({ phase }), at(68_300_000n, DEADLINE + 100n))).void).toBeUndefined();
+    }
+  });
+});
+
+describe("pool payouts", () => {
+  it("pushes payouts for a pool-only market after settlement or void", () => {
+    for (const phase of [Phase.Settled, Phase.Voided]) {
+      expect(plan(market({ phase, poolOwed: 8_500_000n }), at(68_300_000n))).toEqual([
+        { job: "payouts", action: "claim-pool", reason: "8.5 USDC of pool payouts not yet claimed" },
+      ]);
+    }
+  });
+
+  it("is done once the pool ledger is empty", () => {
+    expect(plan(market({ phase: Phase.Settled, poolOwed: 0n }), at(68_300_000n))).toEqual([
+      { job: "payouts", reason: "every pool payout is done" },
+    ]);
+  });
+
+  it("never pays a pool for a graduated market (tokens carry its value)", () => {
+    const decisions = plan(market({ phase: Phase.Settled, graduated: true, poolOwed: 5n }), at(68_300_000n));
+    expect(byJob(decisions).payouts).toBeUndefined();
+  });
+});
+
+describe("helpers", () => {
+  it("closeReached follows the market's clock", () => {
+    expect(closeReached(perplWindow, at(68_264_004n))).toBe(false);
+    expect(closeReached(perplWindow, at(68_264_005n))).toBe(true);
+    const timeWindow: Window = { blockClock: false, lock: 10n, close: 20n, settleDeadline: 30n };
+    expect(closeReached(timeWindow, at(999_999_999n, 19n))).toBe(false);
+    expect(closeReached(timeWindow, at(0n, 20n))).toBe(true);
+  });
+
+  it("ruleShortfall names each unmet part", () => {
+    const rule = { minPool: 500n * USDC, minStakers: 10, minChanceBps: 300, maxChanceBps: 9_700 };
+    expect(ruleShortfall({ yesTotal: 600n * USDC, noTotal: 0n, stakers: 12, rule })).toEqual([
+      "one side has no stake",
+    ]);
+    expect(ruleShortfall({ yesTotal: 990n * USDC, noTotal: 10n * USDC, stakers: 12, rule })).toEqual([
+      "chance 99% is outside 3% to 97%",
+    ]);
+    expect(ruleShortfall({ yesTotal: 300n * USDC, noTotal: 300n * USDC, stakers: 12, rule })).toEqual([]);
+  });
+});
