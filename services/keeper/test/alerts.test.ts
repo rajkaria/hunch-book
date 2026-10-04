@@ -106,6 +106,19 @@ describe("Health", () => {
     });
     expect(saved.jobs.claims).toMatchObject({ due: 0, lastError: "boom" });
     expect(saved.lastError).toBe("boom");
-    expect(Object.keys(saved.jobs)).toEqual(["discover", "graduate", "claims", "settle", "void", "payouts"]);
+    expect(Object.keys(saved.jobs)).toEqual([
+      "discover",
+      "graduate",
+      "claims",
+      "prove",
+      "snapshot",
+      "settle",
+      "void",
+      "payouts",
+      "series",
+      "autoRedeem",
+      "orders",
+      "oracle",
+    ]);
   });
 });

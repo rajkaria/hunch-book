@@ -33,6 +33,12 @@ export interface MakerConfig {
   healthPort: number | undefined;
   /** Quote only these markets when set. */
   markets: Address[] | undefined;
+  /** "live" (sends when MAKER_ENABLED is on) or "paper" (simulated fills against real trades, never sends). */
+  mode: "live" | "paper";
+  /** Paper mode's starting USDC, base units. */
+  paperUsdc: bigint;
+  /** Quote only markets of these templates when set (MAKER_TEMPLATES). */
+  templates: number[] | undefined;
 }
 
 type Env = Record<string, string | undefined>;
@@ -58,7 +64,18 @@ export function parseConfig(env: Env): MakerConfig {
   const network = (env.MAKER_NETWORK?.trim() || "monad-testnet") as Network;
   if (!NETWORKS.includes(network)) throw new Error(`MAKER_NETWORK must be one of ${NETWORKS.join(", ")}`);
 
-  const enabled = parseBool(env.MAKER_ENABLED);
+  const mode = (env.MAKER_MODE?.trim().toLowerCase() || "live") as MakerConfig["mode"];
+  if (mode !== "live" && mode !== "paper") throw new Error('MAKER_MODE must be "live" or "paper"');
+  // Paper mode never sends, whatever MAKER_ENABLED says.
+  const enabled = mode === "live" && parseBool(env.MAKER_ENABLED);
+  const templates = env.MAKER_TEMPLATES?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const id = Number(s);
+      if (!Number.isInteger(id) || id < 1) throw new Error(`MAKER_TEMPLATES has a bad template id: ${s}`);
+      return id;
+    });
   const rawKey = env.MAKER_PRIVATE_KEY?.trim();
   let privateKey: Hex | undefined;
   if (rawKey) {
@@ -127,6 +144,9 @@ export function parseConfig(env: Env): MakerConfig {
       ? num(env, "MAKER_HEALTH_PORT", 0, (x) => Number.isInteger(x) && x > 0 && x < 65536, "a port number")
       : undefined,
     markets: markets && markets.length > 0 ? markets : undefined,
+    mode,
+    paperUsdc: BigInt(Math.round(num(env, "MAKER_PAPER_USDC", 1_000, positive, "above zero") * 1_000_000)),
+    templates: templates && templates.length > 0 ? templates : undefined,
   };
 }
 

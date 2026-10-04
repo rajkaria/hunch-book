@@ -43,6 +43,12 @@ export interface TxRequest {
   /** Short name for the log line, such as "graduate" or "claimTokensFor". */
   action: string;
   fields?: Record<string, unknown>;
+  /**
+   * The least gas limit to send with, when the estimate is known to be too low: a call that catches
+   * an inner call's failure (AutoRedeemer.redeemManyFor) still succeeds with too little gas, so an
+   * estimate can starve the inner call. Never above KEEPER_MAX_GAS_PER_TX.
+   */
+  minGas?: bigint;
 }
 
 export type Simulation = { ok: true; gas: bigint } | { ok: false; reason: string };
@@ -143,7 +149,10 @@ export async function sendTx(ctx: TxContext, request: TxRequest): Promise<TxResu
   }
   const headroom = ctx.maxGasPriceWei - baseFee;
   const maxPriorityFeePerGas = priority < headroom ? priority : headroom;
-  const gasLimit = gasLimitFor(simulation.gas, ctx.maxGasPerTx);
+  const estimated = gasLimitFor(simulation.gas, ctx.maxGasPerTx);
+  const floor =
+    request.minGas !== undefined && request.minGas < ctx.maxGasPerTx ? request.minGas : ctx.maxGasPerTx;
+  const gasLimit = request.minGas !== undefined && estimated < floor ? floor : estimated;
 
   let hash: Hex;
   try {

@@ -23,6 +23,16 @@ export interface MarketState {
   bookRequestedAt?: number;
 }
 
+/** Holders who opted in to auto-redeem, from the AutoRedeemer's OptInSet events. */
+export interface AutoRedeemState {
+  /** The AutoRedeemer these holders belong to (a new one starts over). */
+  redeemer: Address;
+  /** Next block the OptInSet scan reads. */
+  cursor?: number;
+  /** Holders whose latest OptInSet was true, in first-seen order. */
+  optedIn: Address[];
+}
+
 export interface KeeperState {
   version: 1;
   network: string;
@@ -30,6 +40,7 @@ export interface KeeperState {
   /** Next block the MarketCreated scan reads. */
   factoryCursor?: number;
   markets: Record<Address, MarketState>;
+  autoRedeem?: AutoRedeemState;
 }
 
 export function emptyState(network: string, factory: Address): KeeperState {
@@ -64,7 +75,18 @@ export function parseState(text: string, network: string, factory: Address): Kee
         : [],
     };
   }
-  return { ...parsed, factory: getAddress(parsed.factory), markets };
+  const out: KeeperState = { ...parsed, factory: getAddress(parsed.factory), markets };
+  const ar = parsed.autoRedeem;
+  if (ar && typeof ar === "object" && isAddress(ar.redeemer) && Array.isArray(ar.optedIn)) {
+    out.autoRedeem = {
+      redeemer: getAddress(ar.redeemer),
+      cursor: typeof ar.cursor === "number" ? ar.cursor : undefined,
+      optedIn: ar.optedIn.filter((s) => isAddress(s)).map((s) => getAddress(s)),
+    };
+  } else {
+    delete out.autoRedeem;
+  }
+  return out;
 }
 
 export class StateStore {
@@ -121,6 +143,21 @@ export class StateStore {
     }
     if (added > 0) this.dirty = true;
     return added;
+  }
+
+  /** The auto-redeem record for `redeemer`; a different redeemer than the saved one starts over. */
+  autoRedeem(redeemer: Address): AutoRedeemState {
+    const key = getAddress(redeemer);
+    if (!this.state.autoRedeem || this.state.autoRedeem.redeemer !== key) {
+      this.state.autoRedeem = { redeemer: key, optedIn: [] };
+      this.dirty = true;
+    }
+    return this.state.autoRedeem;
+  }
+
+  updateAutoRedeem(redeemer: Address, patch: (s: AutoRedeemState) => void): void {
+    patch(this.autoRedeem(redeemer));
+    this.dirty = true;
   }
 
   snapshot(): KeeperState {
