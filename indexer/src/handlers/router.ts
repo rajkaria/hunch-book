@@ -3,7 +3,7 @@
 import { indexer } from "envio";
 import { isBuyKind, routerKindOf } from "../lib/enums.js";
 import { averagePriceE6 } from "../lib/math.js";
-import { addr } from "../lib/network.js";
+import { addr, isConditionalOrders } from "../lib/network.js";
 import { Unit } from "../lib/store.js";
 
 indexer.onEvent({ contract: "HunchRouter", event: "Trade" }, async ({ event, context }) => {
@@ -15,11 +15,16 @@ indexer.onEvent({ contract: "HunchRouter", event: "Trade" }, async ({ event, con
   const buy = isBuyKind(kind);
   const usdc = buy ? amountIn : amountOut;
   const tokens = buy ? amountOut : amountIn;
+  // ConditionalOrders trades for an order's owner. Its OrderExecuted, later in this transaction, moves
+  // this trade to the owner (conditionalOrders.ts); the contract itself never counts as a trader.
+  const forOrder = isConditionalOrders(u.m.chainId, user);
 
   const wallet = await u.wallet(user);
-  wallet.routerTradeCount += 1;
-  wallet.routerVolume += usdc;
-  await u.participate(wallet, "trade");
+  if (!forOrder) {
+    wallet.routerTradeCount += 1;
+    wallet.routerVolume += usdc;
+    await u.participate(wallet, "trade");
+  }
 
   u.create("RouterTrade", {
     id: u.m.id,
@@ -32,6 +37,7 @@ indexer.onEvent({ contract: "HunchRouter", event: "Trade" }, async ({ event, con
     tokens,
     priceE6: averagePriceE6(usdc, tokens),
     book: addr(event.params.book),
+    conditionalOrder_id: undefined,
     userIsOurs: wallet.isOurs,
     block: u.m.block,
     timestamp: u.m.timestamp,
@@ -45,10 +51,12 @@ indexer.onEvent({ contract: "HunchRouter", event: "Trade" }, async ({ event, con
   } else {
     u.log.warn("router trade on a market the indexer has not seen", { market: marketId, event: u.m.id });
   }
-  const position = await u.position(marketId, user);
-  if (buy) position.usdcSpent += usdc;
-  else position.usdcReceived += usdc;
-  position.updatedAt = u.m.timestamp;
+  if (!forOrder) {
+    const position = await u.position(marketId, user);
+    if (buy) position.usdcSpent += usdc;
+    else position.usdcReceived += usdc;
+    position.updatedAt = u.m.timestamp;
+  }
 
   const s = await u.stats();
   s.routerTradeCount += 1;

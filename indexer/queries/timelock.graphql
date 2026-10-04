@@ -1,0 +1,54 @@
+# The TemplateTimelock queue, for the public review of new templates and limits: every operation still
+# queued with its decoded call and when it can run, the latest ones that ran or were cancelled, and the
+# actions that took effect at once. An operation can run from readyAt until expiresAt.
+query TimelockQueue($recent: Int = 20) {
+  queued: TimelockOperation(where: { status: { _eq: "Queued" } }, order_by: { readyAt: asc }) {
+    id
+    nonce
+    kind
+    summary
+    data
+    templateId
+    resolver
+    minPool
+    minStakers
+    minChanceBps
+    maxChanceBps
+    poolCap
+    walletCap
+    minStake
+    creatorMinStake
+    collateralCap
+    pendingGuardian
+    readyAt
+    expiresAt
+    proposer
+    queuedAt
+    queueTx
+  }
+  done: TimelockOperation(
+    where: { status: { _neq: "Queued" } }
+    order_by: { queuedAt: desc }
+    limit: $recent
+  ) {
+    id
+    kind
+    summary
+    status
+    readyAt
+    executor
+    executorIsOurs
+    executedAt
+    executeTx
+    cancelledAt
+    cancelTx
+  }
+  TimelockAction(order_by: { timestamp: desc }, limit: $recent) {
+    kind
+    paused
+    sender
+    senderIsOurs
+    timestamp
+    tx
+  }
+}

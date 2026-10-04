@@ -118,10 +118,15 @@ const files = readdirSync(dir).filter((f) => f.endsWith(".graphql"));
 describe("example queries", () => {
   it("covers the queries the app needs", () => {
     expect(files.sort()).toEqual([
+      "auto-redeem.graphql",
       "market-detail.graphql",
       "markets.graphql",
+      "open-orders.graphql",
       "portfolio.graphql",
       "proof-stats.graphql",
+      "referrals.graphql",
+      "rewards.graphql",
+      "timelock.graphql",
       "trade-tape.graphql",
     ]);
   });

@@ -13,11 +13,24 @@
       "usdc": "0x754704bc059f8c67012fed69bc8a327a5aafb603",
       "marketImplementation": null
     },
+    "resolvers": {},
+    "periphery": {
+      "autoRedeemer": null,
+      "conditionalOrders": null,
+      "referralRegistry": null,
+      "merkleDistributor": null,
+      "impliedProbabilityOracle": null,
+      "priceAdapterFactory": null,
+      "templateTimelock": null,
+      "deployBlock": null
+    },
     "ours": {
       "maker": "0x0f1156eb25dbebee5386ec80f1eb0b85c7dd232a",
       "keeper": "0x1f5ac9bb0df7d0e0dd133cbd71388e1078475569",
       "guardian": null,
-      "feeRecipient": null
+      "feeRecipient": null,
+      "distributorFunder": null,
+      "timelockProposer": null
     },
     "kuru": {
       "router": "0xd651346d7c789536ebf06dc72ae3c8502cd695cc",
@@ -56,11 +69,32 @@
       "usdc": "0x13c5b2e982f437566991c4d9ac0a30f9f9ac15ed",
       "marketImplementation": "0xaef7f97a739c8ea93d4f5fc497b0181cf92d8ce6"
     },
+    "resolvers": {
+      "chainlinkTouch": "0x34ac3f430c8f49735987efe88634ef8d9c295727",
+      "marketOutcome": "0x1a57bafe8161763c51248af40567fcff266f9168",
+      "perplFunding": "0x4ec0077e30ea8b626c5aa087c586e60542150951",
+      "perplFundingSpike": "0x3459d8026dd8e7b0f3be2b1af21050013b9bca64",
+      "priceAtTime": "0x5582e5aeb12e15eada88402e2903bc628cc28b3c",
+      "priceRange": "0xba86bcf0915c7e79c7d8a7e170ca76f1d82f8694",
+      "snapshot": "0x1e62c389d7c035acfdd971c7e6b7157c1d34d632"
+    },
+    "periphery": {
+      "autoRedeemer": "0x26efb3d0d50dcbb97fbb369471fcc59a2677a534",
+      "conditionalOrders": "0xdf733f2ad02fcd3ea1a02d319d720c94d67c7eb6",
+      "referralRegistry": "0x063713eb539f2c9458d4836341ce3a74cf948569",
+      "merkleDistributor": "0x1872c4aad2941410f81778467864e113b74cc2d9",
+      "impliedProbabilityOracle": "0xec0fcfd5ee0fc6dd8938b72810697f7bbfda9134",
+      "priceAdapterFactory": "0x348476c0602c3befd1064d54636dd791240b508b",
+      "templateTimelock": "0xce858df2c95851275ed97e9ba764b22d6394290b",
+      "deployBlock": 68046179
+    },
     "ours": {
       "maker": "0x0f1156eb25dbebee5386ec80f1eb0b85c7dd232a",
       "keeper": "0x1f5ac9bb0df7d0e0dd133cbd71388e1078475569",
       "guardian": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
-      "feeRecipient": "0xd183a7daecf3d539683f37e1111558e3dfc210a8"
+      "feeRecipient": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+      "distributorFunder": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+      "timelockProposer": "0xd183a7daecf3d539683f37e1111558e3dfc210a8"
     },
     "kuru": {
       "router": "0x7efbe105ca7415de98f96622173458ac1c054630",

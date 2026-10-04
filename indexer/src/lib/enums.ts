@@ -1,6 +1,7 @@
 import type { Enum } from "envio";
 
-// Solidity enum ordinals (contracts/src/interfaces/IHunchBookTypes.sol, IHunchRouter.sol) to schema enums.
+// Solidity enum ordinals (contracts/src/interfaces/IHunchBookTypes.sol, IHunchRouter.sol,
+// contracts/src/periphery/interfaces/IConditionalOrders.sol) to schema enums.
 
 export function sideOf(ordinal: bigint): Enum<"Side"> {
   if (ordinal === 0n) return "Yes";
@@ -29,4 +30,13 @@ export function routerKindOf(ordinal: bigint): Enum<"RouterTradeKind"> {
 
 export function isBuyKind(kind: Enum<"RouterTradeKind">): boolean {
   return kind === "BuyYes" || kind === "BuyNo";
+}
+
+// IConditionalOrders.Condition.
+const CONDITIONS = ["AtOrAbove", "AtOrBelow"] as const satisfies readonly Enum<"OrderCondition">[];
+
+export function conditionOf(ordinal: bigint): Enum<"OrderCondition"> {
+  const condition = CONDITIONS[Number(ordinal)];
+  if (!condition) throw new Error(`unknown order condition ${ordinal}`);
+  return condition;
 }

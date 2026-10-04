@@ -1,0 +1,46 @@
+# Reward epochs (referral shares and maker rewards) with what has been claimed, swept and is still
+# owed; one account's claims; and the totals per token. $account is the address in lowercase.
+query Rewards($account: String!, $epochs: Int = 20) {
+  RewardEpoch(order_by: { epoch: desc }, limit: $epochs) {
+    id
+    epoch
+    token
+    root
+    total
+    claimDeadline
+    claimed
+    claimCount
+    swept
+    sweptAmount
+    outstanding
+    funder
+    createdAt
+    createdTx
+  }
+  RewardClaim(where: { account: { _eq: $account } }, order_by: { timestamp: desc }) {
+    id
+    amount
+    caller
+    callerIsOurs
+    timestamp
+    tx
+    epoch {
+      epoch
+      token
+    }
+  }
+  RewardToken {
+    id
+    epochCount
+    funded
+    claimed
+    swept
+    outstanding
+  }
+  RewardDistributor {
+    id
+    funder
+    funderIsOurs
+    pendingFunder
+  }
+}

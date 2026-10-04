@@ -19,8 +19,28 @@ export interface NetworkConstants {
     usdc: string | null;
     marketImplementation: string | null;
   };
+  /** Resolver address by name (perplFunding, priceAtTime, ..., snapshot), from `hunchBook.resolvers`. */
+  resolvers: Record<string, string>;
+  /** The periphery (docs/PERIPHERY.md), from `hunchBook.periphery`. */
+  periphery: {
+    autoRedeemer: string | null;
+    conditionalOrders: string | null;
+    referralRegistry: string | null;
+    merkleDistributor: string | null;
+    impliedProbabilityOracle: string | null;
+    priceAdapterFactory: string | null;
+    templateTimelock: string | null;
+    deployBlock: number | null;
+  };
   /** Wallets whose activity is ours and is labelled as ours wherever it is counted. */
-  ours: { maker: string; keeper: string; guardian: string | null; feeRecipient: string | null };
+  ours: {
+    maker: string;
+    keeper: string;
+    guardian: string | null;
+    feeRecipient: string | null;
+    distributorFunder: string | null;
+    timelockProposer: string | null;
+  };
   kuru: { router: string; marginAccount: string };
   /** Perpl perp id to asset symbol. */
   perps: Record<string, string>;
@@ -53,6 +73,8 @@ export function staticRoleOf(chainId: number, address: string): Enum<"OurRole"> 
   if (a === ours.keeper) return "Keeper";
   if (a === ours.guardian) return "Guardian";
   if (a === ours.feeRecipient) return "FeeRecipient";
+  if (a === ours.distributorFunder) return "DistributorFunder";
+  if (a === ours.timelockProposer) return "TimelockProposer";
   return "None";
 }
 
@@ -60,9 +82,29 @@ export function isOurMaker(chainId: number, address: string): boolean {
   return addr(address) === networkOf(chainId).ours.maker;
 }
 
-/** Contracts that only pass tokens through. They get no Position. */
+/** The AutoRedeemer: it redeems a holder's tokens and the vault pays the holder directly. */
+export function isAutoRedeemer(chainId: number, address: string): boolean {
+  return addr(address) === networkOf(chainId).periphery.autoRedeemer;
+}
+
+/** ConditionalOrders: it trades through the router for an order's owner. */
+export function isConditionalOrders(chainId: number, address: string): boolean {
+  return addr(address) === networkOf(chainId).periphery.conditionalOrders;
+}
+
+/**
+ * Contracts that only pass tokens through. They get no Position. The AutoRedeemer and ConditionalOrders
+ * hold nothing between transactions: what they move belongs to the holder or the order's owner.
+ */
 export function isPlumbing(chainId: number, address: string, market: string): boolean {
   const a = addr(address);
-  const { contracts } = networkOf(chainId);
-  return a === ZERO_ADDRESS || a === addr(market) || a === contracts.vault || a === contracts.router;
+  const { contracts, periphery } = networkOf(chainId);
+  return (
+    a === ZERO_ADDRESS ||
+    a === addr(market) ||
+    a === contracts.vault ||
+    a === contracts.router ||
+    a === periphery.autoRedeemer ||
+    a === periphery.conditionalOrders
+  );
 }
