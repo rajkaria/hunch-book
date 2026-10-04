@@ -229,7 +229,7 @@ export function FeedDeck({
   const chance = marketChance(card);
   const shown = chanceDisplay(chance);
   const prices = sidePrices(card);
-  const headline = marketHeadline(card);
+  const headline = marketHeadline(card, clock);
   const cardClass = [
     s.card,
     motion === "settling" ? s.settling : "",
@@ -344,7 +344,7 @@ export function FeedDeck({
         {sheet ? (
           <>
             <p className="muted" style={{ fontSize: 14 }}>
-              {marketHeadline(sheet.market)}
+              {marketHeadline(sheet.market, clock)}
             </p>
             <ReferralBindPrompt />
             <StakeTicket

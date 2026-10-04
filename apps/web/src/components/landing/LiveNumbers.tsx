@@ -113,7 +113,11 @@ export function LiveNumbers({ live }: { live: LandingRead }) {
           <div className={s.liveHead}>
             <h2 className={s.liveTitle} id="live-title">
               <LiveDot tone={live.status === "ok" ? "accent" : "muted"} />
-              {live.status === "not-deployed" ? "Not deployed yet" : `Live from ${appNetworkLabel}`}
+              {live.status === "not-deployed"
+                ? "Not deployed yet"
+                : live.status === "loading"
+                  ? `Reading ${appNetworkLabel}`
+                  : `Live from ${appNetworkLabel}`}
             </h2>
             {live.status === "ok" && live.data.block !== null ? (
               <p className={s.liveMeta}>
@@ -130,12 +134,16 @@ export function LiveNumbers({ live }: { live: LandingRead }) {
               <p className={s.liveEmptyTitle}>
                 {live.status === "not-deployed"
                   ? `The contracts are not deployed on ${appNetworkLabel} yet.`
-                  : `Could not reach ${appNetworkLabel} just now.`}
+                  : live.status === "loading"
+                    ? `Reading the contracts on ${appNetworkLabel}...`
+                    : `Could not reach ${appNetworkLabel} just now.`}
               </p>
               <p className="muted">
                 {live.status === "not-deployed"
                   ? "This panel fills in from the chain once they are."
-                  : "Nothing here is cached or estimated, so the figures stay hidden until the next read succeeds."}
+                  : live.status === "loading"
+                    ? "The figures appear as soon as the read lands."
+                    : "Nothing here is cached or estimated, so the figures stay hidden until the next read succeeds."}
               </p>
             </div>
           )}

@@ -95,6 +95,7 @@ const snapshot = (over: Partial<LandingSnapshot> = {}): LandingRead => ({
     rule: RULE,
     msPerBlock: 300,
     block: 67_862_094n,
+    blockTime: 1_791_090_000,
     ...over,
   },
 });
@@ -145,6 +146,7 @@ describe("readLandingSnapshot", () => {
     expect(data.rule).toEqual(RULE);
     expect(data.msPerBlock).toBe(300);
     expect(data.block).toBe(2_000_000n);
+    expect(data.blockTime).toBe(1_000_003_000);
   });
 
   it("reads the vault's balance and obligations in one multicall, so they share a block", async () => {
@@ -173,6 +175,7 @@ describe("readLandingSnapshot", () => {
     expect(result.data.vault).toBeNull();
     expect(result.data.msPerBlock).toBeNull();
     expect(result.data.block).toBeNull();
+    expect(result.data.blockTime).toBeNull();
     expect(result.data.newest?.address).toBe(marketAddr(1));
     expect(result.data.stats?.listed).toBe(2);
   });

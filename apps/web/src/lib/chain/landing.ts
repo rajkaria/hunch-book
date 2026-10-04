@@ -8,6 +8,7 @@ import {
   TemplateId,
 } from "@hunch-book/shared";
 import { type Address, erc20Abi } from "viem";
+import type { TitleClock } from "../market/title";
 import type { MarketView } from "../market/types";
 import { MULTICALL3, type ReadClient } from "./client";
 import { listMarkets, MARKET_LIST_LIMIT, measureMsPerBlock, readChainHead } from "./reads";
@@ -57,9 +58,13 @@ export interface LandingSnapshot {
   msPerBlock: number | null;
   /** The block the snapshot was read at. */
   block: bigint | null;
+  /** That block's unix time, so block numbers can be read as estimated clock times. */
+  blockTime: number | null;
 }
 
 export type LandingRead =
+  /** In the browser, while another network than the server's is read. */
+  | { status: "loading" }
   | { status: "not-deployed" }
   | { status: "error" }
   | { status: "ok"; data: LandingSnapshot };
@@ -150,6 +155,14 @@ export async function readVaultBooks(client: ReadClient, vault: Address, usdc: A
   return { balance: balance.result, obligations: obligations.result };
 }
 
+/** The snapshot's chain clock, for titles that read block numbers as times; null if any part is missing. */
+export function landingClock(
+  data: Pick<LandingSnapshot, "block" | "blockTime" | "msPerBlock">,
+): TitleClock | null {
+  if (data.block === null || data.blockTime === null || data.msPerBlock === null) return null;
+  return { blockNumber: data.block, timestamp: data.blockTime, msPerBlock: data.msPerBlock };
+}
+
 /** Reads the landing page's live data. Never throws. */
 export async function readLandingSnapshot(
   client: ReadClient,
@@ -179,7 +192,11 @@ export async function readLandingSnapshot(
       }),
       (async () => {
         const head = await readChainHead(client);
-        return { block: head.blockNumber, ms: await measureMsPerBlock(client, head.blockNumber) };
+        return {
+          block: head.blockNumber,
+          time: head.timestamp,
+          ms: await measureMsPerBlock(client, head.blockNumber),
+        };
       })(),
       vault && usdc ? readVaultBooks(client, vault, usdc) : Promise.resolve(null),
     ]);
@@ -205,6 +222,7 @@ export async function readLandingSnapshot(
         rule,
         msPerBlock: settled(pace)?.ms ?? null,
         block: settled(pace)?.block ?? null,
+        blockTime: settled(pace)?.time ?? null,
       },
     };
   })();

@@ -6,7 +6,7 @@ import { formatChance } from "@/lib/format";
 import { useFundingSumNow, usePerpMeta } from "@/lib/hedge/hooks";
 import { formatUsdNumber, fundingPaidUsd, PHI, poolNetGain } from "@/lib/hedge/math";
 import type { TrackedHedge } from "@/lib/hedge/tracking";
-import { useMarket } from "@/lib/hooks";
+import { useChainClock, useMarket } from "@/lib/hooks";
 import { marketChance } from "@/lib/market/logic";
 import type { MarketView } from "@/lib/market/types";
 import { marketHeadline } from "../markets/MarketCard";
@@ -51,6 +51,7 @@ function TrackedRow({ hedge, onRemove }: { hedge: TrackedHedge; onRemove: () => 
   const sum = useFundingSumNow(perpId);
   const market = useMarket(hedge.market);
   const m = market.data?.status === "ok" ? market.data.data : null;
+  const clock = useChainClock(Boolean(m?.window.blockClock));
   const paid =
     meta.data && sum.data
       ? fundingPaidUsd({
@@ -69,7 +70,7 @@ function TrackedRow({ hedge, onRemove }: { hedge: TrackedHedge; onRemove: () => 
         <p className={s.proposalQuestion}>
           {hedge.symbol} {hedge.side}, {hedge.units.toLocaleString("en-US", { maximumFractionDigits: 6 })}{" "}
           {hedge.symbol}: {hedge.buy.toUpperCase()} on{" "}
-          <Link href={`/m/${hedge.market}`}>{m ? marketHeadline(m) : "the market"}</Link>
+          <Link href={`/m/${hedge.market}`}>{m ? marketHeadline(m, clock) : "the market"}</Link>
         </p>
         {m ? <PhasePill phase={m.phase} outcome={m.outcome} /> : null}
       </div>

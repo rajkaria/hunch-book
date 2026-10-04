@@ -85,6 +85,13 @@ export function formatUtc(unixSeconds: number | bigint): string {
   )}:${pad2(date.getUTCMinutes())} UTC`;
 }
 
+/** Unix seconds to "Oct 4, 06:10", in UTC, for titles that say "UTC" once at the end. */
+export function formatShortUtc(unixSeconds: number | bigint): string {
+  const date = new Date(Number(unixSeconds) * 1000);
+  if (Number.isNaN(date.getTime())) return "unknown time";
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}`;
+}
+
 /** Integer with thousands separators: 12345678 to "12,345,678". */
 export function formatInt(value: number | bigint): string {
   const v = typeof value === "bigint" ? value : BigInt(Math.trunc(value));

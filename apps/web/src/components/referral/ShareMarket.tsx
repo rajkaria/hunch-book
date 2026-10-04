@@ -7,7 +7,6 @@ import { referralRegistryAddress } from "@/lib/referral/hooks";
 import { marketPath, marketUrl, referralUrl } from "@/lib/referral/link";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { Sheet } from "../feed/Sheet";
-import { marketHeadline } from "../markets/MarketCard";
 import { Button } from "../ui";
 import s from "./referral.module.css";
 import { currentOrigin, useCopy } from "./useCopy";
@@ -16,8 +15,11 @@ import { currentOrigin, useCopy } from "./useCopy";
 export const shareCardPath = (m: Pick<MarketView, "address">): string =>
   `${marketPath(m.address)}/opengraph-image`;
 
-/** "Share": copy the market's link (with your referral, if you like), see the card it unfurls as, post it. */
-export function ShareMarket({ m }: { m: MarketView }) {
+/**
+ * "Share": copy the market's link (with your referral, if you like), see the card it unfurls as, post it.
+ * `title` is the market's title as the page shows it (lib/market/title.ts).
+ */
+export function ShareMarket({ m, title }: { m: MarketView; title: string }) {
   const [open, setOpen] = useState(false);
   const wallet = useAppChain();
   const [withReferral, setWithReferral] = useState(true);
@@ -28,7 +30,7 @@ export function ShareMarket({ m }: { m: MarketView }) {
     canRefer && withReferral && wallet.address
       ? referralUrl(origin, wallet.address, marketPath(m.address))
       : marketUrl(origin, m.address);
-  const headline = marketHeadline(m);
+  const headline = title;
   const postUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(headline)}&url=${encodeURIComponent(link)}`;
   const nativeShare =
     typeof navigator !== "undefined" && typeof navigator.share === "function"

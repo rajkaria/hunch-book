@@ -24,6 +24,7 @@ import {
 import { getPublicClient } from "@/lib/chain/client";
 import { appChain, appNetwork, appNetworkLabel, REPO_URL } from "@/lib/config";
 import { formatInt } from "@/lib/format";
+import { useChainClock } from "@/lib/hooks";
 import type { PortfolioEntry } from "@/lib/market/types";
 import { peripheryMessage } from "@/lib/periphery";
 import { isUserRejection } from "@/lib/wallet/network";
@@ -64,6 +65,7 @@ export function AutoRedeemPanel({ entries }: { entries: PortfolioEntry[] }) {
   const wallet = useAppChain();
   const user = wallet.address;
   const state = useRedeemerState(user, entries);
+  const clock = useChainClock(entries.some((e) => e.market.window.blockClock));
   const sign = useSignTypedData();
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
@@ -308,7 +310,7 @@ export function AutoRedeemPanel({ entries }: { entries: PortfolioEntry[] }) {
               <li className={s.item} key={e.market.address}>
                 <div className={s.itemHead}>
                   <Link href={`/m/${e.market.address}`} className={s.itemTitle}>
-                    {marketHeadline(e.market)}
+                    {marketHeadline(e.market, clock)}
                   </Link>
                   <Badge tone={status.tone} dot>
                     {status.label}

@@ -9,13 +9,18 @@ import {
   phaseLabel,
   phaseTone,
 } from "@/lib/market/logic";
-import { fallbackHeadline, templateLabel } from "@/lib/market/params";
+import { templateLabel } from "@/lib/market/params";
+import { marketTitle, type TitleClock } from "@/lib/market/title";
 import type { ChainClock, MarketView } from "@/lib/market/types";
 import { Badge, ChanceBar } from "../ui";
 import s from "./markets.module.css";
 
-export function marketHeadline(m: MarketView): string {
-  return m.description ?? fallbackHeadline(appDeployment, m.decoded);
+/**
+ * The market's title (lib/market/title.ts): Perpl block windows read as estimated clock times once the
+ * chain clock is known. Pass the clock wherever the component has one.
+ */
+export function marketHeadline(m: MarketView, clock: TitleClock | null = null): string {
+  return marketTitle(m, appDeployment, clock);
 }
 
 /** "Locks in 2d 4h", ticking. Block-clock markets say "about", since block times are estimated. */
@@ -57,7 +62,7 @@ export function MarketCard({
       </div>
       <h2 className={s.title}>
         <Link className={s.titleLink} href={`/m/${m.address}`}>
-          {marketHeadline(m)}
+          {marketHeadline(m, clock)}
         </Link>
       </h2>
       <div className={s.figures}>
