@@ -1,4 +1,3 @@
-import { appDeployment, isDeployed } from "@/lib/config";
 import { ConnectButton } from "../wallet/ConnectButton";
 import { Brand } from "./Brand";
 import s from "./layout.module.css";
@@ -15,7 +14,7 @@ export function Header() {
         <div className={s.wallet}>
           <NetworkSwitch />
           <ConnectButton />
-          <MobileNav networkStatus={isDeployed(appDeployment) ? "live" : "not deployed yet"} />
+          <MobileNav />
         </div>
       </div>
     </header>

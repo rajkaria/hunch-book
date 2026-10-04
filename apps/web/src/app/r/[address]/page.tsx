@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
 import { ReferralLanding } from "@/components/referral/ReferralLanding";
 import { parseAddressParam } from "@/lib/address";
-import { appNetworkLabel } from "@/lib/config";
 import { DESCRIPTION } from "@/lib/copy";
 import { marketInPath, safeNextPath } from "@/lib/referral/link";
 
@@ -37,7 +37,7 @@ export default async function ReferralPage({ params, searchParams }: Props) {
   const next = safeNextPath((await searchParams).next);
   return (
     <div className="page">
-      <PageHeader eyebrow={appNetworkLabel} title="You are invited to Hunch Book">
+      <PageHeader eyebrow={<ActiveNetworkLabel />} title="You are invited to Hunch Book">
         <p>{DESCRIPTION}</p>
       </PageHeader>
       <ReferralLanding referrer={referrer} next={next} />

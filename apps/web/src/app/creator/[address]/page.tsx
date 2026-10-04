@@ -2,11 +2,10 @@ import { CREATOR_SHARE_BPS } from "@hunch-book/shared";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CreatorView } from "@/components/creator/CreatorView";
+import { DeployedGate } from "@/components/DeployedGate";
 import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
-import { NotDeployed } from "@/components/states";
 import { parseAddressParam } from "@/lib/address";
-import { appDeployment, isDeployed } from "@/lib/config";
 import { formatBpsPercent, shortAddress } from "@/lib/format";
 
 type Props = { params: Promise<{ address: string }> };
@@ -41,11 +40,9 @@ export default async function CreatorPage({ params }: Props) {
           held by the vault until the creator withdraws.
         </p>
       </PageHeader>
-      {isDeployed(appDeployment) ? (
+      <DeployedGate willShow={CREATOR_WILL_SHOW}>
         <CreatorView creator={address} />
-      ) : (
-        <NotDeployed willShow={CREATOR_WILL_SHOW} />
-      )}
+      </DeployedGate>
     </div>
   );
 }

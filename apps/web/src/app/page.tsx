@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Landing } from "@/components/landing/Landing";
+import { LandingLive } from "@/components/landing/LandingLive";
 import { getPublicClient } from "@/lib/chain/client";
 import { readLandingSnapshot } from "@/lib/chain/landing";
 import { appDeployment } from "@/lib/config";
@@ -20,5 +20,5 @@ export const revalidate = 30;
 
 export default async function Home() {
   const live = await readLandingSnapshot(getPublicClient(), appDeployment);
-  return <Landing live={live} />;
+  return <LandingLive initial={live} />;
 }

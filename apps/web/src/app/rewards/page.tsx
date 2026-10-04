@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import { DeployedGate } from "@/components/DeployedGate";
+import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
 import { RewardsView } from "@/components/rewards/RewardsView";
-import { NotDeployed } from "@/components/states";
-import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
 import { loadPublishedEpochs } from "@/lib/rewards/load";
 
 export const metadata: Metadata = {
@@ -15,14 +15,16 @@ export default async function RewardsPage() {
   const { epochs, errors } = await loadPublishedEpochs();
   return (
     <div className="page">
-      <PageHeader eyebrow={appNetworkLabel} title="Rewards">
+      <PageHeader eyebrow={<ActiveNetworkLabel />} title="Rewards">
         <p>
           Maker rewards and referral shares are paid in epochs from an onchain distributor. Each epoch
           publishes a Merkle root onchain and a file with every wallet's amount and proof. Connect a wallet to
           claim what is yours.
         </p>
       </PageHeader>
-      {isDeployed(appDeployment) ? <RewardsView published={epochs} errors={errors} /> : <NotDeployed />}
+      <DeployedGate>
+        <RewardsView published={epochs} errors={errors} />
+      </DeployedGate>
     </div>
   );
 }

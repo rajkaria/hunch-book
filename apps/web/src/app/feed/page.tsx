@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import { DeployedGate } from "@/components/DeployedGate";
 import { FeedView } from "@/components/feed/FeedDeck";
+import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
-import { NotDeployed } from "@/components/states";
-import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: "Feed",
@@ -13,8 +13,10 @@ export const metadata: Metadata = {
 export default function FeedPage() {
   return (
     <div className="page">
-      <PageHeader eyebrow={appNetworkLabel} title="Feed" />
-      {isDeployed(appDeployment) ? <FeedView /> : <NotDeployed />}
+      <PageHeader eyebrow={<ActiveNetworkLabel />} title="Feed" />
+      <DeployedGate>
+        <FeedView />
+      </DeployedGate>
     </div>
   );
 }

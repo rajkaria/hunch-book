@@ -1,37 +1,14 @@
-import { addressUrl, deployments } from "@hunch-book/shared";
+import { deployments } from "@hunch-book/shared";
 import Link from "next/link";
-import type { ReactNode } from "react";
-import type { Address } from "viem";
-import { appDeployment, appNetwork, appNetworkLabel, factoryOf, isDeployed, REPO_URL } from "@/lib/config";
+import { isDeployed, REPO_URL } from "@/lib/config";
 import { BUILT_ON, DESCRIPTION } from "@/lib/copy";
-import { shortAddress } from "@/lib/format";
 import { Badge } from "../ui";
 import { BrandTile } from "./Brand";
+import { ExternalLink, FooterContracts } from "./FooterContracts";
 import s from "./layout.module.css";
 import { DOCS_URL, MORE_LINKS, NAV_LINKS } from "./nav";
 
-function ExternalLink({ href, children, title }: { href: string; children: ReactNode; title?: string }) {
-  return (
-    <a className={s.footerLink} href={href} target="_blank" rel="noreferrer" title={title}>
-      {children}
-      <span className={s.footerArrow} aria-hidden="true">
-        ↗
-      </span>
-    </a>
-  );
-}
-
-function ContractLink({ name, address }: { name: string; address: Address }) {
-  return (
-    <ExternalLink href={addressUrl(appDeployment, address)} title={address}>
-      {name} <span className={s.footerMono}>{shortAddress(address)}</span>
-    </ExternalLink>
-  );
-}
-
 export function Footer() {
-  const factory = factoryOf(appDeployment);
-  const { vault, router } = appDeployment.hunchBook;
   const testnetLive = isDeployed(deployments["monad-testnet"]);
   const mainnetLive = isDeployed(deployments["monad-mainnet"]);
   return (
@@ -71,19 +48,7 @@ export function Footer() {
                 Status
               </Link>
             </nav>
-            <nav className={s.footerCol} aria-label="Contracts">
-              <h2 className={s.footerHeading}>Contracts on {appNetworkLabel}</h2>
-              {factory ? (
-                <ContractLink name="Factory" address={factory} />
-              ) : (
-                <span className={s.footerNote}>Factory: not deployed yet</span>
-              )}
-              {vault ? <ContractLink name="Vault" address={vault} /> : null}
-              {router ? <ContractLink name="Router" address={router} /> : null}
-              <ExternalLink href={`${REPO_URL}/blob/main/deployments/${appNetwork}.json`}>
-                Every address
-              </ExternalLink>
-            </nav>
+            <FooterContracts />
             <nav className={s.footerCol} aria-label="Docs">
               <h2 className={s.footerHeading}>Docs</h2>
               <ExternalLink href={DOCS_URL}>Protocol</ExternalLink>

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import { DeployedGate } from "@/components/DeployedGate";
 import { LadderView } from "@/components/ladder/LadderView";
+import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
-import { NotDeployed } from "@/components/states";
-import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: "Ladders",
@@ -13,14 +13,16 @@ export const metadata: Metadata = {
 export default function LadderPage() {
   return (
     <div className="page">
-      <PageHeader eyebrow={appNetworkLabel} title="Ladders">
+      <PageHeader eyebrow={<ActiveNetworkLabel />} title="Ladders">
         <p>
           Markets with the same question, asset and window, at different strikes or thresholds. Together their
           chances draw the market's own probability curve: how likely YES is at each price. Every point is a
           market's live price, not a model.
         </p>
       </PageHeader>
-      {isDeployed(appDeployment) ? <LadderView /> : <NotDeployed />}
+      <DeployedGate>
+        <LadderView />
+      </DeployedGate>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { appNetworkLabel, REPO_URL } from "@/lib/config";
+import { appDeployment, appNetworkLabel, isDeployed, REPO_URL } from "@/lib/config";
 import s from "./layout.module.css";
 import { DOCS_URL, isActive, NAV_LINKS } from "./nav";
 
@@ -36,8 +36,10 @@ export function trapTab(e: KeyboardEvent, root: HTMLElement): boolean {
  * stays inside it, Escape, a tap outside or the close button closes it, and focus goes back to the
  * menu button. The sheet is portalled to <body> so the blurred header cannot clip it.
  */
-export function MobileNav({ networkStatus }: { networkStatus: string }) {
+export function MobileNav() {
   const pathname = usePathname() ?? "/";
+  // Read at render: the boundary above remounts this after a network switch.
+  const networkStatus = isDeployed(appDeployment) ? "live" : "not deployed yet";
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const sheet = useRef<HTMLDivElement>(null);

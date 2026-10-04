@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import { DeployedGate } from "@/components/DeployedGate";
+import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { MarketsView } from "@/components/markets/MarketsView";
 import { PageHeader } from "@/components/PageHeader";
-import { NotDeployed } from "@/components/states";
-import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
 import { MARKETS_WILL_SHOW } from "@/lib/copy";
 import { parsePhaseGroup } from "@/lib/market/logic";
 
@@ -21,18 +21,16 @@ export default async function MarketsPage({
   const filter = parsePhaseGroup(phase);
   return (
     <div className="page">
-      <PageHeader eyebrow={appNetworkLabel} title="Markets">
+      <PageHeader eyebrow={<ActiveNetworkLabel />} title="Markets">
         <p>
           Yes/no questions that settle by reading the chain. Each one starts as a USDC pool. Once the pool
           proves demand, it graduates to its own YES/USDC order book on Kuru, so you can sell before the
           answer.
         </p>
       </PageHeader>
-      {isDeployed(appDeployment) ? (
+      <DeployedGate willShow={MARKETS_WILL_SHOW}>
         <MarketsView filter={filter} />
-      ) : (
-        <NotDeployed willShow={MARKETS_WILL_SHOW} />
-      )}
+      </DeployedGate>
     </div>
   );
 }

@@ -1,8 +1,15 @@
 import { type Deployment, deployments, type Network } from "@hunch-book/shared";
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, renderHook, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Connector } from "wagmi";
-import { NetworkSwitch } from "../src/components/layout/NetworkSwitch";
+import { DeployedGate } from "../src/components/DeployedGate";
+import { LandingLive } from "../src/components/landing/LandingLive";
+import { Footer } from "../src/components/layout/Footer";
+import { Header } from "../src/components/layout/Header";
+import { ActiveNetworkLabel, NetworkSwitch } from "../src/components/layout/NetworkSwitch";
+import { PageHeader } from "../src/components/PageHeader";
 import * as config from "../src/lib/config";
 import {
   buildNetwork,
@@ -16,9 +23,17 @@ import {
   storeNetwork,
   subscribeNetwork,
 } from "../src/lib/config";
+import { useCreateConfig } from "../src/lib/create/hooks";
+import { readCreateConfig } from "../src/lib/create/reads";
 import { chooseNetwork } from "../src/lib/wallet/appNetwork";
 import { forActiveNetwork } from "../src/lib/wallet/useTxRunner";
 import { renderWithProviders } from "./render";
+
+// The create flow's factory read, so no test here talks to a real RPC.
+vi.mock("@/lib/create/reads", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/create/reads")>();
+  return { ...actual, readCreateConfig: vi.fn(async () => ({ templates: {} })) };
+});
 
 const withMainnet: Record<Network, Deployment> = {
   ...deployments,
@@ -194,5 +209,71 @@ describe("NetworkSwitch", () => {
       setActiveNetwork("monad-mainnet");
     });
     expect(screen.getByRole("button", { name: "Network: Monad mainnet" })).toBeTruthy();
+  });
+});
+
+describe("after a network switch, what the server rendered follows it", () => {
+  it("page eyebrows, the brand, the footer's contracts, the menu and the not-deployed gate", async () => {
+    await renderWithProviders(
+      <>
+        <Header />
+        <PageHeader eyebrow={<ActiveNetworkLabel suffix=" · Verify" />} title="Settlement" />
+        <DeployedGate willShow={["Every market from the factory."]}>
+          <p>Markets go here</p>
+        </DeployedGate>
+        <Footer />
+      </>,
+    );
+    expect(screen.getByText("Monad testnet · Verify")).toBeTruthy();
+    const banner = () => within(screen.getByRole("banner"));
+    expect(banner().getByRole("link", { name: "Hunch Book on testnet, home" })).toBeTruthy();
+    expect(screen.getByText("Markets go here")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Contracts on Monad testnet" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /^Factory/ }).getAttribute("href")).toMatch(/testnet\.monadscan/);
+
+    act(() => {
+      setActiveNetwork("monad-mainnet");
+    });
+    expect(screen.getByText("Monad mainnet · Verify")).toBeTruthy();
+    expect(banner().getByRole("link", { name: "Hunch Book, home" })).toBeTruthy();
+    expect(screen.queryByText("Markets go here")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Contracts not deployed on Monad mainnet yet" })).toBeTruthy();
+    expect(screen.getByText("Every market from the factory.")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Contracts on Monad mainnet" })).toBeTruthy();
+    expect(screen.getByText("Factory: not deployed yet")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Every address/ }).getAttribute("href")).toMatch(
+      /deployments\/monad-mainnet\.json$/,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    expect(within(screen.getByRole("dialog")).getByText("Monad mainnet: not deployed yet")).toBeTruthy();
+  });
+
+  it("the landing page reads the network it switched to itself", async () => {
+    await renderWithProviders(<LandingLive initial={{ status: "error" }} />);
+    expect(screen.getByText("Could not reach Monad testnet just now.")).toBeTruthy();
+    act(() => {
+      setActiveNetwork("monad-mainnet");
+    });
+    // Mainnet has no factory yet, so its read answers at once without a network call.
+    expect(await screen.findByText("The contracts are not deployed on Monad mainnet yet.")).toBeTruthy();
+    expect(screen.queryByText("Could not reach Monad testnet just now.")).toBeNull();
+  });
+
+  it("the create flow's reads follow the active network's deployment", async () => {
+    vi.mocked(readCreateConfig).mockClear();
+    setActiveNetwork("monad-mainnet");
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result, rerender } = renderHook(() => useCreateConfig(), { wrapper });
+    // No factory on mainnet: the read stays off.
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(readCreateConfig).not.toHaveBeenCalled();
+    act(() => {
+      setActiveNetwork("monad-testnet");
+    });
+    rerender();
+    await waitFor(() => expect(readCreateConfig).toHaveBeenCalledTimes(1));
   });
 });

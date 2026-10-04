@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
+import { DeployedGate } from "@/components/DeployedGate";
 import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
-import { NotDeployed } from "@/components/states";
 import { TapeView } from "@/components/tape/TapeView";
 import { parseAddressParam } from "@/lib/address";
-import { appDeployment, isDeployed } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: "Trade tape",
@@ -32,7 +31,9 @@ export default async function TapePage({
           check it on the explorer. Fills against Hunch's own maker bot are labelled ours.
         </p>
       </PageHeader>
-      {isDeployed(appDeployment) ? <TapeView market={focus} /> : <NotDeployed willShow={TAPE_WILL_SHOW} />}
+      <DeployedGate willShow={TAPE_WILL_SHOW}>
+        <TapeView market={focus} />
+      </DeployedGate>
     </div>
   );
 }

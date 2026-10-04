@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
+import { DeployedGate } from "@/components/DeployedGate";
 import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
 import { ProofView } from "@/components/proof/ProofView";
-import { NotDeployed } from "@/components/states";
-import { appDeployment, isDeployed } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: "Proof",
@@ -29,7 +28,9 @@ export default function ProofPage() {
           ours.
         </p>
       </PageHeader>
-      {isDeployed(appDeployment) ? <ProofView /> : <NotDeployed willShow={PROOF_WILL_SHOW} />}
+      <DeployedGate willShow={PROOF_WILL_SHOW}>
+        <ProofView />
+      </DeployedGate>
     </div>
   );
 }

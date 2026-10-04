@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import { DeployedGate } from "@/components/DeployedGate";
+import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
 import { ParlayPage } from "@/components/parlay/ParlayView";
-import { NotDeployed } from "@/components/states";
-import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
 
 export const metadata: Metadata = {
   title: "Parlays",
@@ -13,13 +13,15 @@ export const metadata: Metadata = {
 export default function ParlayRoute() {
   return (
     <div className="page">
-      <PageHeader eyebrow={appNetworkLabel} title="Parlays">
+      <PageHeader eyebrow={<ActiveNetworkLabel />} title="Parlays">
         <p>
           One market on several: it settles YES only if every leg settles YES, and NO the moment any leg
           settles NO. It reads the legs' own outcomes, so it settles from the chain like they do.
         </p>
       </PageHeader>
-      {isDeployed(appDeployment) ? <ParlayPage /> : <NotDeployed />}
+      <DeployedGate>
+        <ParlayPage />
+      </DeployedGate>
     </div>
   );
 }
