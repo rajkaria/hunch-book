@@ -208,6 +208,14 @@ scripts' transactions, and checks the result against what those scripts did:
 INDEXER_LIVE_TESTNET=1 pnpm --filter @hunch-book/indexer exec vitest run test/live.test.ts
 ```
 
+A second one indexes the blocks where the periphery was deployed and template 7 was registered, so the
+periphery's event signatures are checked against logs the contracts really emitted. It reads a few dozen
+blocks and takes seconds:
+
+```bash
+INDEXER_LIVE_TESTNET=1 pnpm --filter @hunch-book/indexer exec vitest run test/live-periphery.test.ts
+```
+
 ## Environment variables
 
 Put them in the shell or in `indexer/.env` (gitignored). Envio only reads variables that start with

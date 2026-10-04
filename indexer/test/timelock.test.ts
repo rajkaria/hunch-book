@@ -89,8 +89,11 @@ describe("timelock operations", () => {
     p.s.next({ from: ADDR.guardian });
     p.cancelOperation(ids[3] as string);
     p.s.emit("TemplateTimelock", "CreationPauseSet", { paused: true }, ADDR.timelock);
+    p.s.emit("TemplateTimelock", "GraduationPauseSet", { paused: false }, ADDR.timelock);
     p.s.next({ from: ALICE });
     p.s.emit("TemplateTimelock", "GuardianAccepted", {}, ADDR.timelock);
+    // A second end for an operation that already ended is ignored.
+    p.executeOperation({ id: ids[3] as string, nonce: 3n, executor: ALICE });
     await p.run();
 
     const added = await p.indexer.TimelockOperation.getOrThrow(ids[0] as string);
@@ -118,6 +121,7 @@ describe("timelock operations", () => {
     const actions = await p.indexer.TimelockAction.getAll();
     expect(actions.map((a) => [a.kind, a.paused, a.senderIsOurs])).toEqual([
       ["CreationPause", true, true],
+      ["GraduationPause", false, true],
       ["GuardianAccepted", undefined, false],
     ]);
     expect(await p.indexer.ProtocolStats.getOrThrow("10143")).toMatchObject({
