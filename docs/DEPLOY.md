@@ -20,8 +20,9 @@ and the app, keeper, maker, indexer and docs all read it.
 | `HunchRouter` | never between transactions | Buy and sell YES or NO in one transaction |
 | `TestUSDC` | testnet only | Mintable test collateral, because Kuru's testnet USDC cannot be minted |
 
-Templates 3 to 6 (touch, funding spike, price range, parlay) are added later with
-`DeployTemplatesV2.s.sol`; see [TEMPLATES.md](./TEMPLATES.md).
+Templates 3 to 6 (touch, funding spike, price range, parlay) are deployed with
+`DeployTemplatesV2.s.sol` and template 7 (snapshot) with `DeploySnapshotTemplate.s.sol`; the periphery with
+`DeployPeriphery.s.sol`. See [TEMPLATES.md](./TEMPLATES.md) and [PERIPHERY.md](./PERIPHERY.md).
 
 ## Parameters set at deploy
 
@@ -95,7 +96,23 @@ Then verify the contracts on Sourcify (the same way testnet was verified):
 forge verify-contract <address> <path:Contract> --chain 143 --verifier sourcify
 ```
 
-### 3. The guardian registers the templates
+### 3. The other templates and the periphery
+
+```bash
+cd contracts
+DEPLOYER_PRIVATE_KEY=... forge script script/DeployTemplatesV2.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast --slow
+forge script script/DeployTemplatesV2.s.sol --sig "record()" --rpc-url "$MONAD_MAINNET_RPC"
+DEPLOYER_PRIVATE_KEY=... forge script script/DeploySnapshotTemplate.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast --slow
+forge script script/DeploySnapshotTemplate.s.sol --sig "record()" --rpc-url "$MONAD_MAINNET_RPC"
+TIMELOCK_PROPOSER=0xYourMultisig DISTRIBUTOR_FUNDER=0xYourMultisig DEPLOYER_PRIVATE_KEY=... \
+  forge script script/DeployPeriphery.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast --slow
+forge script script/DeployPeriphery.s.sol --sig "recordTxs()" --rpc-url "$MONAD_MAINNET_RPC"
+pnpm exec biome format --write deployments/
+```
+
+On mainnet these scripts only deploy: the deployer is not the guardian, so it cannot register templates.
+
+### 4. The guardian registers the templates
 
 Because the guardian is a multisig, the deployer cannot register templates. Generate the batch:
 
@@ -105,16 +122,16 @@ forge script script/GuardianBatch.s.sol --rpc-url "$MONAD_MAINNET_RPC"
 ```
 
 This writes `deployments/guardian/monad-mainnet-add-templates.json` in the Safe Transaction Builder
-format, one `addTemplate(templateId, resolver, rule)` call per template. In the Safe app, open
+format, one `addTemplate(templateId, resolver, rule)` call per template that is deployed (ids 1 to 7). In the Safe app, open
 Transaction Builder, drop the file in, check every call against this document, and sign. Templates
 that are already registered are skipped, so the file can be regenerated at any time.
 
-### 4. Commit the deployment record
+### 5. Commit the deployment record
 
 Commit `deployments/monad-mainnet.json` with the deploy transaction hashes, then push. The app
 shows mainnet as soon as the file has a factory address.
 
-### 5. Books on mainnet
+### 6. Books on mainnet
 
 Kuru's mainnet market creation is owner-only. So for each market that is close to its graduation
 rule:
@@ -139,7 +156,7 @@ rule:
 
 Until Kuru creates a book, a mainnet market runs as a pool and settles as a pool. Nothing is lost.
 
-### 6. Start the services
+### 7. Start the services
 
 See [ops/README.md](../ops/README.md) for the keeper and the maker bot: environment variables,
 hosting, gas budgets and health checks. Fund the keeper with about 1 MON and the maker with MON
@@ -162,7 +179,8 @@ keep working against the old ones.
 - [ ] Dry run reviewed: addresses, caps, guardian, fee recipient
 - [ ] Broadcast run done, `deployments/monad-mainnet.json` written
 - [ ] Contracts verified on Sourcify
-- [ ] Guardian batch generated, reviewed and executed; `templateOf(1)` and `templateOf(2)` set
+- [ ] Templates 3 to 7 and the periphery deployed and recorded
+- [ ] Guardian batch generated, reviewed and executed; `templateOf(1)` to `templateOf(7)` set
 - [ ] Deployments file committed and pushed
 - [ ] Keeper and maker running against mainnet with their health endpoints green
 - [ ] First market created, with its transaction linked in the README

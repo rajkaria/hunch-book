@@ -79,7 +79,7 @@ Graduation rules (v0 values, set per template and visible on every market):
 
 | ID | Deliverable | Status |
 |---|---|---|
-| I-1 | Envio indexer: markets, stakes, graduations, Kuru fills on our books, positions, settlements, redemptions | building |
+| I-1 | Envio indexer: markets, stakes, graduations, Kuru fills on our books, positions, settlements, redemptions | building: [indexer](../indexer) built and tested; hosting waits for an Envio account |
 | A-1 | App: market list, market page (chance, book depth, rules, source), stake and trade ticket, portfolio with claim and redeem | live on testnet ([book.playhunch.xyz](https://book.playhunch.xyz)) |
 | A-2 | Create flow: pick a template, fill parameters, see the exact settlement rule in plain words, make the first stake | live on testnet ([/create](https://book.playhunch.xyz/create), templates 1 to 6) |
 | K-1 | Keeper v0: graduates eligible pools, pushes token claims, settles markets at window end, voids after the deadline, pays out pools ([services/keeper](../services/keeper)) | live on testnet ([keeper address](https://testnet.monadscan.com/address/0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569)) |
@@ -121,9 +121,9 @@ Goal: run it with real users and no surprises. Code changes only fix things user
 
 | ID | Deliverable | Why it matters | Status |
 |---|---|---|---|
-| K-2 | **Recurring series**: weekly and daily markets that create themselves (e.g. "BTC funding this week") from a schedule anyone can trigger | A market list that is never empty without manual work | building (keeper job) |
-| K-3 | **Auto-redeem** (opt in): the keeper redeems winning tokens to your wallet after settlement | Winners get paid without coming back to click | live on testnet: [AutoRedeemer](https://testnet.monadscan.com/address/0x26EFB3D0d50DCBB97FBb369471fcc59a2677A534) and the opt-in in the portfolio; the keeper job is building |
-| V-4 | **Maker kit v1**: the maker bot as a package anyone can run with their own capital and model; docs and a test mode | Outside liquidity, so users trade with other people, not with Hunch | building |
+| K-2 | **Recurring series**: weekly and daily markets that create themselves (e.g. "BTC funding this week") from a schedule anyone can trigger | A market list that is never empty without manual work | live on testnet: the keeper creates each period from a schedule ([SERIES.md](./SERIES.md)); first market [0x2D17…BF74](https://testnet.monadscan.com/tx/0x8143b82a2ab7a81a2d3b840c91076006057192ed96298ab40403424996771462), ours |
+| K-3 | **Auto-redeem** (opt in): the keeper redeems winning tokens to your wallet after settlement | Winners get paid without coming back to click | live on testnet: [AutoRedeemer](https://testnet.monadscan.com/address/0x26EFB3D0d50DCBB97FBb369471fcc59a2677A534), the opt-in in the portfolio, and the keeper job that redeems for opted-in holders |
+| V-4 | **Maker kit v1**: the maker bot as a package anyone can run with their own capital and model; docs and a test mode | Outside liquidity, so users trade with other people, not with Hunch | live: the open-source bot with models for every template, paper mode and a [maker kit](./MAKER-KIT.md) |
 | S-4 | More templates: price ranges (between K1 and K2), single-interval funding spikes on Perpl, ETH and SOL funding. (Perpl open interest and mark price are current-state only, so they wait for snapshot settlement, S-6) | More questions traders care about | live on testnet: templates 4 (funding spike), 5 (price range) and 7 (open interest and mark price); ETH and SOL funding through template 1 ([TEMPLATES.md](./TEMPLATES.md)) |
 | O-8 | Bug bounty with a published scope and payout table | Outside eyes on the money paths | planned: scope and rules in [BUG-BOUNTY.md](./BUG-BOUNTY.md); opens with the mainnet beta |
 | O-9 | Status page: contract balances, invariants, keeper and maker health, incident log | Users can see it is solvent at any moment | live on testnet ([/status](https://book.playhunch.xyz/status)) |
@@ -137,10 +137,10 @@ Goal: a perp trader opens Hunch Book every week because it saves them money or t
 |---|---|---|---|
 | A-10 | **Hedge assistant v1**: reads your Perpl positions, prices the funding you expect to pay, builds a hedge across one or more markets, tracks it until settlement | The named first user's weekly job | live on testnet ([/hedge](https://book.playhunch.xyz/hedge)), one market per hedge; hedges across several markets are planned |
 | S-5 | **Ladders**: a family of strikes on one question (funding above 0.01%, 0.02%, 0.03% ...) shown as a probability curve | A market-implied forecast of funding, not one yes/no | live on testnet ([/ladder](https://book.playhunch.xyz/ladder)) |
-| A-11 | Limit orders, take-profit and stop-loss on outcome tokens, one-click close | Trading tools traders expect | live on testnet: [ConditionalOrders](https://testnet.monadscan.com/address/0xDf733F2AD02Fcd3eA1a02d319D720c94d67c7eB6) and the orders panel; keeper execution is building |
+| A-11 | Limit orders, take-profit and stop-loss on outcome tokens, one-click close | Trading tools traders expect | live on testnet: [ConditionalOrders](https://testnet.monadscan.com/address/0xDf733F2AD02Fcd3eA1a02d319D720c94d67c7eB6), the orders panel and one-click close; the keeper executes triggered orders |
 | A-12 | Portfolio: P&L per market, history export | Bookkeeping | live on testnet (portfolio) |
-| D-1 | **TypeScript SDK**: create, stake, trade, redeem, read prices and settlement evidence | Other apps and bots build on it | building |
-| D-2 | **MCP server and agent examples**: agents can find markets, quote, trade and settle with their own wallets | Agents as traders and makers | building |
+| D-1 | **TypeScript SDK**: create, stake, trade, redeem, read prices and settlement evidence | Other apps and bots build on it | building: [packages/sdk](../packages/sdk) ([SDK.md](./SDK.md)); not published to npm yet |
+| D-2 | **MCP server and agent examples**: agents can find markets, quote, trade and settle with their own wallets | Agents as traders and makers | building: [packages/mcp](../packages/mcp) and [examples](../examples) ([MCP.md](./MCP.md)); not published to npm yet |
 | C-7 | Creator earnings: 25% of Hunch's fee on markets you created, claimable onchain; creator page with markets and earnings | People start markets their community trades | live on testnet: the vault has paid creators 25% of fees since the first deploy; [/creator](https://book.playhunch.xyz/creator/0xD183a7daECF3d539683f37e1111558E3dFC210A8) pages with withdraw |
 | C-8 | Referral share on fees, bound to a link, time-limited | Growth paid from revenue, not subsidies | live on testnet: [ReferralRegistry](https://testnet.monadscan.com/address/0x063713eb539f2c9458d4836341ce3a74CF948569) and referral links; payouts through the Merkle distributor are planned |
 
@@ -150,13 +150,13 @@ Goal: most liquidity comes from outside makers, and outcome tokens are useful ou
 
 | ID | Deliverable | Why it matters | Status |
 |---|---|---|---|
-| V-5 | Maker rewards funded from fees, paid for time at the touch and depth, published per maker | Pays for liquidity in proportion to use | building: [MerkleDistributor](https://testnet.monadscan.com/address/0x1872C4AaD2941410F81778467864e113b74Cc2D9) live on testnet; the scorer is building |
+| V-5 | Maker rewards funded from fees, paid for time at the touch and depth, published per maker | Pays for liquidity in proportion to use | building: [MerkleDistributor](https://testnet.monadscan.com/address/0x1872C4AaD2941410F81778467864e113b74Cc2D9) live on testnet; the scorer ([REWARDS.md](./REWARDS.md)) runs as a dry run; no epoch published yet |
 | V-6 | **Implied-probability feed**: an onchain view of each market's mid price and time-weighted average, for other protocols to read | Other apps can use "the market's chance funding flips" as an input | live on testnet ([ImpliedProbabilityOracle](https://testnet.monadscan.com/address/0xEc0fCfD5ee0fC6Dd8938B72810697f7BbfdA9134)) |
 | V-7 | Outcome tokens as collateral with a partner lending market (haircut set by time to settlement and book depth) | Capital efficiency for hedgers | building: the [price adapter factory](https://testnet.monadscan.com/address/0x348476c0602C3BEfd1064d54636DD791240B508B) is live on testnet; a partner lending market is planned |
 | S-6 | **Snapshot settlement** for state that is not readable historically: a permissionless snapshot at the window end with a challenge period, or a Chainlink CRE workflow that attests the value | Many more settleable questions | live on testnet: template 7 ([SnapshotResolver](https://testnet.monadscan.com/address/0x1E62C389D7c035acfDD971C7E6b7157C1D34D632)) |
 | S-7 | **Creator-resolved pools**: free-text questions that stay pools (never graduate), with a creator bond and a challenge window | Long-tail questions without exposing traded tokens to a single resolver | not built: it would let a person set an outcome, which the protocol rules out ([design note](./design/creator-resolved-pools.md)) |
 | A-13 | Mobile-first swipe feed, shareable market cards | Reach beyond desktop traders | live on testnet ([/feed](https://book.playhunch.xyz/feed) and a share card for every market) |
-| A-14 | Listing Hunch Book markets inside the Hunch app | One front door for Hunch users | building |
+| A-14 | Listing Hunch Book markets inside the Hunch app | One front door for Hunch users | building: the [feed](https://book.playhunch.xyz/api/v1/feed) and the embeddable market card are live; listing them inside the Hunch app is next |
 
 ## Phase 4: Protocol (2027-Q2 →)
 
@@ -165,7 +165,7 @@ Goal: most liquidity comes from outside makers, and outcome tokens are useful ou
 | O-10 | External audit of the vault, market, graduator and router; public report | planned ([AUDIT.md](./AUDIT.md)) |
 | O-11 | Template registry with a public review process, so new market types are added without redeploying the core | building: [TemplateTimelock](https://testnet.monadscan.com/address/0xCe858DF2C95851275ed97e9Ba764b22d6394290b) is live on testnet and becomes the guardian by a guardian decision |
 | V-8 | Graduation to other venues where an onchain order book exists, with the same pool-first lifecycle | planned ([design note](./design/other-venues.md)) |
-| D-3 | Data API: historical implied probabilities and settlement evidence for researchers and funds | building |
+| D-3 | Data API: historical implied probabilities and settlement evidence for researchers and funds | live on testnet: [/api/v1](https://book.playhunch.xyz/api/v1/stats) with CSV ([API.md](./API.md)); full history once the indexer is hosted |
 | A-15 | Parlays (combinations of outcomes), priced from the underlying books | live on testnet: template 6 and [/parlay](https://book.playhunch.xyz/parlay) |
 
 ---

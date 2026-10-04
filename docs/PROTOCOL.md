@@ -1,6 +1,6 @@
 # Hunch Book protocol specification
 
-Version 0.1 (2026-10-03). Status: design. Nothing here is deployed yet; [ROADMAP.md](./ROADMAP.md) tracks what ships when.
+Version 0.2 (2026-10-04). Status: **live on Monad testnet**, mainnet planned. Every contract below is deployed on testnet (addresses in [`deployments/monad-testnet.json`](../deployments/monad-testnet.json)); [ROADMAP.md](./ROADMAP.md) tracks what ships when, and [TEMPLATES.md](./TEMPLATES.md) and [PERIPHERY.md](./PERIPHERY.md) cover templates 1 to 7 and the contracts around the core in full.
 
 ## 1. Summary
 
@@ -33,7 +33,7 @@ Pools that never graduate settle as pools.
 | Trader with a view | "Express a view on MON, BTC or funding with a capped loss." | Stakes in a pool or trades the book. |
 | Market creator | "Start the market my community wants and earn from it." | Creates a market from a template, makes the first stake, earns 25% of Hunch's fee on it. |
 | Market maker | "Quote a fully backed binary with known settlement rules." | Quotes the YES book; mints and merges complete sets to manage inventory. |
-| Other protocols (later) | "Read the market's implied chance as an input." | Reads the implied-probability view (roadmap V-6). |
+| Other protocols | "Read the market's implied chance as an input." | Reads `ImpliedProbabilityOracle` (spot and time-weighted chance, live on testnet) or an `OutcomeTokenPriceAdapter` ([PERIPHERY.md](./PERIPHERY.md)). |
 
 ## 4. Market lifecycle
 
@@ -436,7 +436,7 @@ Limits apply to markets created after a change; existing markets keep the limits
 - After graduation, a void pays 0.50 per token, which is not a refund for someone who bought at another price.
 - Thin books are likely at first. Until outside makers join, a large share of book fills will be against Hunch's labelled maker; the proof page shows that share.
 - Perpl funding markets inherit Perpl's trust model: a permissioned price administrator sets funding rates and a 3-of-7 multisig can upgrade the Exchange.
-- Only questions whose answers are onchain and stay readable can be markets. Creator-resolved questions are on the roadmap as pool-only markets (S-7).
+- Only questions whose answers are onchain and stay readable can be markets. Creator-resolved questions would need a person to set an outcome, which this protocol rules out; the design and the trade-off are in [design/creator-resolved-pools.md](./design/creator-resolved-pools.md).
 
 ## 12. Parameters (v0)
 

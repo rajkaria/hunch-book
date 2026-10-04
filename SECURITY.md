@@ -1,13 +1,15 @@
 # Security
 
-Hunch Book holds user funds (USDC) in smart contracts. Nothing is deployed yet; this page states
-the rules the contracts are being built to, and how to report a problem once they are live.
+Hunch Book holds user funds (USDC) in smart contracts. It is live on Monad testnet (test USDC) and
+planned for mainnet. This page states the rules the contracts are built to and how to report a problem.
+The internal review is in [docs/SECURITY-REVIEW.md](./docs/SECURITY-REVIEW.md), the audit scope in
+[docs/AUDIT.md](./docs/AUDIT.md) and the bug bounty plan in [docs/BUG-BOUNTY.md](./docs/BUG-BOUNTY.md).
 
 ## Reporting
 
 Please report vulnerabilities privately through GitHub's "Report a vulnerability" button on this
 repository (Security tab), not in a public issue. We aim to acknowledge within 24 hours. A bug
-bounty with a published scope is planned for the live beta (see docs/ROADMAP.md, O-8).
+bounty with a published scope opens with the mainnet beta ([docs/BUG-BOUNTY.md](./docs/BUG-BOUNTY.md)).
 
 ## Trust model
 

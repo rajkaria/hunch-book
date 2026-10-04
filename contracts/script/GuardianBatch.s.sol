@@ -67,9 +67,14 @@ contract GuardianBatch is Script {
 
     /// Every template the protocol ships, by id. A resolver missing from the deployments file is skipped.
     function templates() public pure returns (Entry[] memory e) {
-        e = new Entry[](2);
+        e = new Entry[](7);
         e[0] = Entry(1, "perplFunding");
         e[1] = Entry(2, "priceAtTime");
+        e[2] = Entry(3, "chainlinkTouch");
+        e[3] = Entry(4, "perplFundingSpike");
+        e[4] = Entry(5, "priceRange");
+        e[5] = Entry(6, "marketOutcome");
+        e[6] = Entry(7, "snapshot");
     }
 
     /// The v0 graduation rule (PROTOCOL.md §5.3), identical to the one Deploy.s.sol registers on testnet.
