@@ -20,10 +20,11 @@ import { TxList } from "./TxList";
 
 const SIDE_NAME: Record<Side, string> = { [Side.Yes]: "YES", [Side.No]: "NO" };
 
-export function StakeTicket({ m }: { m: MarketView }) {
+/** `initialSide` preselects YES or NO, for example when the swipe feed opens the ticket. */
+export function StakeTicket({ m, initialSide = Side.Yes }: { m: MarketView; initialSide?: Side }) {
   const open = m.phase === Phase.Pool;
   const [tab, setTab] = useState<"stake" | "trade">(open || !m.graduated ? "stake" : "trade");
-  const [side, setSide] = useState<Side>(Side.Yes);
+  const [side, setSide] = useState<Side>(initialSide);
   const [input, setInput] = useState("");
 
   const wallet = useAppChain();
@@ -166,7 +167,7 @@ export function StakeTicket({ m }: { m: MarketView }) {
       </div>
 
       {tab === "trade" ? (
-        <TradeTicket m={m} />
+        <TradeTicket m={m} initialSide={initialSide} />
       ) : (
         <div role="tabpanel">
           {!open ? (

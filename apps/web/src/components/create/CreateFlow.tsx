@@ -15,6 +15,7 @@ import { ParlayForm } from "./ParlayForm";
 import { PerplForm } from "./PerplForm";
 import { PreviewPanel } from "./PreviewPanel";
 import { PriceForm } from "./PriceForm";
+import { SnapshotForm } from "./SnapshotForm";
 import { TemplatePicker } from "./TemplatePicker";
 import { TouchForm } from "./TouchForm";
 
@@ -90,6 +91,8 @@ function TemplateForm({
       return <TouchForm now={now} resolver={resolver} onResult={onResult} />;
     case "parlay":
       return <ParlayForm now={now} resolver={resolver} onResult={onResult} />;
+    case "snapshot":
+      return <SnapshotForm now={now} resolver={resolver} onResult={onResult} />;
     default:
       return null;
   }

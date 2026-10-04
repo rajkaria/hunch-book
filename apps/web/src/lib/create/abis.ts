@@ -6,7 +6,7 @@ import { withKnownErrors } from "../wallet/errors";
 // views (the generated `resolverAbi` is the bare IResolver interface), Chainlink's latest round,
 // Pyth's last onchain price, and the token errors of Hunch Book's test USDC.
 
-/** Every revert a resolver's `validate` can raise, for templates 1 to 6. */
+/** Every revert a resolver's `validate` can raise, for templates 1 to 7. */
 export const resolverErrorsAbi = parseAbi([
   // shared
   "error NonCanonicalParams()",
@@ -44,6 +44,16 @@ export const resolverErrorsAbi = parseAbi([
   "error NotAHunchMarket(address leg)",
   "error LegFinished(address leg)",
   "error LockAfterLeg(address leg, uint64 lockTime, uint256 legEarliestLock)",
+  // template 7, snapshot (SnapshotResolver)
+  "error UnknownSource(uint16 sourceId)",
+  "error UnknownComparator(uint8 comparator)",
+  "error SnapshotWindowOutOfRange(uint32 snapshotWindow)",
+  "error SourceCallFailed(uint16 sourceId)",
+  "error SourceReturnTooShort(uint16 sourceId)",
+  "error ValueOutOfRange(uint16 sourceId, uint256 raw)",
+  "error ValueStale(uint16 sourceId, uint256 updatedAt, uint256 maxAge)",
+  "error GuardCallFailed(uint16 sourceId)",
+  "error SourceChanged(uint16 sourceId)",
   // Perpl's own revert for an unknown perp id
   "error ContractDoesNotExist(uint256 perpId)",
 ]);

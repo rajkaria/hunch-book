@@ -129,6 +129,12 @@ export function voidLines(kind: TemplateKind, window: Window, source?: PriceSour
     case "parlay":
       why = ["It voids if a leg voids while no leg has settled NO, or if nobody settles it by the deadline."];
       break;
+    case "snapshot":
+      why = [
+        "It voids if nobody takes the snapshot in its window: the window is short, and a snapshot is refused while Perpl cannot be read or has changed (an upgrade, a pause or a relisted perp).",
+        "Whoever takes the snapshot first picks the block inside the window, so a level close to the current value is exposed to someone moving it at that moment.",
+      ];
+      break;
     default:
       why = [
         source === PriceSource.Pyth

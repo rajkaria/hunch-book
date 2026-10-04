@@ -19,6 +19,7 @@ import {
 import type { PortfolioEntry } from "@/lib/market/types";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, type TxStep, useTxRunner } from "@/lib/wallet/useTxRunner";
+import { PortfolioPeriphery } from "../autoredeem/PortfolioPeriphery";
 import { TxList } from "../market/TxList";
 import { marketHeadline } from "../markets/MarketCard";
 import ms from "../markets/markets.module.css";
@@ -130,6 +131,7 @@ export function PortfolioRows({ entries }: { entries: PortfolioEntry[] }) {
       ) : null}
 
       <FaucetPanel />
+      <PortfolioPeriphery entries={entries} user={user} />
 
       <ul className={ms.list} style={{ marginTop: 16 }}>
         {entries.map((e) => {
@@ -239,6 +241,7 @@ export function PortfolioView() {
         <div style={{ marginTop: 16 }}>
           <FaucetPanel />
         </div>
+        <PortfolioPeriphery entries={[]} user={wallet.address} />
       </>
     );
   }

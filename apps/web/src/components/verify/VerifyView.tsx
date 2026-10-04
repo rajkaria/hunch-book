@@ -11,10 +11,17 @@ import { useMarket, useSettlementTx, useVerification } from "@/lib/hooks";
 import { phaseLabel } from "@/lib/market/logic";
 import { describeSource, perpName, templateLabel } from "@/lib/market/params";
 import type { MarketView } from "@/lib/market/types";
-import type { ChainlinkRead, PerplRead, SettlementTx, Verification } from "@/lib/verify/read";
+import {
+  type ChainlinkRead,
+  isCheckedRead,
+  type PerplRead,
+  type SettlementTx,
+  type Verification,
+} from "@/lib/verify/read";
 import { marketHeadline } from "../markets/MarketCard";
 import { EmptyState, ErrorState, LoadingRows, NotDeployed } from "../states";
 import { AddressLink, Badge, Button, KeyValues, Notice, Panel, TxLink } from "../ui";
+import { SnapshotReadPanel } from "./SnapshotReadPanel";
 import v from "./verify.module.css";
 
 const ZERO_HASH = `0x${"00".repeat(32)}`;
@@ -330,10 +337,7 @@ function CheckPanel({
   error: boolean;
   onRun: () => void;
 }) {
-  const expected =
-    result && (result.read.template === "perpl" || result.read.template === "chainlink")
-      ? result.read.expectedHash
-      : null;
+  const expected = result && isCheckedRead(result.read) ? result.read.expectedHash : null;
   const settled = m.phase === Phase.Settled;
   return (
     <Panel title="Check it yourself" labelledBy="verify-rerun">
@@ -369,7 +373,7 @@ function CheckPanel({
               label: "Outcome from the read",
               value: (
                 <span className={v.compare}>
-                  {result.read.template === "perpl" || result.read.template === "chainlink"
+                  {isCheckedRead(result.read)
                     ? result.read.outcome === null
                       ? "n/a"
                       : OUTCOME[result.read.outcome]
@@ -445,6 +449,8 @@ export function VerifyBody({ m }: { m: MarketView }) {
         <PerplReadPanel read={result.read} m={m} />
       ) : result?.read.template === "chainlink" ? (
         <ChainlinkReadPanel read={result.read} tx={settlement.data} />
+      ) : result?.read.template === "snapshot" ? (
+        <SnapshotReadPanel read={result.read} />
       ) : result ? (
         <Panel title="The read" labelledBy="verify-read">
           <p className={v.lede}>
