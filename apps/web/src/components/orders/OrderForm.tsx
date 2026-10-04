@@ -122,9 +122,9 @@ export function OrderForm({ m, contract }: { m: MarketView; contract: Address })
   );
   const priceNow = book.data ? triggerPriceNow(kind, book.data) : null;
   const unit = evaluation.unit;
-  const held = funds.data
-    ? funds.data.balances[unit === "USDC" ? "usdc" : unit === "YES" ? "yes" : "no"]
-    : null;
+  // Buys show the USDC that pays for them; sells show the tokens being sold.
+  const heldToken: OrderToken = isBuyKind(kind) ? "usdc" : unit === "YES" ? "yes" : "no";
+  const held = funds.data ? funds.data.balances[heldToken] : null;
 
   const tokenAddress = (token: OrderToken): Address | undefined =>
     token === "usdc" ? protocol.data?.usdc : token === "yes" ? m.tokens.yes : m.tokens.no;
@@ -281,7 +281,7 @@ export function OrderForm({ m, contract }: { m: MarketView; contract: Address })
           <span>{isBuyKind(kind) ? (unit === "USDC" ? "Spend" : "Buy") : "Sell"}</span>
           {held !== null ? (
             <span className="mono">
-              {unit === "USDC" ? "Wallet" : "You hold"} {formatUsdc(held)} {unit}
+              {heldToken === "usdc" ? "Wallet" : "You hold"} {formatUsdc(held)} {TOKEN_NAME[heldToken]}
             </span>
           ) : null}
         </label>

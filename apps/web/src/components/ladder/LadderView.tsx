@@ -41,9 +41,9 @@ function MissingStrikes({ ladder, clock, now }: { ladder: Ladder; clock: ChainCl
       {open ? (
         <>
           <p className={s.note}>
-            Each one opens the create page with this ladder's exact rule and window, and the new{" "}
-            {ladder.shape === "range" ? "range" : ladder.axis === "usd" ? "strike" : "threshold"}. You check
-            it and make the first stake.
+            Each link opens the create page on this template and carries this ladder's exact parameters with
+            the new {ladder.shape === "range" ? "range" : ladder.axis === "usd" ? "strike" : "threshold"}.
+            Check it there before the first stake. This ladder's window: {windowText(ladder)}.
           </p>
           <div className={s.chips}>
             {suggestions.map((sg) => (

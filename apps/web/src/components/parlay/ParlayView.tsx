@@ -128,8 +128,8 @@ export function ParlayBuilder({
           window ? (
             <p className={s.note}>
               Proposed window: locks {formatUtc(window.lockTime)} (before the first leg can lock), closes{" "}
-              {formatUtc(window.closeTime)} (after the last leg closes). You can change them on the create
-              page.
+              {formatUtc(window.closeTime)} (after the last leg closes). The create link carries these legs
+              and times: check them there before the first stake.
             </p>
           ) : (
             <p className={s.warn}>
