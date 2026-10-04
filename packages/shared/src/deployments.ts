@@ -10,7 +10,16 @@ export interface HunchBookContracts {
   graduator?: Address;
   router?: Address;
   usdc?: Address;
-  resolvers?: { perplFunding?: Address; priceAtTime?: Address };
+  /** One resolver per template: 1 perplFunding, 2 priceAtTime, 3 chainlinkTouch, 4 perplFundingSpike,
+   * 5 priceRange, 6 marketOutcome (parlays). */
+  resolvers?: {
+    perplFunding?: Address;
+    priceAtTime?: Address;
+    chainlinkTouch?: Address;
+    perplFundingSpike?: Address;
+    priceRange?: Address;
+    marketOutcome?: Address;
+  };
   guardian?: Address;
   feeRecipient?: Address;
   /** Block of the first deployment transaction: indexers start here. */
