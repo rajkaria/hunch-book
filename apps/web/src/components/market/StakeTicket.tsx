@@ -10,6 +10,7 @@ import { marketChance, parseUsdcInput, previewStake, validateStake } from "@/lib
 import type { MarketView } from "@/lib/market/types";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, useTxRunner } from "@/lib/wallet/useTxRunner";
+import { GaslessStake } from "../account/GaslessStake";
 import { Button, Panel } from "../ui";
 import { ConnectButton } from "../wallet/ConnectButton";
 import { LowBalanceFaucet } from "../wallet/Faucet";
@@ -258,6 +259,15 @@ export function StakeTicket({ m }: { m: MarketView }) {
             <LowBalanceFaucet balance={usdc.data?.balance ?? null} need={amount} />
           ) : null}
           {action}
+          {open ? (
+            <GaslessStake
+              m={m}
+              side={side}
+              amount={amount}
+              ready={wallet.onAppChain && amount !== null && !problem}
+              onDone={() => setInput("")}
+            />
+          ) : null}
           {tx.error ? (
             <p className={s.txError} role="alert">
               {tx.error}

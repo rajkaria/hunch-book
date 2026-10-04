@@ -33,6 +33,7 @@ export function FirstStakePanel({
   marketKey,
   paramsOk,
   existing,
+  initialSide,
 }: {
   config: CreateConfig;
   templateId: number;
@@ -41,9 +42,11 @@ export function FirstStakePanel({
   /** The preview ran and the resolver accepts the params. */
   paramsOk: boolean;
   existing: Address | null;
+  /** The side a link asked for (lib/create/prefill.ts). */
+  initialSide?: Side;
 }) {
   const router = useRouter();
-  const [side, setSide] = useState<Side>(Side.Yes);
+  const [side, setSide] = useState<Side>(initialSide ?? Side.Yes);
   const [input, setInput] = useState("");
   const wallet = useAppChain();
   const usdc = useUsdcState(wallet.address, { vault: config.vault, usdc: config.usdc });
