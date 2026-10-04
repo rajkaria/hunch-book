@@ -74,3 +74,26 @@ export function priceAtTimeFairValue(input: PriceFairInput): PriceFair {
   const d2 = (Math.log(spot / strike) - total / 2) / Math.sqrt(total);
   return { p: normalCdf(d2), vol, decided: false };
 }
+
+export interface RangeFairInput {
+  spot: number;
+  /** Inclusive lower bound. */
+  lower: number;
+  /** Exclusive upper bound. */
+  upper: number;
+  variancePerSecond: number;
+  secondsToClose: number;
+}
+
+/**
+ * Template 5, price range: P(lower ≤ S_T < upper) = P(S_T ≥ lower) − P(S_T ≥ upper), the difference of
+ * two lognormal tail probabilities under the same model as template 2.
+ */
+export function rangeFairValue(input: RangeFairInput): PriceFair {
+  const { spot, lower, upper, variancePerSecond, secondsToClose } = input;
+  if (!(upper > lower)) throw new Error("the upper bound must be above the lower bound");
+  const low = priceAtTimeFairValue({ spot, strike: lower, variancePerSecond, secondsToClose });
+  const high = priceAtTimeFairValue({ spot, strike: upper, variancePerSecond, secondsToClose });
+  if (low.decided) return { p: spot >= lower && spot < upper ? 1 : 0, vol: low.vol, decided: true };
+  return { p: Math.max(0, low.p - high.p), vol: low.vol, decided: false };
+}

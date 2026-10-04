@@ -28,8 +28,35 @@ export interface ChainlinkFixture {
   rounds: { roundId: string; answer: string; updatedAt: number }[];
 }
 
-export function chainlinkFixture(pair: "btc-usd" | "eth-usd" | "mon-usd"): ChainlinkFixture {
+export function chainlinkFixture(pair: "btc-usd" | "eth-usd" | "mon-usd" | "sol-usd"): ChainlinkFixture {
   return read(`chainlink-${pair}.json`);
+}
+
+export interface TradesFixture {
+  source: { block: number; fromBlock: string; toBlock: string; contract: string };
+  /** The book at bookAt, just before the first block of trades. */
+  bookAt: string;
+  l2: `0x${string}`;
+  bestBidAsk: [string, string];
+  pricePrecision: number;
+  sizePrecision: string;
+  baseDecimals: number;
+  quoteDecimals: number;
+  tickSize: number;
+  minSize: string;
+  trades: {
+    block: string;
+    logIndex: number;
+    tx: string;
+    takerBuysYes: boolean;
+    priceE18: string;
+    filledSize: string;
+  }[];
+}
+
+/** Kuru's MON-USDC Trade events recorded from Monad mainnet, oldest first. */
+export function tradesFixture(): TradesFixture {
+  return read("kuru-trades-mon-usdc.json");
 }
 
 export function priceRounds(fixture: ChainlinkFixture): PriceRound[] {

@@ -1,9 +1,11 @@
 import {
+  encodeChainlinkTouchParams,
   encodePerplFundingParams,
   encodePriceAtTimeParams,
   Phase,
   PriceSource,
   TemplateId,
+  TouchDirection,
   type Window,
 } from "@hunch-book/shared";
 import { type Address, zeroAddress } from "viem";
@@ -25,6 +27,8 @@ const settlers = defaultSettlers();
 const GRADUATOR = "0x7DC80DB34762A996aae6Ce516F562B2e6142fFE3" as Address;
 const BOOK = "0xdFd060ac7d3b129261EaB2E3DDd6F76A877D104a" as Address;
 const DEADLINE = 1_792_049_704n;
+const MARKET = "0x2A44B99014cF73065BFb89197a08DE09D18d3982" as Address;
+const RESOLVER = "0x4ec0077e30EA8B626C5AA087C586E60542150951" as Address;
 
 // Market #1 on Monad testnet: Perpl MON funding, lock at block 68,058,301, close at block 68,264,005.
 const perplWindow: Window = {
@@ -51,6 +55,8 @@ const mainnetGlobals: Globals = { ...testnetGlobals, canCreateBooks: false };
 
 function market(over: Partial<PlanMarket> = {}): PlanMarket {
   return {
+    address: MARKET,
+    resolver: RESOLVER,
     templateId: TemplateId.PerplFunding,
     params: perplParams,
     window: perplWindow,
@@ -217,6 +223,54 @@ describe("settle", () => {
       job: "settle",
       reason: "no settler for template 9: skipped",
     });
+  });
+});
+
+describe("prove (touch templates)", () => {
+  const T1 = 1_791_200_000n;
+  const T2 = T1 + 7n * 86_400n;
+  const touchParams = encodeChainlinkTouchParams({
+    feed: "0x12C0F44368a02081ce58a936d1C1F606BB301715",
+    strikeE8: 70_000n * 10n ** 8n,
+    direction: TouchDirection.AtOrAbove,
+    lockTime: T1 - 3_600n,
+    startTime: T1,
+    endTime: T2,
+  });
+  const touch = (over: Partial<PlanMarket> = {}) =>
+    market({
+      templateId: TemplateId.ChainlinkTouch,
+      params: touchParams,
+      window: { blockClock: false, lock: T1 - 3_600n, close: T2, settleDeadline: T2 + 8n * 86_400n },
+      ...over,
+    });
+
+  it("hunts for a proof once the market is past staking and the window is open", () => {
+    expect(byJob(plan(touch({ phase: Phase.PoolLocked }), at(1n, T1 - 1n))).prove).toEqual({
+      job: "prove",
+      reason: "waiting for the window to open at 1791200000 (2026-10-05T11:33:20.000Z)",
+    });
+    const open = plan(touch({ phase: Phase.Graduated, graduated: true, poolOwed: 0n }), at(1n, T1 + 60n));
+    expect(byJob(open).prove).toEqual({
+      job: "prove",
+      action: "prove",
+      reason: "look for the observation that proves YES",
+    });
+    // A pool still taking stakes cannot be proved (the market refuses proveYes in the Pool phase).
+    expect(byJob(plan(touch({ phase: Phase.Pool }), at(1n, T1 - 7_200n))).prove).toBeUndefined();
+  });
+
+  it("keeps hunting after close, and settles NO only after the challenge period", () => {
+    const closed = touch({ phase: Phase.Closed, graduated: true, poolOwed: 0n });
+    const before = byJob(plan(closed, at(1n, T2 + 86_399n)));
+    expect(before.prove?.action).toBe("prove");
+    expect(before.settle?.reason).toMatch(/^waiting for the challenge period to end at/);
+    expect(byJob(plan(closed, at(1n, T2 + 86_400n))).settle?.action).toBe("settle");
+  });
+
+  it("templates with no early YES have no prove job", () => {
+    const m = market({ phase: Phase.Graduated, graduated: true, poolOwed: 0n });
+    expect(byJob(plan(m, at(68_100_000n))).prove).toBeUndefined();
   });
 });
 

@@ -124,6 +124,18 @@ describe("sendTx", () => {
     });
   });
 
+  it("live: raises the gas limit to a call's minimum, never above the cap", async () => {
+    for (const [minGas, gas] of [
+      [500_000n, 500_000n],
+      [100_000n, 220_000n],
+      [9_000_000n, 6_000_000n],
+    ] as const) {
+      const { ctx, sent } = context({ enabled: true, estimate: 200_000n });
+      await sendTx(ctx, { ...settle, minGas });
+      expect(sent[0]).toMatchObject({ gas });
+    }
+  });
+
   it("live: skips a call that would revert, one above the gas cap, and sends nothing over the max gas price", async () => {
     const data = encodeErrorResult({ abi: marketAbi, errorName: "NotResolved" });
     for (const opts of [
