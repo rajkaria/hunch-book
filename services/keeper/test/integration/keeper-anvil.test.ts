@@ -69,6 +69,8 @@ if (!built)
 const art = (name: keyof typeof ARTIFACTS) => ARTIFACTS[name] as Artifact;
 
 const lines: Record<string, unknown>[] = [];
+/** Every transaction line, never cleared. */
+const sent: Record<string, unknown>[] = [];
 let anvil: Anvil | null = null;
 let client: PublicClient;
 let test: TestClient;
@@ -161,7 +163,11 @@ beforeAll(async () => {
   // viem only reads through Multicall3 at blocks after the one where Monad testnet's copy was created.
   anvil = await startAnvil(testnet.chainId, (monadTestnet.contracts?.multicall3?.blockCreated ?? 0) + 1);
   if (!anvil) return;
-  setLogSink((line) => lines.push(JSON.parse(line)));
+  setLogSink((line) => {
+    const entry = JSON.parse(line);
+    lines.push(entry);
+    if (entry.event === "tx") sent.push(entry);
+  });
   dir = mkdtempSync(join(tmpdir(), "keeper-it-"));
   const transport = http(anvil.url);
   client = createPublicClient({ chain: monadTestnet, transport }) as PublicClient;
@@ -256,6 +262,9 @@ beforeAll(async () => {
 
 afterAll(() => {
   setLogSink((line) => console.log(line));
+  // Gas used per keeper transaction on this chain, for the README's gas table.
+  if (sent.length)
+    console.info(JSON.stringify(sent.map((t) => ({ action: t.action, users: t.users, gasUsed: t.gasUsed }))));
   anvil?.stop();
 });
 
