@@ -273,11 +273,15 @@ async function readChainlink(client: VerifyClient, m: MarketView): Promise<Chain
   };
 }
 
-/** The evidence `settle` takes for this read, or null when there is none to give. */
+/**
+ * The evidence to re-run the resolver with, or null when there is none. A stale Chainlink bracket is
+ * still passed, so the resolver itself shows that it refuses the round.
+ */
 export function evidenceFor(read: SourceRead): Hex | null {
   if (read.template === "perpl") return read.final ? PERPL_EVIDENCE : null;
   if (read.template === "chainlink") {
-    return read.bracket?.status === "found" ? chainlinkEvidence(read.bracket.round.roundId) : null;
+    const b = read.bracket;
+    return b?.status === "found" || b?.status === "stale" ? chainlinkEvidence(b.round.roundId) : null;
   }
   return null;
 }

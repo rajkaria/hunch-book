@@ -245,6 +245,42 @@ describe("verifier: Chainlink price", () => {
     expect(v.matches).toEqual({ outcome: true, hash: true, resolver: true });
   });
 
+  it("shows the resolver refusing a bracket more than an hour old", async () => {
+    // Round 5 is now two hours before the close.
+    const client = fakeChain({
+      latestRoundData: () => [
+        round(20n).roundId,
+        round(20n).answer,
+        0n,
+        round(20n).updatedAt,
+        round(20n).roundId,
+      ],
+      getRoundData: (_a, args) => {
+        const i = (args[0] as bigint) & ((1n << 64n) - 1n);
+        const r = i <= 5n ? { ...round(i), updatedAt: CLOSE - 7_200n - (5n - i) * 600n } : round(i);
+        return [r.roundId, r.answer, 0n, r.updatedAt, r.roundId];
+      },
+      phaseAggregators: () => AGGREGATOR,
+      decimals: () => 8,
+      resolve: () => {
+        const stale = parseAbi(["error RoundTooStale(uint80 roundId, uint256 updatedAt, uint256 target)"]);
+        throw new BaseError("reverted", {
+          cause: new ContractFunctionRevertedError({
+            abi: stale,
+            data: encodeErrorResult({ abi: stale, errorName: "RoundTooStale", args: [1n, 2n, 3n] }),
+            functionName: "resolve",
+          }),
+        });
+      },
+    });
+    const v = await runVerification(client, deployment, priceMarket(), 5_000_000n);
+    if (v.read.template !== "chainlink") throw new Error("expected a Chainlink read");
+    expect(v.read.bracket?.status).toBe("stale");
+    expect(v.read.expectedHash).toBeNull();
+    expect(v.rerun).toBeNull();
+    expect(v.rerunError).toMatch(/more than an hour old/);
+  });
+
   it("previews 'waiting' while no round after the close exists", async () => {
     const v = await runVerification(chainlinkChain(5n), deployment, priceMarket(), 5_000_000n);
     if (v.read.template !== "chainlink") throw new Error("expected a Chainlink read");
