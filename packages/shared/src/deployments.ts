@@ -20,11 +20,30 @@ export interface HunchBookContracts {
     priceRange?: Address;
     marketOutcome?: Address;
   };
+  /** Optional contracts around the core (docs/PERIPHERY.md). */
+  periphery?: PeripheryContracts;
   guardian?: Address;
   feeRecipient?: Address;
   /** Block of the first deployment transaction: indexers start here. */
   deployBlock?: number;
   /** Deployment and wiring transactions, by contract or action, for explorer links. */
+  deployTxs?: Record<string, Hex>;
+}
+
+/** Written by contracts/script/DeployPeriphery.s.sol. */
+export interface PeripheryContracts {
+  autoRedeemer?: Address;
+  conditionalOrders?: Address;
+  referralRegistry?: Address;
+  merkleDistributor?: Address;
+  impliedProbabilityOracle?: Address;
+  priceAdapterFactory?: Address;
+  templateTimelock?: Address;
+  timelockProposer?: Address;
+  timelockDelay?: number;
+  distributorFunder?: Address;
+  referralDuration?: number;
+  deployBlock?: number;
   deployTxs?: Record<string, Hex>;
 }
 

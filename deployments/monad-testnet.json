@@ -9,8 +9,12 @@
     "factory": "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A",
     "vault": "0x81b04B3567dcaDaE6a859394248C47ddc403ba37",
     "resolvers": {
+      "chainlinkTouch": "0x34Ac3F430c8F49735987Efe88634Ef8d9c295727",
+      "marketOutcome": "0x1a57bafE8161763c51248af40567FCFf266F9168",
       "perplFunding": "0x4ec0077e30EA8B626C5AA087C586E60542150951",
-      "priceAtTime": "0x5582e5Aeb12e15EAda88402E2903Bc628Cc28B3C"
+      "perplFundingSpike": "0x3459d8026DD8E7B0f3BE2B1aF21050013b9bCA64",
+      "priceAtTime": "0x5582e5Aeb12e15EAda88402E2903Bc628Cc28B3C",
+      "priceRange": "0xBA86Bcf0915c7E79C7D8a7e170CA76F1d82f8694"
     },
     "graduator": "0x7DC80DB34762A996aae6Ce516F562B2e6142fFE3",
     "router": "0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6",
@@ -18,16 +22,47 @@
     "feeRecipient": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
     "deployBlock": 67856277,
     "deployTxs": {
-      "usdc": "0xc70c4a608176ac51317bbb376df39d5d4734409321fa7965bdb73ef30e57afeb",
-      "marketImplementation": "0x85f8eae1b4e9ebfcfd67e08b9a75d4b0e251ba9a41268edd049881a6f0b295b1",
-      "factory": "0xd4a1377cd9bfcb7e4dec75df8ca5d9012fcab4d1727beaa22f2f639d843b95da",
-      "perplFunding": "0x183d1a49d7869f8c818e717e3c27f59be8cebea785b30847de2f71dc6ce0f65d",
-      "priceAtTime": "0xc160e598b6bfc64fcbb9a16a1d67d709e8971375b46e626f5f081be897964e02",
-      "graduator": "0x324177ad58ae8c84625a229d29cfe12554b9fa0555f021bb2ed13b200ec07685",
-      "setGraduator": "0x6d2b2d9d26598534488dd11d1e5edac1015d9b7d466136a498c4d68f5cfa6c38",
-      "router": "0x705350f88e67467b5d9c02a66c7917a64a01245feab9b8ffd309f1f49df5167f",
       "addTemplate1": "0x969c2c931e77450300d16618986d7e7b0557d3743bf9b1d2f2857070108c3327",
-      "addTemplate2": "0x07c1d9bf205d6911da2f9e0ebc8ce8fb4509c456386960416eeb597ac5df3cbb"
+      "addTemplate2": "0x07c1d9bf205d6911da2f9e0ebc8ce8fb4509c456386960416eeb597ac5df3cbb",
+      "addTemplate3": "0x061a015a377fc73723c833768ae9e3ff28750d10c52aeaea23d6218f91c58e63",
+      "addTemplate4": "0x7e14c179ab13d86290e42be58dda5d54fe861728d194440b9530a24f3c8e5052",
+      "addTemplate5": "0x6a25a8a7704a02a5797aa969918b3fd88100d53562e37680c59245b501fa3ccd",
+      "addTemplate6": "0xe83c48b59515df76d379c0e164d345f38c3682359a9750024f994c1d2acaee1e",
+      "chainlinkTouch": "0x0c631bfca4b084dc54ae334b2f37775519223ee91e5618412608ad181b4af17b",
+      "factory": "0xd4a1377cd9bfcb7e4dec75df8ca5d9012fcab4d1727beaa22f2f639d843b95da",
+      "graduator": "0x324177ad58ae8c84625a229d29cfe12554b9fa0555f021bb2ed13b200ec07685",
+      "marketImplementation": "0x85f8eae1b4e9ebfcfd67e08b9a75d4b0e251ba9a41268edd049881a6f0b295b1",
+      "marketOutcome": "0xe862c86add8868ec381ba99f71219c2b7b6b44c00003594c73caf9eee29a3211",
+      "perplFunding": "0x183d1a49d7869f8c818e717e3c27f59be8cebea785b30847de2f71dc6ce0f65d",
+      "perplFundingSpike": "0x7c4c39493cb984dd39d43e58423ee0f279a63023f57b5b85adfdc9c212de005c",
+      "priceAtTime": "0xc160e598b6bfc64fcbb9a16a1d67d709e8971375b46e626f5f081be897964e02",
+      "priceRange": "0x5d3daf95a2f6167c815c871ae77725b9a2e8f3744bed3b124dbcd53b1892516d",
+      "router": "0x705350f88e67467b5d9c02a66c7917a64a01245feab9b8ffd309f1f49df5167f",
+      "setGraduator": "0x6d2b2d9d26598534488dd11d1e5edac1015d9b7d466136a498c4d68f5cfa6c38",
+      "usdc": "0xc70c4a608176ac51317bbb376df39d5d4734409321fa7965bdb73ef30e57afeb"
+    },
+    "periphery": {
+      "autoRedeemer": "0x26EFB3D0d50DCBB97FBb369471fcc59a2677A534",
+      "conditionalOrders": "0xDf733F2AD02Fcd3eA1a02d319D720c94d67c7eB6",
+      "deployBlock": 68046179,
+      "distributorFunder": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+      "impliedProbabilityOracle": "0xEc0fCfD5ee0fC6Dd8938B72810697f7BbfdA9134",
+      "merkleDistributor": "0x1872C4AaD2941410F81778467864e113b74Cc2D9",
+      "priceAdapterFactory": "0x348476c0602C3BEfd1064d54636DD791240B508B",
+      "referralDuration": 15552000,
+      "referralRegistry": "0x063713eb539f2c9458d4836341ce3a74CF948569",
+      "templateTimelock": "0xCe858DF2C95851275ed97e9Ba764b22d6394290b",
+      "timelockDelay": 172800,
+      "timelockProposer": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+      "deployTxs": {
+        "autoRedeemer": "0x566d7999d0c3f7fe2add0e10b8e6e94213d2682785e4545f271ddfdac21b34d5",
+        "conditionalOrders": "0xf9503337a07dcde3f10af5a4dc778a6b47e4e823e416911a2ea0cfc402edaf81",
+        "impliedProbabilityOracle": "0x26eee736c2ac4fefc956b02e03907a84084fe468e948122c4f0db3548f7c37b0",
+        "merkleDistributor": "0xfd26f77733af77e57e6dbe45bfd653dadeeb2946d6130845162e43d0dfa2a111",
+        "priceAdapterFactory": "0x29c58fd48a0a569cc8e8bddae4e87196d6cb3f2b46350071cb004c0f10b7beb3",
+        "referralRegistry": "0xf9aa08cb1e0e6b15185b1a001dfe77a29df399225f00d4c524f889e16b6355a9",
+        "templateTimelock": "0x5c5de951c6452da051b56a22864b9a8d164099e498f79a25bed569d8dccf4bc5"
+      }
     }
   },
   "wallets": {
