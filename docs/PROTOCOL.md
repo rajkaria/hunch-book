@@ -211,7 +211,7 @@ A market voids only if its resolver cannot produce an answer before the settleme
 
 A template ships only if:
 
-1. Its source is an onchain contract whose value at the settlement point **stays readable after the fact** (historical getter or signed data), so late settlement reads the same answer.
+1. Its source is an onchain contract whose value at the settlement point **stays readable after the fact** (historical getter or signed data), so late settlement reads the same answer. Template 7 (snapshot) meets this for current-state values by reading the value itself in a short window right after close and storing it, write-once ([TEMPLATES.md](./TEMPLATES.md#template-7-snapshot)).
 2. Its rule fits in one plain sentence that the app shows next to the market.
 3. A single trader cannot cheaply move the source by an amount that flips typical markets. Per-market caps keep market size small next to the cost of moving the source.
 4. It has fork tests against real mainnet data, including the edge where the value equals the threshold.
@@ -327,7 +327,7 @@ deployProxy(uint8 _type, address base, address quote, uint96 sizePrecision, uint
 | Perp ids | BTC 1, MON 10, ETH 20, SOL 31 | BTC 16, ETH 32, SOL 48, MON 64 |
 | Funding interval | 8,571 blocks | 8,571 blocks |
 
-Perp ids are enumerated onchain with `getPerpetualExistsBitmap()` and described by `getPerpetualInfoV2(id)`. `getFundingSumAtBlock` is Perpl's only by-block historical getter; mark price, oracle price and open interest are current-state only, so they are not used for settlement.
+Perp ids are enumerated onchain with `getPerpetualExistsBitmap()` and described by `getPerpetualInfoV2(id)`. `getFundingSumAtBlock` is Perpl's only by-block historical getter; mark price, oracle price and open interest are current-state only. Templates 1 to 6 do not use them; template 7 (live on testnet) settles on open interest and mark price from a snapshot it takes itself right after close ([TEMPLATES.md](./TEMPLATES.md#template-7-snapshot)).
 
 ### 8.3 Price feeds
 

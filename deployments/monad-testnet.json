@@ -14,7 +14,8 @@
       "perplFunding": "0x4ec0077e30EA8B626C5AA087C586E60542150951",
       "perplFundingSpike": "0x3459d8026DD8E7B0f3BE2B1aF21050013b9bCA64",
       "priceAtTime": "0x5582e5Aeb12e15EAda88402E2903Bc628Cc28B3C",
-      "priceRange": "0xBA86Bcf0915c7E79C7D8a7e170CA76F1d82f8694"
+      "priceRange": "0xBA86Bcf0915c7E79C7D8a7e170CA76F1d82f8694",
+      "snapshot": "0x1E62C389D7c035acfDD971C7E6b7157C1D34D632"
     },
     "graduator": "0x7DC80DB34762A996aae6Ce516F562B2e6142fFE3",
     "router": "0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6",
@@ -28,6 +29,7 @@
       "addTemplate4": "0x7e14c179ab13d86290e42be58dda5d54fe861728d194440b9530a24f3c8e5052",
       "addTemplate5": "0x6a25a8a7704a02a5797aa969918b3fd88100d53562e37680c59245b501fa3ccd",
       "addTemplate6": "0xe83c48b59515df76d379c0e164d345f38c3682359a9750024f994c1d2acaee1e",
+      "addTemplate7": "0xee2aa1aef9b5d3bb37d4f22f5543ca622337d33383d53a95dfcc7de42fcda08a",
       "chainlinkTouch": "0x0c631bfca4b084dc54ae334b2f37775519223ee91e5618412608ad181b4af17b",
       "factory": "0xd4a1377cd9bfcb7e4dec75df8ca5d9012fcab4d1727beaa22f2f639d843b95da",
       "graduator": "0x324177ad58ae8c84625a229d29cfe12554b9fa0555f021bb2ed13b200ec07685",
@@ -39,6 +41,7 @@
       "priceRange": "0x5d3daf95a2f6167c815c871ae77725b9a2e8f3744bed3b124dbcd53b1892516d",
       "router": "0x705350f88e67467b5d9c02a66c7917a64a01245feab9b8ffd309f1f49df5167f",
       "setGraduator": "0x6d2b2d9d26598534488dd11d1e5edac1015d9b7d466136a498c4d68f5cfa6c38",
+      "snapshot": "0xcf9b633488acd3625b283ae46dd28394e2e9148dcc6b6d26aaa963dac7089bec",
       "usdc": "0xc70c4a608176ac51317bbb376df39d5d4734409321fa7965bdb73ef30e57afeb"
     },
     "periphery": {

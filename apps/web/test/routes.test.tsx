@@ -1,6 +1,7 @@
 import { Outcome, Phase } from "@hunch-book/shared";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import CreatorPage from "../src/app/creator/[address]/page";
 import ErrorPage from "../src/app/error";
 import MarketPage from "../src/app/m/[address]/page";
 import MarketsPage from "../src/app/markets/page";
@@ -8,10 +9,11 @@ import NotFound from "../src/app/not-found";
 import Home from "../src/app/page";
 import PortfolioPage from "../src/app/portfolio/page";
 import ProofPage from "../src/app/proof/page";
+import TapePage from "../src/app/tape/page";
 import VerifyPage from "../src/app/verify/[address]/page";
 import { Footer } from "../src/components/layout/Footer";
 import { Header } from "../src/components/layout/Header";
-import { FACTORY, MARKET, makeEntry, makeMarket, USDC } from "./fixtures";
+import { FACTORY, MARKET, makeEntry, makeMarket, USDC, USER } from "./fixtures";
 import { renderWithProviders } from "./render";
 
 // Every route renders against mocked chain data: the hooks are replaced, and the deployment is
@@ -24,13 +26,20 @@ const state = vi.hoisted(() => ({
   market: {} as QueryState,
   portfolio: {} as QueryState,
   position: {} as QueryState,
+  tape: {} as QueryState,
+  proof: {} as QueryState,
+  creator: {} as QueryState,
+  creatorFees: {} as QueryState,
 }));
 
 vi.mock("@/lib/config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/config")>();
   const withFactory = {
     ...actual.appDeployment,
-    hunchBook: { factory: "0x00000000000000000000000000000000000000f1" },
+    hunchBook: {
+      factory: "0x00000000000000000000000000000000000000f1",
+      vault: "0x00000000000000000000000000000000000000aa",
+    },
   };
   const without = { ...actual.appDeployment, hunchBook: {} };
   return {
@@ -70,6 +79,62 @@ vi.mock("@/lib/hooks", async (importOriginal) => {
     useUsdcState: () => query({}),
     useChainClock: () => null,
     useNow: () => 1_799_000_000,
+    // The verifier's own reads stay idle here: no test talks to a real RPC.
+    useVerification: () => query({}),
+    useSettlementTx: () => query({}),
+    useBook: () => query({}),
+    useWalletBalances: () => query({}),
+    useMonBalance: () => query({}),
+    useSettlePlan: () => query({}),
+    useTestUsdcFaucet: () => query({}),
+  };
+});
+
+// The tape polls the chain or the indexer; here it gets fixed data.
+vi.mock("@/lib/tape/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/tape/hooks")>();
+  return {
+    ...actual,
+    useTape: () => ({
+      isPending: !state.tape.error && state.tape.data === undefined,
+      isError: Boolean(state.tape.error),
+      data: state.tape.data,
+      refetch: vi.fn(),
+      loadOlder: vi.fn(),
+      extending: false,
+    }),
+  };
+});
+
+// The proof page reads the indexer or the chain; here it gets fixed data.
+vi.mock("@/lib/proof/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/proof/hooks")>();
+  return {
+    ...actual,
+    useProof: () => ({
+      isPending: !state.proof.error && state.proof.data === undefined,
+      isError: Boolean(state.proof.error),
+      data: state.proof.data,
+      dataUpdatedAt: 1_799_000_000_000,
+      refetch: vi.fn(),
+    }),
+    useChainTimings: () => ({ started: false, start: vi.fn(), isPending: true, isError: false }),
+  };
+});
+
+// The creator page reads the indexer or the chain, and the vault's fees; here they are fixed.
+vi.mock("@/lib/creator/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/creator/hooks")>();
+  const fixed = (q: QueryState) => ({
+    isPending: !q.error && q.data === undefined,
+    isError: Boolean(q.error),
+    data: q.data,
+    refetch: vi.fn(),
+  });
+  return {
+    ...actual,
+    useCreator: () => fixed(state.creator),
+    useCreatorFees: () => fixed(state.creatorFees),
   };
 });
 
@@ -83,6 +148,10 @@ beforeEach(() => {
   state.market = {};
   state.portfolio = {};
   state.position = {};
+  state.tape = {};
+  state.proof = {};
+  state.creator = {};
+  state.creatorFees = {};
 });
 
 describe("with no contracts deployed", () => {
@@ -123,12 +192,11 @@ describe("with no contracts deployed", () => {
     expect(screen.getAllByRole("heading", { name: /Contracts not deployed/ }).length).toBe(2);
   });
 
-  it("/proof lists what will be measured, no numbers, and labels our wallets", async () => {
+  it("/proof says what it will measure until the contracts are deployed", async () => {
     await renderWithProviders(<ProofPage />);
-    expect(screen.getByText("No numbers yet")).toBeTruthy();
-    expect(screen.getByText("Maker share")).toBeTruthy();
-    expect(screen.getByText("Maker bot (ours)")).toBeTruthy();
-    expect(screen.getByText("Keeper (ours)")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Contracts not deployed on Monad testnet yet" })).toBeTruthy();
+    expect(screen.getByText(/Distinct wallets that staked or traded/)).toBeTruthy();
+    expect(screen.getByText(/fills against Hunch's maker and fills between other parties/)).toBeTruthy();
   });
 
   it("the header offers a wallet and the main links, and the footer says the factory is not deployed", async () => {
@@ -146,6 +214,7 @@ describe("with no contracts deployed", () => {
       "Create",
       "Portfolio",
       "Proof",
+      "Tape",
       "Docs↗",
     ]);
     expect(nav.getByRole("link", { name: "Markets" }).getAttribute("aria-current")).toBe("page");
@@ -323,6 +392,17 @@ describe("with contracts deployed", () => {
     expect(screen.getAllByText("40.00").length).toBeGreaterThan(0);
   });
 
+  it("/portfolio works out profit and loss from chain state, with a CSV of the history", async () => {
+    state.portfolio = ok([makeEntry()]);
+    await renderWithProviders(<PortfolioPage />, { connected: true });
+    expect(await screen.findByText("Rebuilt from chain state")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Profit and loss" })).toBeTruthy();
+    expect(screen.getAllByText("Live from chain").length).toBeGreaterThan(0);
+    // An open pool has no price yet.
+    expect(screen.getByText("1 without a price left out")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download history (CSV)" })).toBeTruthy();
+  });
+
   it("/portfolio says when the wallet has nothing", async () => {
     state.portfolio = ok([]);
     await renderWithProviders(<PortfolioPage />, { connected: true });
@@ -351,6 +431,218 @@ describe("with contracts deployed", () => {
     expect(screen.getByRole("link", { name: /^Factory/ }).getAttribute("href")).toMatch(
       new RegExp(`${FACTORY}$`),
     );
+  });
+
+  it("/tape lists fills live from chain, with our maker labelled and the blocks it read", async () => {
+    state.markets = ok({ markets: [trading], total: 1 });
+    state.tape = {
+      data: {
+        source: "chain",
+        data: {
+          fills: [
+            {
+              id: "68000000-1",
+              book: "0x00000000000000000000000000000000000000bb",
+              market: trading.address,
+              marketNumber: 8,
+              question: trading.description,
+              block: 68_000_000n,
+              logIndex: 1,
+              time: 1_798_999_990,
+              tx: `0x${"cd".repeat(32)}`,
+              priceE6: 620_000n,
+              size: USDC(10),
+              notional: USDC(6.2),
+              takerBuysYes: true,
+              maker: "0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A",
+              trader: "0x1111111111111111111111111111111111111111",
+              viaRouter: true,
+              makerIsOurMaker: true,
+              makerIsOurs: true,
+              traderIsOurs: false,
+            },
+          ],
+          window: { from: 67_999_001n, to: 68_000_000n },
+          books: 1,
+        },
+      },
+    };
+    await renderWithProviders(await TapePage(noSearch));
+    expect(screen.getByRole("heading", { level: 1, name: "Trade tape" })).toBeTruthy();
+    expect(screen.getByText("Live from chain")).toBeTruthy();
+    expect(screen.getByText("Hunch maker (ours)")).toBeTruthy();
+    expect(screen.getByText("0.620")).toBeTruthy();
+    expect(screen.getByText(/Read from blocks 67,999,001 to 68,000,000/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Look further back" })).toBeTruthy();
+  });
+
+  const proofBase = {
+    markets: { created: 12, graduated: 7, settled: 4, voided: 1, pools: 4, trading: 3, covered: 12 },
+    settlements: [],
+    perMarket: [
+      {
+        market: trading.address,
+        number: 8,
+        question: null,
+        stage: "Trading",
+        owed: USDC(400),
+        pool: 0n,
+        sets: USDC(400),
+        collateralIn: USDC(400),
+        collateralOut: 0n,
+        fees: 0n,
+        margin: 0n,
+        yesSupply: USDC(400),
+        noSupply: USDC(400),
+        backed: true,
+      },
+    ],
+    daily: [],
+    negative: [],
+    vault: { balance: USDC(400.5), obligations: USDC(400), margin: USDC(0.5) },
+    liveVault: { balance: USDC(400.5), obligations: USDC(400), margin: USDC(0.5) },
+  };
+
+  it("/proof shows every figure from the indexer, with our maker's share apart and sources linked", async () => {
+    state.proof = {
+      data: {
+        source: "indexer",
+        indexedBlock: 68_000_000n,
+        data: {
+          ...proofBase,
+          listed: null,
+          wallets: { total: 40, ours: 13, external: 27, stakers: 35, traders: 9 },
+          trades: {
+            fills: 200,
+            fillsOurMaker: 150,
+            fillsOurTrader: 10,
+            fillsBetweenOthers: 45,
+            volume: USDC(50_000),
+            volumeOurMaker: USDC(40_000),
+            volumeBetweenOthers: USDC(9_000),
+            ourMakerShareBps: 7_500,
+            ourMakerVolumeShareBps: 8_000,
+            routerTrades: 60,
+            routerVolume: USDC(20_000),
+          },
+          timing: {
+            avgSettleSeconds: 42n,
+            settlementsTimed: 3,
+            avgSettleBlocks: 150n,
+            settlementsBlockClock: 1,
+            earlySettlements: 1,
+            avgFirstRedemptionSeconds: 600n,
+            marketsRedeemed: 4,
+          },
+        },
+      },
+    };
+    await renderWithProviders(<ProofPage />);
+    expect(screen.getByText("From the indexer")).toBeTruthy();
+    expect(screen.getByText("indexed to block 68,000,000")).toBeTruthy();
+    expect(screen.getByText("75.0%")).toBeTruthy();
+    expect(screen.getByText("Fills between other parties")).toBeTruthy();
+    expect(screen.getByText("Against our maker (ours)")).toBeTruthy();
+    expect(screen.getByText("42s")).toBeTruthy();
+    expect(screen.getByText("10m 0s")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /indexer: ProtocolStats.wallets/ }).getAttribute("href")).toMatch(
+      /lib\/indexer\/queries\.ts$/,
+    );
+    expect(screen.getByText("Maker bot (ours)")).toBeTruthy();
+    expect(screen.queryByText(/needs the indexer/)).toBeNull();
+  });
+
+  it("/proof falls back to the chain and says what needs the indexer", async () => {
+    state.proof = {
+      data: {
+        source: "chain",
+        fallback: "The indexer did not answer, so this reads the chain directly.",
+        data: { ...proofBase, listed: [], wallets: null, trades: null, timing: null },
+      },
+    };
+    await renderWithProviders(<ProofPage />);
+    expect(screen.getByText("Live from chain")).toBeTruthy();
+    expect(screen.getByText("The indexer did not answer, so this reads the chain directly.")).toBeTruthy();
+    expect(screen.getByText("Distinct wallets that staked or traded: needs the indexer")).toBeTruthy();
+    expect(screen.getByText("All-time fills, volume and our maker's share: needs the indexer")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /factory.marketCount/ }).getAttribute("href")).toMatch(
+      /address\/0x/,
+    );
+    expect(screen.getByText("sets = YES = NO")).toBeTruthy();
+    expect(screen.getAllByText("0.50").length).toBeGreaterThan(0);
+  });
+
+  it("/m/[address] links the market's creator page", async () => {
+    state.market = ok(pool);
+    await renderWithProviders(await MarketPage(params(MARKET)));
+    expect(screen.getByRole("link", { name: /Created by/ }).getAttribute("href")).toBe(
+      `/creator/${pool.creator}`,
+    );
+  });
+
+  const creatorData = (over: Record<string, unknown> = {}) => ({
+    source: "chain",
+    data: {
+      creator: USER,
+      isOurs: false,
+      markets: [
+        {
+          market: MARKET,
+          number: 7,
+          question: pool.description,
+          stage: "Pool",
+          pool: USDC(400),
+          stakers: 4,
+          volume: null,
+          fills: null,
+          earned: null,
+          createdAt: null,
+          createdTx: null,
+        },
+      ],
+      scanned: { covered: 1, total: 1 },
+      earned: null,
+      withdrawn: null,
+      withdrawals: null,
+      ...over,
+    },
+  });
+
+  it("/creator/[address] shows the markets, live fees and a withdraw button for the creator", async () => {
+    state.creator = { data: creatorData() };
+    state.creatorFees = { data: USDC(1.5) };
+    await renderWithProviders(await CreatorPage(params(USER)), { connected: true });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(/^Creator 0x/);
+    expect(screen.getByText("1.50")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /vault.creatorFees/ })).toBeTruthy();
+    expect(screen.getAllByText("needs the indexer")).toHaveLength(2);
+    expect(screen.getByText(/The list of past withdrawals needs the indexer/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /#7/ }).getAttribute("href")).toBe(`/m/${MARKET}`);
+    const withdraw = screen.getByRole("button", { name: "Withdraw my fees" }) as HTMLButtonElement;
+    expect(withdraw.disabled).toBe(false);
+  });
+
+  it("/creator/[address] offers no withdraw button to anyone else, and lists indexed withdrawals", async () => {
+    state.creator = {
+      data: creatorData({
+        creator: "0x00000000000000000000000000000000000000d1",
+        scanned: null,
+        earned: USDC(2.5),
+        withdrawn: USDC(1),
+        withdrawals: [{ amount: USDC(1), time: 1_799_000_000, block: 100n, tx: `0x${"77".repeat(32)}` }],
+      }),
+    };
+    state.creatorFees = { data: 0n };
+    await renderWithProviders(await CreatorPage(params("0x00000000000000000000000000000000000000d1")), {
+      connected: true,
+    });
+    expect(screen.queryByRole("button", { name: "Withdraw my fees" })).toBeNull();
+    expect(screen.getByText("2.50")).toBeTruthy();
+    expect(screen.getAllByText("1.00").length).toBeGreaterThan(0);
+  });
+
+  it("/creator/[address] is a 404 for anything that is not an address", async () => {
+    await expect(CreatorPage(params("nope"))).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
   it("/ says when live figures cannot be read, and the menu says the contracts are live", async () => {

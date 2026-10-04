@@ -20,13 +20,13 @@ interface ManualEntry {
   position: PerpPosition;
 }
 
-const PERPS = Object.entries(appDeployment.external.perpl.perps).map(([symbol, id]) => ({
-  symbol,
-  id: BigInt(id),
-}));
+/** The active network's Perpl perps (read on render: the network can be switched in the browser). */
+const perpsOf = () =>
+  Object.entries(appDeployment.external.perpl.perps).map(([symbol, id]) => ({ symbol, id: BigInt(id) }));
 
 function ManualForm({ onAdd }: { onAdd: (position: PerpPosition) => void }) {
   const base = useId();
+  const PERPS = perpsOf();
   const [perp, setPerp] = useState<string>(PERPS[0]?.id.toString() ?? "");
   const [side, setSide] = useState<PositionSide>("long");
   const [size, setSize] = useState("");
