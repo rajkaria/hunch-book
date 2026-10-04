@@ -28,6 +28,7 @@ import { Alerter } from "./alerts.js";
 import { chunks, claimableUsers, halves, uniqueAddresses } from "./batch.js";
 import { type KeeperConfig, secretsOf } from "./config.js";
 import { Health, type HealthJob, JOBS } from "./health.js";
+import { buildCycleJobs, type CycleJob, type JobContext } from "./jobs/index.js";
 import { errorMessage, log, setRedactions } from "./log.js";
 import { type Globals, MarketDirectory, type MarketSnapshot, readGlobals } from "./markets.js";
 import { type ActionKind, type Decision, isFinal, needsBookLookup, planMarket } from "./plan.js";
@@ -68,6 +69,8 @@ const sent = (result: TxResult) =>
 export interface KeeperDeps {
   settlers?: SettlerRegistry;
   stakerSource?: StakerSource;
+  /** Replaces the cycle-level jobs built from the deployments file and config (jobs/index.ts). */
+  cycleJobs?: CycleJob[];
   /** Used for Hermes, the indexer and the alert webhook (tests pass a fake). */
   fetchFn?: typeof fetch;
 }
@@ -118,6 +121,8 @@ export class Keeper {
   private readonly unknownTemplates = new Set<number>();
   private bookParamsCache: BookParams | undefined;
   private cycles = 0;
+  /** Jobs that look at every market at once (auto-redeem, conditional orders, oracle pokes, series). */
+  readonly cycleJobs: CycleJob[];
   /** Log every plan line (the `once` mode), not just the ones that changed. */
   verbosePlan = false;
 
@@ -182,6 +187,7 @@ export class Keeper {
       config.alertRepeatSeconds,
       this.fetchFn,
     );
+    this.cycleJobs = deps.cycleJobs ?? (factory ? buildCycleJobs(config, this.deployment) : []);
   }
 
   get keeper(): Address {
@@ -266,9 +272,10 @@ export class Keeper {
       decisions += plan.length;
       let proved = false;
       for (const d of plan) {
-        this.logPlan(m, d);
+        const off = (d.job === "prove" || d.job === "snapshot") && this.config.jobsOff.has(d.job);
+        this.logPlan(m, off ? { job: d.job, reason: `switched off by KEEPER_JOBS_OFF (${d.reason})` } : d);
         // A proof that went out settles the market: nothing else for it this cycle.
-        if (!d.action || (proved && (d.job === "settle" || d.job === "snapshot"))) continue;
+        if (!d.action || off || (proved && (d.job === "settle" || d.job === "snapshot"))) continue;
         due[d.job] = (due[d.job] ?? 0) + 1;
         try {
           const went = await this.execute(m, d.action, now, globals, scan, predictedBook);
@@ -281,6 +288,18 @@ export class Keeper {
       if (isFinal(m.phase) && (plan.every((d) => !d.action) || this.exhausted.has(m.address))) {
         this.directory.retire(m.address);
         log("market-done", { market: m.address, phase: PHASE_LABEL[m.phase] });
+      }
+    }
+
+    // Jobs that look at every market at once: auto-redeem, conditional orders, oracle pokes, series.
+    const ctx = this.jobContext(scan);
+    for (const job of this.cycleJobs) {
+      try {
+        const run = await job.run(ctx, markets, now);
+        sent += run.sent;
+        if (run.due > 0) due[job.name] = (due[job.name] ?? 0) + run.due;
+      } catch (error) {
+        this.jobFailed(job.name, undefined, error);
       }
     }
     this.store.save();
@@ -316,8 +335,26 @@ export class Keeper {
     return summary;
   }
 
+  /** What a cycle-level job gets from the keeper (jobs/context.ts). */
+  private jobContext(scan: ScanContext): JobContext {
+    return {
+      config: this.config,
+      deployment: this.deployment,
+      client: this.client,
+      tx: this.tx,
+      health: this.health,
+      alerter: this.alerter,
+      store: scan.store,
+      scan,
+      verbose: this.verbosePlan,
+      send: (job, label, request, options) => this.sendWithResult(job, label, request, options),
+      failed: (job, label, error) => this.jobFailed(job, label, error),
+      knownMarkets: () => this.directory?.all() ?? [],
+    };
+  }
+
   /** Records an error for a job, logs it, and alerts (rate-limited per job and market). */
-  jobFailed(job: HealthJob, market: Address | undefined, error: unknown): void {
+  jobFailed(job: HealthJob, market: string | undefined, error: unknown): void {
     const message = errorMessage(error);
     log("job-error", { job, market, error: message }, "error");
     this.health.jobError(job, message);
@@ -402,24 +439,27 @@ export class Keeper {
   /**
    * sendTx with the dry-run repeat filter: in a dry run that keeps running, the same intended
    * transaction is logged once per DRY_RUN_REPEAT_MS, not every cycle. Undefined when filtered.
+   * `market` labels the health record: a market address, or what the call is about (a series id).
    */
-  private async sendWithResult(
+  async sendWithResult(
     job: HealthJob,
-    market: Address,
+    market: string,
     request: TxRequest,
+    options: { dryRun?: boolean } = {},
   ): Promise<TxResult | undefined> {
-    if (!this.tx.enabled && !this.verbosePlan) {
+    const tx = options.dryRun ? { ...this.tx, enabled: false } : this.tx;
+    if (!tx.enabled && !this.verbosePlan) {
       const key = `${request.action}:${market}:${keccak256(request.data)}`;
       const last = this.dryRunSeen.get(key);
       if (last !== undefined && Date.now() - last < DRY_RUN_REPEAT_MS) return undefined;
       this.dryRunSeen.set(key, Date.now());
     }
-    const result = await sendTx(this.tx, request);
+    const result = await sendTx(tx, request);
     this.recordResult(job, market, request.action, result);
     return result;
   }
 
-  private recordResult(job: HealthJob, market: Address, action: string, result: TxResult): void {
+  private recordResult(job: HealthJob, market: string, action: string, result: TxResult): void {
     const base = { market, action, status: result.status };
     if (result.status === "success" || result.status === "reverted" || result.status === "unknown") {
       this.health.jobAction(job, {

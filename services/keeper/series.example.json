@@ -1,0 +1,86 @@
+{
+  "note": "Recurring series for the keeper (docs/SERIES.md). Copy this file, set KEEPER_SERIES_FILE to the copy, and turn creation on with KEEPER_SERIES_ENABLED=1 (KEEPER_ENABLED must be on too). Blocks and assets below are for Monad testnet.",
+  "series": [
+    {
+      "id": "btc-funding-weekly",
+      "note": "Will BTC longs pay more than the median of the last 8 weeks' net funding this week? About 7 days of blocks at 302 ms.",
+      "enabled": true,
+      "template": 1,
+      "asset": "BTC",
+      "schedule": {
+        "anchorBlock": 68100000,
+        "everyBlocks": 2000000,
+        "windowBlocks": 2000000,
+        "createBeforeLockBlocks": 60000,
+        "minLeadBlocks": 2000
+      },
+      "strike": { "rule": "trailing-median-funding", "windows": 8 },
+      "firstStake": { "side": "yes", "usdc": "5" }
+    },
+    {
+      "id": "eth-noon-daily",
+      "note": "Will ETH/USD be at or above today's price, rounded to 25 USD, at 12:00 UTC? Off here: Monad testnet's Chainlink feeds update about once a day, so price markets there usually void.",
+      "enabled": false,
+      "template": 2,
+      "asset": "ETH/USD",
+      "schedule": {
+        "anchor": "2026-10-05T12:00:00Z",
+        "every": "1d",
+        "lockBeforeClose": "1h",
+        "createBeforeLock": "12h",
+        "minLead": "10m"
+      },
+      "strike": { "rule": "spot-rounded", "step": "25" },
+      "firstStake": { "side": "yes", "usdc": "5" }
+    },
+    {
+      "id": "btc-touch-weekly",
+      "note": "Will Chainlink's BTC/USD feed report 5% above the price at creation, rounded up to 500 USD, at any time this week? Off on testnet for the same reason.",
+      "enabled": false,
+      "template": 3,
+      "asset": "BTC/USD",
+      "direction": "up",
+      "schedule": {
+        "anchor": "2026-10-12T12:00:00Z",
+        "every": "7d",
+        "lockBeforeClose": "7d",
+        "createBeforeLock": "1d",
+        "minLead": "10m"
+      },
+      "strike": { "rule": "spot-offset", "offsetPct": 5, "step": "500" },
+      "firstStake": { "side": "no", "usdc": "5" }
+    },
+    {
+      "id": "mon-funding-spike-daily",
+      "note": "Will any single MON funding event in the next day charge longs more than the 98th percentile of the last 600 events? About 24 hours of blocks.",
+      "enabled": true,
+      "template": 4,
+      "asset": "MON",
+      "schedule": {
+        "anchorBlock": 68120000,
+        "everyBlocks": 286000,
+        "windowBlocks": 286000,
+        "createBeforeLockBlocks": 20000,
+        "minLeadBlocks": 2000
+      },
+      "strike": { "rule": "funding-increment-quantile", "q": 0.98, "intervals": 600 },
+      "firstStake": { "side": "no", "usdc": "5" }
+    },
+    {
+      "id": "eth-range-daily",
+      "note": "Will ETH/USD be inside the 100 USD band around the price at creation at 18:00 UTC? Off on testnet for the same reason.",
+      "enabled": false,
+      "template": 5,
+      "asset": "ETH/USD",
+      "schedule": {
+        "anchor": "2026-10-05T18:00:00Z",
+        "every": "1d",
+        "lockBeforeClose": "1h",
+        "createBeforeLock": "12h",
+        "minLead": "10m"
+      },
+      "strike": { "rule": "range-around-spot", "width": "100", "step": "50" },
+      "firstStake": { "side": "yes", "usdc": "5" }
+    }
+  ]
+}

@@ -118,6 +118,11 @@ export class MarketDirectory {
     return this.retired.size;
   }
 
+  /** Every market read so far, finished ones included (what never changes about each). */
+  all(): readonly MarketMeta[] {
+    return this.meta;
+  }
+
   /** New markets since the last call, then every live market's state at `blockNumber`. */
   async refresh(blockNumber: bigint, graduator: Address): Promise<MarketSnapshot[]> {
     const count = Number(
