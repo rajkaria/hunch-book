@@ -68,7 +68,8 @@ async function renderWith(ui: ReactElement, { connected = false } = {}) {
     multiInjectedProviderDiscovery: false,
     storage: null,
   });
-  if (connected) await connect(config, { connector: config.connectors[0] as never });
+  const first = config.connectors[0];
+  if (connected && first) await connect(config, { connector: first });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <WagmiProvider config={config} reconnectOnMount={false}>
@@ -163,7 +164,8 @@ describe("stake without MON", () => {
     await renderWith(<GaslessStake m={m} side={Side.Yes} amount={USDC(10)} ready />, { connected: true });
     expect(screen.getByText("The relayer takes stakes of up to 5.00 USDC.")).toBeTruthy();
     expect(
-      (screen.getByRole("button", { name: "Stake 10.00 USDC on YES without MON" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Stake 10.00 USDC on YES without MON" }) as HTMLButtonElement)
+        .disabled,
     ).toBe(true);
   });
 
