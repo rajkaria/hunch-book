@@ -54,6 +54,7 @@ export const TemplateId = {
   PerplFundingSpike: 4,
   PriceRange: 5,
   Parlay: 6,
+  Snapshot: 7,
 } as const;
 export type TemplateId = (typeof TemplateId)[keyof typeof TemplateId];
 
