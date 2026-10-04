@@ -1,5 +1,6 @@
 # One market with its latest fills, stakes and router trades, its graduation and its settlement.
-# $id is the market address in lowercase.
+# Template 7 markets carry the snapshot they settle on (empty until someone takes it); graduated
+# markets carry the oracle's latest chance once someone pokes it. $id is the market address in lowercase.
 query MarketDetail($id: String!, $fills: Int = 50, $stakes: Int = 50) {
   Market_by_pk(id: $id) {
     id
@@ -15,10 +16,41 @@ query MarketDetail($id: String!, $fills: Int = 50, $stakes: Int = 50) {
     feed
     pythId
     strikeE8
+    lowerE8
+    upperE8
+    legs
     blockClock
+    windowStart
     lockAt
     closeAt
     settleDeadline
+    snapshotKey
+    snapshotSourceId
+    snapshotWindow
+    comparator
+    snapshot {
+      id
+      value
+      block
+      timestamp
+      secondsAfterClose
+      taker
+      takenInSettle
+      sender
+      senderIsOurs
+      tx
+    }
+    oracle {
+      chanceE6
+      spreadE6
+      stale
+      lastPokedAt
+    }
+    conditionalOrderCount
+    conditionalOrdersOpen
+    conditionalOrdersExecuted
+    autoRedemptionCount
+    autoRedeemedUsdc
     stage
     yesToken
     noToken
@@ -125,6 +157,13 @@ query MarketDetail($id: String!, $fills: Int = 50, $stakes: Int = 50) {
       user {
         id
       }
+      conditionalOrder {
+        id
+      }
+    }
+    priceAdapters {
+      id
+      side
     }
   }
   Graduation_by_pk(id: $id) {

@@ -1,0 +1,61 @@
+# A wallet's conditional orders: the ones still open (not executed or cancelled, and not past expiry
+# at $now, unix seconds), then its history with each execution's router trade. $owner is the address in
+# lowercase. For one market's open orders, filter on market_id instead of owner_id.
+query OpenOrders($owner: String!, $now: numeric!, $history: Int = 50) {
+  open: ConditionalOrder(
+    where: { owner_id: { _eq: $owner }, status: { _eq: "Open" }, expiry: { _gte: $now } }
+    order_by: { placedAt: desc }
+  ) {
+    id
+    orderId
+    kind
+    condition
+    triggerPriceE6
+    expiry
+    executorTipBps
+    amountIn
+    limit
+    placedAt
+    placedTx
+    market {
+      id
+      number
+      question
+      stage
+      lastPriceE6
+      yesToken
+      noToken
+    }
+  }
+  history: ConditionalOrder(
+    where: { owner_id: { _eq: $owner }, status: { _neq: "Open" } }
+    order_by: { updatedAt: desc }
+    limit: $history
+  ) {
+    id
+    kind
+    status
+    triggerPriceE6
+    amountIn
+    executor
+    executorIsOurs
+    executedPriceE6
+    spent
+    received
+    tip
+    executedAt
+    executeTx
+    cancelledAt
+    cancelTx
+    routerTrade {
+      id
+      usdc
+      tokens
+      priceE6
+    }
+    market {
+      id
+      number
+    }
+  }
+}

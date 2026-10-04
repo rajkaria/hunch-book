@@ -1,0 +1,66 @@
+# A referral link's stats: the referrer's totals, the users it brought and their bindings, and its
+# credit per day. $referrer is the address in lowercase; $from and $to are UTC dates ("2026-10-01"),
+# inclusive, for example one reward epoch.
+# The rewards scorer reads ReferralFee for an epoch: each fee's credit is
+# floor(protocolShare * referralShareBps / 10000), summed per referrer (docs/PERIPHERY.md).
+query ReferralStats($referrer: String!, $from: String!, $to: String!, $limit: Int = 100) {
+  Referrer_by_pk(id: $referrer) {
+    isOurs
+    bindingCount
+    userCount
+    firstBoundAt
+    lastBoundAt
+    activeUntil
+    feeCount
+    fees
+    protocolShare
+    users(order_by: { protocolShare: desc }, limit: $limit) {
+      user
+      bindingCount
+      firstBoundAt
+      expiresAt
+      feeCount
+      fees
+      protocolShare
+    }
+  }
+  Referral(where: { referrer_id: { _eq: $referrer } }, order_by: { boundAt: desc }, limit: $limit) {
+    id
+    boundAt
+    expiresAt
+    relayed
+    relayerIsOurs
+    userIsOurs
+    feeCount
+    protocolShare
+    tx
+    user {
+      id
+    }
+  }
+  ReferralCredit(
+    where: { referrer_id: { _eq: $referrer }, date: { _gte: $from, _lte: $to } }
+    order_by: { date: asc }
+  ) {
+    date
+    feeCount
+    fees
+    protocolShare
+  }
+  ReferralFee(
+    where: { referrer_id: { _eq: $referrer }, date: { _gte: $from, _lte: $to } }
+    order_by: { timestamp: asc }
+  ) {
+    id
+    user
+    kind
+    fee
+    protocolShare
+    timestamp
+    tx
+    market {
+      id
+      number
+    }
+  }
+}
