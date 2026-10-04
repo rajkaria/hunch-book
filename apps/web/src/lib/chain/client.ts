@@ -1,6 +1,6 @@
 import type { Deployment } from "@hunch-book/shared";
 import { type Chain, createPublicClient, http, type PublicClient } from "viem";
-import { appChain, appDeployment } from "../config";
+import { appChain, appDeployment, appNetwork } from "../config";
 
 /** The subset of a viem public client the read layer uses, so tests can pass a stub. */
 export type ReadClient = Pick<PublicClient, "readContract" | "multicall" | "getBlock">;
@@ -18,10 +18,14 @@ export function makePublicClient(
   });
 }
 
-let shared: PublicClient | undefined;
+const shared = new Map<string, PublicClient>();
 
-/** One public client per page load (browser) or per server process. */
+/** One public client per network per page load (browser) or per server process, for the active network. */
 export function getPublicClient(): PublicClient {
-  shared ??= makePublicClient();
-  return shared;
+  let client = shared.get(appNetwork);
+  if (!client) {
+    client = makePublicClient();
+    shared.set(appNetwork, client);
+  }
+  return client;
 }

@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { WagmiProvider } from "wagmi";
+import { NetworkBoundary } from "@/lib/wallet/appNetwork";
 import { wagmiConfig } from "@/lib/wallet/config";
 
 export function makeQueryClient(): QueryClient {
@@ -21,7 +22,9 @@ export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(makeQueryClient);
   return (
     <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <NetworkBoundary>{children}</NetworkBoundary>
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }
