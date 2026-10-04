@@ -1,0 +1,86 @@
+{
+  "143": {
+    "chainId": 143,
+    "network": "monad-mainnet",
+    "explorer": "https://monadscan.com",
+    "deployed": false,
+    "deployBlock": null,
+    "contracts": {
+      "factory": null,
+      "vault": null,
+      "router": null,
+      "graduator": null,
+      "usdc": "0x754704bc059f8c67012fed69bc8a327a5aafb603",
+      "marketImplementation": null
+    },
+    "ours": {
+      "maker": "0x0f1156eb25dbebee5386ec80f1eb0b85c7dd232a",
+      "keeper": "0x1f5ac9bb0df7d0e0dd133cbd71388e1078475569",
+      "guardian": null,
+      "feeRecipient": null
+    },
+    "kuru": {
+      "router": "0xd651346d7c789536ebf06dc72ae3c8502cd695cc",
+      "marginAccount": "0x2a68ba1833cdf93fa9da1eebd7f46242ad8e90c5"
+    },
+    "perps": {
+      "1": "BTC",
+      "10": "MON",
+      "20": "ETH",
+      "31": "SOL"
+    },
+    "chainlinkFeeds": {
+      "0xc1d4c3331635184fa4c3c22fb92211b2ac9e0546": "BTC/USD",
+      "0x1b1414782b859871781ba3e4b0979b9ca57a0a04": "ETH/USD",
+      "0xbcd78f76005b7515837af6b50c7c52bcf73822fb": "MON/USD",
+      "0x16f8008c3e89f62e5e2b909ce70999370d38f4f2": "SOL/USD"
+    },
+    "pythIds": {
+      "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43": "BTC/USD",
+      "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace": "ETH/USD",
+      "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d": "SOL/USD",
+      "0x31491744e2dbf6df7fcf4ac0820d18a609b49076d45066d3568424e62f686cd1": "MON/USD"
+    }
+  },
+  "10143": {
+    "chainId": 10143,
+    "network": "monad-testnet",
+    "explorer": "https://testnet.monadscan.com",
+    "deployed": true,
+    "deployBlock": 67856277,
+    "contracts": {
+      "factory": "0x2c30da53f8c384d6ed6603e3138a98fd15e4928a",
+      "vault": "0x81b04b3567dcadae6a859394248c47ddc403ba37",
+      "router": "0xb9d22c84c5e2f4329eeee1b52ad753df3268c2a6",
+      "graduator": "0x7dc80db34762a996aae6ce516f562b2e6142ffe3",
+      "usdc": "0x13c5b2e982f437566991c4d9ac0a30f9f9ac15ed",
+      "marketImplementation": "0xaef7f97a739c8ea93d4f5fc497b0181cf92d8ce6"
+    },
+    "ours": {
+      "maker": "0x0f1156eb25dbebee5386ec80f1eb0b85c7dd232a",
+      "keeper": "0x1f5ac9bb0df7d0e0dd133cbd71388e1078475569",
+      "guardian": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+      "feeRecipient": "0xd183a7daecf3d539683f37e1111558e3dfc210a8"
+    },
+    "kuru": {
+      "router": "0x7efbe105ca7415de98f96622173458ac1c054630",
+      "marginAccount": "0xd029c2d98ff85d8f64799017fe00a59b1159ce02"
+    },
+    "perps": {
+      "16": "BTC",
+      "32": "ETH",
+      "48": "SOL",
+      "64": "MON"
+    },
+    "chainlinkFeeds": {
+      "0x12c0f44368a02081ce58a936d1c1f606bb301715": "BTC/USD",
+      "0x5c8c8482f064049248f86d9f4afa4b1f2f5b6d31": "ETH/USD"
+    },
+    "pythIds": {
+      "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43": "BTC/USD",
+      "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace": "ETH/USD",
+      "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d": "SOL/USD",
+      "0x31491744e2dbf6df7fcf4ac0820d18a609b49076d45066d3568424e62f686cd1": "MON/USD"
+    }
+  }
+}
