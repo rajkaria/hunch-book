@@ -1,16 +1,100 @@
 import type { ReactNode } from "react";
 import { appNetwork, appNetworkLabel } from "@/lib/config";
-import { Button, Skeleton } from "../ui";
+import { Button, LineIcon, Skeleton } from "../ui";
 import s from "./states.module.css";
+
+// Loading, empty, error and not-deployed states. Plain words, a way forward, never a stack trace.
+
+type Glyph = "build" | "empty" | "error" | "search";
+
+/** Small line icons for the state tile. Decorative: the heading carries the meaning. */
+function StateIcon({ glyph }: { glyph: Glyph }) {
+  switch (glyph) {
+    case "build":
+      return (
+        <LineIcon>
+          <path d="M4 20h16" />
+          <path d="M6 20V9l6-5 6 5v11" />
+          <path d="M10 20v-5h4v5" />
+        </LineIcon>
+      );
+    case "error":
+      return (
+        <LineIcon>
+          <path d="M12 3 2.5 20h19L12 3Z" />
+          <path d="M12 10v4" />
+          <path d="M12 17.2v.1" />
+        </LineIcon>
+      );
+    case "search":
+      return (
+        <LineIcon>
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="m20 20-4.2-4.2" />
+        </LineIcon>
+      );
+    default:
+      return (
+        <LineIcon>
+          <rect x="4" y="5" width="16" height="14" rx="3" />
+          <path d="M4 10h16" />
+          <path d="M9 14.5h6" />
+        </LineIcon>
+      );
+  }
+}
+
+function StateFrame({
+  glyph,
+  tone = "neutral",
+  label,
+  title,
+  titleAs: Title = "h2",
+  titleId,
+  role,
+  labelledBy,
+  children,
+  actions,
+}: {
+  glyph: Glyph;
+  tone?: "neutral" | "accent" | "danger";
+  label?: string;
+  title: ReactNode;
+  titleAs?: "h1" | "h2";
+  titleId?: string;
+  role?: "alert";
+  labelledBy?: string;
+  children?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <section className={`${s.state} ${s[`state-${tone}`] ?? ""}`} role={role} aria-labelledby={labelledBy}>
+      <span className={s.icon}>
+        <StateIcon glyph={glyph} />
+      </span>
+      <div className={s.content}>
+        {label ? <p className={s.label}>{label}</p> : null}
+        <Title className={s.title} id={titleId}>
+          {title}
+        </Title>
+        {children}
+        {actions ? <div className={s.actions}>{actions}</div> : null}
+      </div>
+    </section>
+  );
+}
 
 /** Shown wherever chain data is needed while deployments/<network>.json has no factory yet. */
 export function NotDeployed({ willShow }: { willShow?: string[] }) {
   return (
-    <section className={s.state} aria-labelledby="not-deployed-title">
-      <p className={s.label}>Status: building</p>
-      <h2 className={s.title} id="not-deployed-title">
-        Contracts not deployed on {appNetworkLabel} yet
-      </h2>
+    <StateFrame
+      glyph="build"
+      tone="accent"
+      label="Status: building"
+      title={`Contracts not deployed on ${appNetworkLabel} yet`}
+      titleId="not-deployed-title"
+      labelledBy="not-deployed-title"
+    >
       <p className={s.body}>
         Hunch Book's contracts are being built. <span className={s.code}>deployments/{appNetwork}.json</span>{" "}
         has no factory address yet. Once the deploy writes one, this page reads markets straight from the
@@ -26,7 +110,7 @@ export function NotDeployed({ willShow }: { willShow?: string[] }) {
           </ul>
         </>
       ) : null}
-    </section>
+    </StateFrame>
   );
 }
 
@@ -35,19 +119,21 @@ export function EmptyState({
   title,
   children,
   actions,
+  glyph = "empty",
+  titleAs = "h2",
 }: {
   label?: string;
   title: string;
   children?: ReactNode;
   actions?: ReactNode;
+  glyph?: Glyph;
+  /** h1 when the empty state is the whole page, as on the 404 page. */
+  titleAs?: "h1" | "h2";
 }) {
   return (
-    <section className={s.state}>
-      {label ? <p className={s.label}>{label}</p> : null}
-      <h2 className={s.title}>{title}</h2>
+    <StateFrame glyph={glyph} label={label} title={title} titleAs={titleAs} actions={actions}>
       {children ? <div className={s.body}>{children}</div> : null}
-      {actions ? <div className={s.actions}>{actions}</div> : null}
-    </section>
+    </StateFrame>
   );
 }
 
@@ -62,19 +148,19 @@ export function ErrorState({
   onRetry?: () => void;
 }) {
   return (
-    <section className={s.state} role="alert">
-      <p className={s.label}>Error</p>
-      <h2 className={s.title}>{title}</h2>
+    <StateFrame
+      glyph="error"
+      tone="danger"
+      label="Error"
+      title={title}
+      role="alert"
+      actions={onRetry ? <Button onClick={onRetry}>Try again</Button> : undefined}
+    >
       <p className={s.body}>
         {detail ??
           `The ${appNetworkLabel} RPC did not answer. Your funds are not affected. Try again in a moment.`}
       </p>
-      {onRetry ? (
-        <div className={s.actions}>
-          <Button onClick={onRetry}>Try again</Button>
-        </div>
-      ) : null}
-    </section>
+    </StateFrame>
   );
 }
 
@@ -84,8 +170,15 @@ export function LoadingRows({ rows = 3, label = "Loading" }: { rows?: number; la
       <span className="visually-hidden">{label}</span>
       {Array.from({ length: rows }, (_, i) => `row-${i}`).map((key) => (
         <div className={s.loadingRow} key={key}>
-          <Skeleton width="70%" height={18} />
-          <Skeleton width="40%" height={14} />
+          <div className={s.loadingMeta}>
+            <Skeleton width={72} height={22} radius={999} />
+            <Skeleton width={56} height={14} />
+          </div>
+          <Skeleton width="72%" height={20} />
+          <div className={s.loadingFoot}>
+            <Skeleton width={64} height={24} />
+            <Skeleton width="100%" height={8} radius={999} />
+          </div>
         </div>
       ))}
     </div>

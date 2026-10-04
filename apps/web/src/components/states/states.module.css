@@ -1,39 +1,107 @@
+/* .state is also used directly by components/RouteError.tsx (label, title, body, actions as children). */
 .state {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-5) var(--space-4);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(250, 250, 247, 0.05), transparent 55%), rgba(250, 250, 247, 0.035);
+  overflow: hidden;
 }
 
 @media (min-width: 720px) {
   .state {
-    padding: var(--space-6) var(--space-5);
+    padding: var(--space-6);
   }
+}
+
+@media (min-width: 560px) {
+  .state:has(> .icon) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-5);
+  }
+}
+
+.state-accent {
+  border-color: rgba(203, 255, 93, 0.22);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(203, 255, 93, 0.1), transparent 55%), rgba(250, 250, 247, 0.035);
+}
+
+.state-danger {
+  border-color: var(--no-line);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 90, 107, 0.1), transparent 55%), rgba(250, 250, 247, 0.035);
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: rgba(250, 250, 247, 0.05);
+  color: var(--muted);
+}
+
+.state-accent .icon {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.state-danger .icon {
+  color: var(--no);
+  border-color: var(--no-line);
+  background: var(--no-soft);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
 }
 
 .label {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--subtle);
-}
-
-.title {
-  font-size: var(--text-lg);
   font-weight: 600;
-}
-
-.body {
-  max-width: 62ch;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
   color: var(--muted);
 }
 
+.title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+@media (min-width: 720px) {
+  .title {
+    font-size: 24px;
+  }
+}
+
+.body {
+  max-width: 64ch;
+  color: var(--muted);
+}
+
+.body a {
+  font-weight: 600;
+}
+
 .list {
-  margin: var(--space-2) 0 0;
+  margin: 0;
   padding-left: 18px;
   color: var(--muted);
   display: flex;
@@ -41,10 +109,15 @@
   gap: var(--space-1);
 }
 
+.list li::marker {
+  color: var(--accent);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-3);
   margin-top: var(--space-2);
 }
 
@@ -52,20 +125,39 @@
   font-family: var(--font-mono);
   font-size: 0.92em;
   color: var(--text);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: rgba(250, 250, 247, 0.06);
 }
+
+/* ---------- loading ---------- */
 
 .loading {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .loadingRow {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+  border-radius: var(--radius-lg);
+  background: rgba(250, 250, 247, 0.035);
+}
+
+.loadingMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.loadingFoot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
 }
