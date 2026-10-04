@@ -6,10 +6,12 @@ import {
   encodeChainlinkTouchParams,
   encodeParlayParams,
   encodePerplFundingSpikeParams,
+  encodeSnapshotParams,
   marketAbi,
   Outcome,
   Phase,
   Side,
+  SnapshotComparator,
   TemplateId,
   TouchDirection,
 } from "@hunch-book/shared";
@@ -21,6 +23,7 @@ import {
   type Hex,
   maxUint256,
   type PrivateKeyAccount,
+  toFunctionSelector,
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -66,10 +69,23 @@ const a = {} as Record<
   | "redeemer"
   | "orders"
   | "oracle"
-  | "book",
+  | "book"
+  | "snapshot"
+  | "source",
   Address
 >;
-const m = {} as Record<"touchYes" | "touchNo" | "parlay" | "spikeYes" | "spikeNo" | "graduated", Address>;
+const m = {} as Record<
+  | "touchYes"
+  | "touchNo"
+  | "parlay"
+  | "spikeYes"
+  | "spikeNo"
+  | "graduated"
+  | "snapYes"
+  | "snapNo"
+  | "snapLate",
+  Address
+>;
 const PERP = 16n;
 const INTERVAL = 20n;
 const CHALLENGE_BLOCKS = 86_400n;
@@ -123,6 +139,29 @@ beforeAll(async () => {
   await send(core.factory, "factory", "addTemplate", [TemplateId.ChainlinkTouch, a.touch, rule]);
   await send(core.factory, "factory", "addTemplate", [TemplateId.PerplFundingSpike, a.spike, rule]);
   await send(core.factory, "factory", "addTemplate", [TemplateId.Parlay, a.parlay, rule]);
+  // Template 7 on one plain value: the snapshot tests' stand-in source, read with plain().
+  a.source = await chain.deploy(deployer, "mockSnapshotSource");
+  await send(a.source, "mockSnapshotSource", "setPlain", [10n]);
+  a.snapshot = await chain.deploy(deployer, "snapshotResolver", [
+    [
+      {
+        label: "Test value",
+        unit: "units",
+        decimals: 0,
+        target: a.source,
+        callData: toFunctionSelector("plain()"),
+        tuple: false,
+        valueWord: 0,
+        signed: false,
+        timestampWord: 0,
+        maxAge: 0,
+        pinnedWords: [],
+        guardTarget: "0x0000000000000000000000000000000000000000",
+        guardCallData: "0x",
+      },
+    ],
+  ]);
+  await send(core.factory, "factory", "addTemplate", [TemplateId.Snapshot, a.snapshot, rule]);
 
   // Graduation into a book that quotes, and the periphery.
   a.graduator = await chain.deploy(deployer, "mockGraduator");
@@ -181,6 +220,36 @@ beforeAll(async () => {
   await stake(stakers[3] as PrivateKeyAccount, m.spikeYes, Side.No, 3n * USDC);
   m.spikeNo = await createMarket(TemplateId.PerplFundingSpike, spike(A2, 50n), Side.No, 5n * USDC);
   await stake(stakers[3] as PrivateKeyAccount, m.spikeNo, Side.Yes, 2n * USDC);
+
+  // Snapshot markets: two on one observation (value at T + 3,400, ten-minute window) with opposite
+  // rules, and one on an earlier, one-minute window the keeper will have missed.
+  const snap = (comparator: SnapshotComparator, closeTime: bigint, snapshotWindow: number) =>
+    encodeSnapshotParams({
+      sourceId: 0,
+      threshold: 5n,
+      comparator,
+      lockTime: T + 1_000n,
+      closeTime,
+      snapshotWindow,
+    });
+  m.snapYes = await createMarket(
+    TemplateId.Snapshot,
+    snap(SnapshotComparator.AtOrAbove, T + 3_400n, 600),
+    Side.Yes,
+    5n * USDC,
+  );
+  m.snapNo = await createMarket(
+    TemplateId.Snapshot,
+    snap(SnapshotComparator.Below, T + 3_400n, 600),
+    Side.Yes,
+    5n * USDC,
+  );
+  m.snapLate = await createMarket(
+    TemplateId.Snapshot,
+    snap(SnapshotComparator.AtOrAbove, T + 2_000n, 60),
+    Side.Yes,
+    5n * USDC,
+  );
 
   // A template-1 market that graduates into a quoting book (MockResolver answers what the test sets).
   m.graduated = await createMarket(
@@ -328,6 +397,23 @@ describe("the keeper's v2 jobs against the real resolvers and periphery on anvil
     expect(await outcome(m.touchNo)).toBe(Outcome.Unresolved);
     const plan = events("plan").find((l) => l.market === m.touchNo && l.job === "settle");
     expect(plan?.reason).toMatch(/^waiting for the challenge period to end/);
+  });
+
+  it("in the same cycle, settles snapshot markets in their window: settle takes the snapshot", async (ctx) => {
+    if (!chain) return ctx.skip();
+    // The cycle above ran at T + 3,500: inside [T + 3,400, T + 4,000], and after the one-minute window.
+    const settles = txs("settle").filter((l) => l.status === "success" && l.settler === "snapshot");
+    expect(settles.map((l) => l.market).sort()).toEqual([m.snapYes, m.snapNo].sort());
+    expect(settles[0]).toMatchObject({ snapshot: "taken by this settle", valueNow: "10" });
+    // One snapshot, one value, both rules: 10 is at or above 5 (YES) and not below 5 (NO).
+    expect(settles[1]).toMatchObject({ snapshot: "taken", value: "10" });
+    expect(await outcome(m.snapYes)).toBe(Outcome.Yes);
+    expect(await outcome(m.snapNo)).toBe(Outcome.No);
+    // The market whose window passed with no snapshot cannot settle: said once, and it voids later.
+    expect(await outcome(m.snapLate)).toBe(Outcome.Unresolved);
+    expect(events("settle-later").find((l) => l.market === m.snapLate)?.reason).toMatch(
+      /^nobody took the snapshot in its window/,
+    );
   });
 
   it("proves a funding spike once its event is final", async (ctx) => {

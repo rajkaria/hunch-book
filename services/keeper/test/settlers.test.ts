@@ -31,15 +31,16 @@ const ZERO32 = `0x${"00".repeat(32)}` as Hex;
 const window: Window = { blockClock: false, lock: 0n, close: 0n, settleDeadline: 0n };
 
 describe("registry", () => {
-  it("knows templates 1 to 6 and takes new ones", () => {
+  it("knows templates 1 to 7 and takes new ones", () => {
     const registry = defaultSettlers();
-    expect(registry.templates()).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(registry.templates()).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(registry.get(TemplateId.PerplFunding)?.name).toBe("perpl-funding");
     expect(registry.get(TemplateId.PriceAtTime)?.name).toBe("price-at-time");
     expect(registry.get(TemplateId.ChainlinkTouch)?.name).toBe("chainlink-touch");
     expect(registry.get(TemplateId.PerplFundingSpike)?.name).toBe("perpl-funding-spike");
     expect(registry.get(TemplateId.PriceRange)?.name).toBe("price-range");
     expect(registry.get(TemplateId.Parlay)?.name).toBe("parlay");
+    expect(registry.get(TemplateId.Snapshot)?.name).toBe("snapshot");
     // Only the early-YES templates hunt for proofs.
     expect(registry.templates().filter((id) => registry.get(id)?.prover)).toEqual([3, 4]);
     expect(registry.get(9)).toBeUndefined();

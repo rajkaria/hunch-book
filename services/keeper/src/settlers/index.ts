@@ -6,6 +6,7 @@ import { parlaySettler } from "./parlay.js";
 import { perplFundingSettler } from "./perplFunding.js";
 import { priceAtTimeSettler } from "./priceAtTime.js";
 import { priceRangeSettler } from "./priceRange.js";
+import { snapshotSettler } from "./snapshot.js";
 
 // One settler per template: it knows when the template's resolver can answer, and what evidence to
 // pass to `settle`. Templates with an early YES (touch, funding spike) also have a prover, which hunts
@@ -92,8 +93,13 @@ export interface Settler {
   evidence(market: SettleMarket, now: ChainNow, deps: SettleDeps): Promise<EvidenceResult>;
   /** Templates whose resolver accepts an early YES: the proof hunter. */
   readonly prover?: Prover;
-  /** Templates settled from a snapshot taken after close. */
+  /**
+   * Templates that need a separate call to take their snapshot before `settle`. (Template 7 does not:
+   * its `settle` takes the snapshot itself.)
+   */
   readonly snapshot?: SnapshotTaker;
+  /** The longest wait before retrying a settlement that did not go through, when time is short. */
+  maxRetrySeconds?(market: PlanSettleMarket, now: ChainNow): number | undefined;
 }
 
 export class SettlerRegistry {
@@ -115,8 +121,8 @@ export class SettlerRegistry {
 
 /**
  * Every template the keeper knows: 1 Perpl funding, 2 price at a time, 3 price touch, 4 funding spike,
- * 5 price range, 6 parlay. The touch and spike settlers keep their hunt's progress in memory, so each
- * registry gets its own.
+ * 5 price range, 6 parlay, 7 snapshot. The touch and spike settlers keep their hunt's progress in
+ * memory, so each registry gets its own.
  */
 export function defaultSettlers(): SettlerRegistry {
   return new SettlerRegistry()
@@ -125,5 +131,6 @@ export function defaultSettlers(): SettlerRegistry {
     .register(TemplateId.ChainlinkTouch, chainlinkTouchSettler())
     .register(TemplateId.PerplFundingSpike, fundingSpikeSettler())
     .register(TemplateId.PriceRange, priceRangeSettler)
-    .register(TemplateId.Parlay, parlaySettler);
+    .register(TemplateId.Parlay, parlaySettler)
+    .register(TemplateId.Snapshot, snapshotSettler);
 }

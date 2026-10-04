@@ -492,16 +492,26 @@ export class Keeper {
     return retry !== undefined && Date.now() < retry.at;
   }
 
-  /** Waits before the next attempt: KEEPER_SETTLE_RETRY_SECONDS, doubling up to the max. */
-  private backoff(market: Address, reason: string, longest = false, kind: RetryKind = "settle"): void {
+  /**
+   * Waits before the next attempt: KEEPER_SETTLE_RETRY_SECONDS, doubling up to the max, and never
+   * longer than `cap` when the settler gives one (a snapshot window lasts minutes, not hours).
+   */
+  private backoff(
+    market: Address,
+    reason: string,
+    longest = false,
+    kind: RetryKind = "settle",
+    cap?: number,
+  ): void {
     const key = `${kind}:${market}`;
     const prev = this.retries.get(key);
-    const delaySeconds = longest
+    const wanted = longest
       ? this.config.settleRetryMaxSeconds
       : Math.min(
           prev ? prev.delaySeconds * 2 : this.config.settleRetrySeconds,
           this.config.settleRetryMaxSeconds,
         );
+    const delaySeconds = cap !== undefined ? Math.min(wanted, cap) : wanted;
     this.retries.set(key, { at: Date.now() + delaySeconds * 1000, delaySeconds });
     log(`${kind}-later`, { market, reason, retryInSeconds: delaySeconds }, longest ? "warn" : "info");
     if (!longest && delaySeconds >= this.config.settleRetryMaxSeconds) {
@@ -607,6 +617,7 @@ export class Keeper {
     if (this.waiting("settle", m.address)) return false;
     const settler = this.settlers.get(m.templateId);
     if (!settler) return false;
+    const cap = settler.maxRetrySeconds?.(m, now);
     const evidence = await settler.evidence(m, now, this.settleDeps());
     if (evidence.status !== "ready") {
       const unsettleable = evidence.status === "unsettleable";
@@ -622,7 +633,7 @@ export class Keeper {
           "warn",
         );
       }
-      this.backoff(m.address, evidence.reason, unsettleable);
+      this.backoff(m.address, evidence.reason, unsettleable, "settle", unsettleable ? undefined : cap);
       return false;
     }
     const request: TxRequest = {
@@ -639,14 +650,15 @@ export class Keeper {
       this.retries.delete(`settle:${m.address}`);
     } else if (result.status === "dry-run") {
       if (!result.simulation.ok) {
-        this.backoff(m.address, `settle would revert: ${result.simulation.reason}`);
+        this.backoff(m.address, `settle would revert: ${result.simulation.reason}`, false, "settle", cap);
       } else {
         // A dry run that keeps running: fetch the evidence again only when it would be logged again.
         this.quietDryRun("settle", m.address);
       }
     } else {
       // Skipped (the simulation failed, for example NotResolved), reverted, or unknown.
-      this.backoff(m.address, result.status === "skipped" ? result.reason : `settle ${result.status}`);
+      const reason = result.status === "skipped" ? result.reason : `settle ${result.status}`;
+      this.backoff(m.address, reason, false, "settle", cap);
     }
     return sent(result);
   }

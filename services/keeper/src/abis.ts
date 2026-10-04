@@ -35,6 +35,18 @@ export const resolverErrorsAbi = parseAbi([
   "error NotAFundingEvent(uint64 eventBlock, uint256 reportedEventBlock)",
   "error NotOneInterval(uint64 eventBlock, uint256 previousEventBlock, uint256 fundingInterval)",
   "error NotASpike(uint64 eventBlock, int256 increment, int256 threshold)",
+  // Template 7, snapshot
+  "error OutsideSnapshotWindow(uint64 opensAt, uint256 closesAt, uint256 currentTime)",
+  "error SnapshotExists(bytes32 key)",
+  "error SourceCallFailed(uint16 sourceId)",
+  "error SourceReturnTooShort(uint16 sourceId)",
+  "error ValueOutOfRange(uint16 sourceId, uint256 raw)",
+  "error ValueStale(uint16 sourceId, uint256 updatedAt, uint256 maxAge)",
+  "error GuardCallFailed(uint16 sourceId)",
+  "error SourceChanged(uint16 sourceId)",
+  "error UnknownSource(uint16 sourceId)",
+  "error UnknownComparator(uint8 comparator)",
+  "error SnapshotWindowOutOfRange(uint32 snapshotWindow)",
   // Templates 1, 2, 5, 6
   "error MalformedEvidence()",
   "error PhaseBoundary(uint80 roundId)",
