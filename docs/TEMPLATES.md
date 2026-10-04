@@ -18,16 +18,18 @@ of truth; every section links to it.
 | 4 | Perpl funding spike | [`PerplFundingSpikeResolver`](../contracts/src/resolvers/PerplFundingSpikeResolver.sol) | blocks | yes | funding event block (YES), empty (NO) | building |
 | 5 | Price range | [`PriceRangeResolver`](../contracts/src/resolvers/PriceRangeResolver.sol) | unix time | no | Chainlink round id, or Pyth update | building |
 | 6 | Parlay | [`MarketOutcomeResolver`](../contracts/src/resolvers/MarketOutcomeResolver.sol) | unix time | no | empty | building |
+| 7 | Snapshot | [`SnapshotResolver`](../contracts/src/resolvers/SnapshotResolver.sol) | unix time | no | empty | building |
 
 Every resolver address is in [`deployments/<network>.json`](../deployments) under `hunchBook.resolvers`.
 Templates 3 to 6 are deployed and registered with
-[`DeployTemplatesV2.s.sol`](../contracts/script/DeployTemplatesV2.s.sol); until that has run on a
-network, they are not available there.
+[`DeployTemplatesV2.s.sol`](../contracts/script/DeployTemplatesV2.s.sol), and template 7 with
+[`DeploySnapshotTemplate.s.sol`](../contracts/script/DeploySnapshotTemplate.s.sol); until that has run
+on a network, the template is not available there.
 
 The parameter structs are in [`ITemplates.sol`](../contracts/src/interfaces/ITemplates.sol) (templates
-1 and 2) and [`ITemplatesV2.sol`](../contracts/src/interfaces/ITemplatesV2.sol) (templates 3 to 6).
-TypeScript encodes and decodes them with the same ABI, in
-[`packages/shared/src/templates.ts`](../packages/shared/src/templates.ts).
+1 and 2), [`ITemplatesV2.sol`](../contracts/src/interfaces/ITemplatesV2.sol) (templates 3 to 6) and
+[`ITemplatesV3.sol`](../contracts/src/interfaces/ITemplatesV3.sol) (template 7). TypeScript encodes and
+decodes them with the same ABI, in [`packages/shared/src/templates.ts`](../packages/shared/src/templates.ts).
 
 ## How every template settles
 
@@ -37,7 +39,9 @@ same for every template.
 - **No one sets an outcome.** A market's outcome comes only from its resolver reading its source.
   Resolvers have no owner, no admin function and no storage that changes after deployment. Their
   allowlists (which feeds, which Perpl exchange, which factory) are fixed in the constructor; a new feed
-  ships as a new resolver under a new template id.
+  ships as a new resolver under a new template id. The one exception to "no storage" is template 7,
+  which keeps the snapshots it takes: written once, and only with a value it has just read itself from
+  one of its fixed sources.
 - **Each market has a window**, returned by the resolver's `validate` when the market is created:
   - **lock**: staking stops. A pool that has not graduated by then stays a pool.
   - **close**: `settle` opens.
@@ -364,12 +368,139 @@ counts as a market. Nothing else: the parlay resolver only reads outcomes that a
 **Evidence hash.** `keccak256(abi.encode(address[] legs, uint8[] outcomes, bytes32[] legEvidenceHashes))`,
 each leg's outcome and evidence hash as read.
 
+## Template 7: snapshot
+
+**Question.** "YES if Perpl's BTC open interest (perp 1) is above 10 BTC in the first snapshot taken from
+2026-10-10 12:00:00 UTC to 2026-10-10 12:10:00 UTC; NO otherwise. If nobody takes a snapshot in that
+window, the market voids." Or, on the mark price: "... Perpl's BTC mark price (perp 1) is at or above
+$85,000 ...".
+
+**Why a snapshot.** Some values exist onchain only as current state. Perpl's open interest and mark
+price are fields of `getPerpetualInfoV2(perpId)`, which answers for the current block only, and no
+contract can read a past block's state. So the resolver reads the value once, right after close, and
+keeps what it read. Templates 1 to 6 read sources that keep their own history; this one keeps the
+history itself.
+
+**Parameters** (`SnapshotParams`):
+
+| Field | Meaning |
+|---|---|
+| `sourceId` | Which value: an index into the resolver's source list, fixed at its deployment |
+| `threshold` | X, in the source's raw units; the value shown is raw / 10^decimals, in the source's unit |
+| `comparator` | 0 = above, 1 = at or above, 2 = below, 3 = at or below |
+| `lockTime` | Unix seconds, in the future at creation |
+| `closeTime` | T, at or after the lock: the snapshot window opens |
+| `snapshotWindow` | W, in seconds, from 60 to 1,800 (600 by default in the shared package): the window is [T, T + W] |
+
+**Sources.** A source is a view call fixed when the resolver is deployed (`SnapshotSource`): the
+contract and call data, the 32-byte word of the return data that holds the value (counted from the
+head of the returned tuple when the return is a struct with strings), whether the value is signed, and
+the checks that it still means what it meant then:
+
+- **pinned words**: words of the same return that must read exactly as they did at deployment;
+- **a guard call**: another call whose whole answer must not change;
+- **a maximum age**: where the source stamps its value with a time, a value older than this is refused
+  (a stamp ahead of the block counts as fresh).
+
+The deploy script ([`DeploySnapshotTemplate.s.sol`](../contracts/script/DeploySnapshotTemplate.s.sol))
+lists two sources per Perpl perp, in the order BTC, ETH, SOL, MON: open interest (id 2i) and mark price
+(id 2i + 1). Each calls `getPerpetualInfoV2(perpId)` on Perpl's Exchange.
+
+| Source | Word | Unit | Max age |
+|---|---|---|---|
+| Open interest | 17, `longOpenInterestLNS` | the asset (BTC, ETH, SOL, MON), lot decimals | none (it has no timestamp) |
+| Mark price | 11, `markPNS` | USD, price decimals | 120 seconds, from word 12, `markTimestamp` |
+
+Both pin words 2 and 3 (the price and lot decimals: the units), 19 (the funding start block: it moves
+if the id is removed and listed again) and 22 (the status: a paused perp's values stop moving), and
+guard on `getContractVersion()`, Perpl's implementation version. Perpl reports long and short open
+interest separately; every lot has a long and a short side, so they are equal, and the source reads the
+long side. The fork tests check that equality on every perp on both networks. The mark's 120 seconds is
+twice Perpl's own `refPriceMaxAgeSec`; sampled across the previous day on both networks in October 2026,
+the mark was never more than 50 seconds old.
+
+| Network | Perps (lot decimals, price decimals) |
+|---|---|
+| Mainnet | BTC 1 (5, 1), ETH 20 (3, 2), SOL 31 (3, 3), MON 10 (0, 6) |
+| Testnet | BTC 16 (5, 1), ETH 32 (3, 2), SOL 48 (3, 2), MON 64 (0, 5) |
+
+**Rule.** With v the value in the first snapshot: YES if v > X (above), v >= X (at or above), v < X
+(below) or v <= X (at or below); NO otherwise. Equal counts only for the "at or" comparators.
+
+**Taking the snapshot.**
+
+- Anyone can take it, once per observation (source, T, W), at any block whose timestamp is in [T, T + W],
+  both ends included: by calling `snapshot(sourceId, closeTime, snapshotWindow)` on the resolver, or by
+  calling the market's `settle()`, which takes it when nobody has yet. A keeper that calls `settle()` with
+  empty evidence at the first block after T takes the snapshot and settles the market in one
+  transaction. For Hunch's keeper to do this it needs a template 7 settler, which is planned.
+- The resolver makes the call itself (STATICCALL) and copies out only the words it needs. It stores
+  (value, block, timestamp) only if the call succeeded, every word it needs was returned, an unsigned
+  value fits in int256, the pinned words and the guard's answer are those of deployment, and the value
+  is not older than its maximum age. Otherwise nothing is stored: `snapshot` reverts with the reason,
+  `settle` reverts with `NotResolved`, and anyone can try again later in the window.
+- The first snapshot is final. A second call reverts with `SnapshotExists`, and nothing can change or
+  delete a stored snapshot. Every market on the same observation answers from it, whatever its threshold,
+  comparator or lock time, so a ladder of thresholds on one value can never disagree with itself.
+- The value is the source's state at the snapshot transaction's place in its block: transactions before
+  it in that block count, later ones do not.
+- Once a snapshot exists, settlement no longer depends on the source. A later upgrade or outage at Perpl
+  cannot change or block the answer.
+
+**Timing.** Lock and close as given. The window is [T, T + W]. Deadline: T + W + 7 days.
+
+**Evidence.** Empty.
+
+**Creation checks.** The one canonical encoding, a known source, a known comparator, a window from 60
+to 1,800 seconds, the lock in the future, the close at or after the lock, and a source that answers now
+with the pinned words and guard answer of deployment and a fresh value. A source that no longer passes
+(Perpl upgraded, the perp was paused or relisted) takes no new markets; a new resolver is needed.
+
+**When it refuses to answer.** Before T. Inside the window, while the source cannot be read or a check
+fails (a later call can still take the snapshot). After T + W with no snapshot: for good, and the market
+voids at its deadline.
+
+**Who you trust.**
+
+- **The source.** For Perpl, as in template 1: its administrators and its 3-of-7 upgrade multisig. The
+  guard and pinned words make the resolver refuse a snapshot after an upgrade that changes Perpl's
+  version, a relisted id, changed units or a pause. An upgrade that keeps the version number cannot be
+  seen onchain.
+- **The choice of block.** Whoever takes the snapshot first picks the block, anywhere in the window.
+  While a keeper settles at the first block after T, anyone else can only take the snapshot at that block
+  or earlier, not wait for a better one. If no keeper does, the first taker can wait for a better
+  block anywhere in the window. That is why the window is at most 30 minutes, and 10 minutes by default.
+- **Moves in the source.** Anyone who can move the value can try to move it at the snapshot block. Open
+  interest moves when positions open or close, so a trader could open a large position just before the
+  snapshot and close it after; the mark moves with trading and Perpl's price feed. That costs Perpl's
+  fees and carries price risk, and per-market caps keep what it could win small, but a threshold close to
+  the current value, on a thin perp, is exposed to it. Such a market is not a fair question and should
+  not be listed (PROTOCOL.md §6.4, rule 3).
+- **No challenge period.** Nobody submits a value: the resolver reads it itself, so there is nothing to
+  challenge. The only freedom is the choice of block, bounded above.
+
+**Evidence hash.** `keccak256(abi.encode(address target, bytes callData, uint16 valueWord, int256 value,
+uint64 blockNumber, uint64 timestamp))`: the call made, the word read, the value, and the block and time
+of the snapshot transaction.
+
+**Checking a settlement.** `snapshotFor(params)` returns the snapshot's key and (value, block, timestamp);
+`source(sourceId)` returns the call. Re-run the call at that block and read the same word
+(`snapshotValueFromReturnData` and `snapshotEvidenceHash` in
+[`packages/shared/src/settlement.ts`](../packages/shared/src/settlement.ts) do this in TypeScript). A
+call re-run at a block reads the state at the end of the block; if a later transaction in the same block
+moved the value, the two differ, and the snapshot transaction's trace shows the exact read.
+
 ## Tests
 
 Each resolver has unit tests with mock sources for every branch, fuzz tests on the comparison edges and
 window rules, an end-to-end test through the real factory and markets
-([`TemplatesV2Integration.t.sol`](../contracts/test/resolvers/TemplatesV2Integration.t.sol)), and fork
-tests against real Monad data in [`contracts/test/fork/`](../contracts/test/fork):
+([`TemplatesV2Integration.t.sol`](../contracts/test/resolvers/TemplatesV2Integration.t.sol),
+[`SnapshotIntegration.t.sol`](../contracts/test/resolvers/SnapshotIntegration.t.sol)), and fork
+tests against real Monad data in [`contracts/test/fork/`](../contracts/test/fork). Template 7 also has an
+invariant suite ([`SnapshotInvariants.t.sol`](../contracts/test/resolvers/SnapshotInvariants.t.sol)):
+random time steps, source moves and breakages, snapshots and settlements by random callers, checking
+that no snapshot is ever replaced, every snapshot sits inside its window, and every call does exactly
+what the source and the clock say it should. The fork tests:
 
 - touch: the highest and lowest real rounds of a 30-minute window on BTC, ETH, MON and SOL prove a touch
   at their own price, one unit further does not, rounds just outside the window do not, and empty
@@ -380,6 +511,13 @@ tests against real Monad data in [`contracts/test/fork/`](../contracts/test/fork
   template 2 commits to the same evidence hash;
 - parlay: a local Hunch Book on a mainnet fork three hours behind the head creates price, range and
   touch legs and two parlays, then rolls to the head and settles all of them from the rounds Chainlink
-  wrote in between.
+  wrote in between;
+- snapshot: every source the deploy script builds reads what Perpl's typed getter returns, on every perp
+  on both networks; on real values, a threshold equal to the value is YES for "at or" comparators and NO
+  for the others, and one unit either side flips exactly the right ones; and a local Hunch Book on a fork
+  about 30 minutes behind the head (mainnet and testnet) creates markets, rolls to a real block inside
+  the window where `settle` takes the snapshot from Perpl's state at that block, then rolls to the head,
+  where a market on the same observation settles from the stored value and one whose window nobody used
+  cannot settle.
 
 Run them with `FOUNDRY_PROFILE=fork forge test` in `contracts/`.
