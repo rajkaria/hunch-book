@@ -194,8 +194,15 @@ type Market {
   feed: String
   pythId: String
   strikeE8: BigInt
+  "Template 5: the range, USD with 8 decimals. The lower bound counts, the upper one does not."
+  lowerE8: BigInt
+  upperE8: BigInt
+  "Template 6: the parlay's legs, market addresses in the resolver's order."
+  legs: [String!]
   "True when lock and close are block numbers (Perpl markets), false for unix seconds."
   blockClock: Boolean
+  "Templates 3 and 4: where the window a touch can happen in starts (template 3: unix seconds; template 4: funding events strictly after this block)."
+  windowStart: BigInt
   lockAt: BigInt
   closeAt: BigInt
   "Unix seconds. Known from the parameters for price markets; read Market.window() for block-clock markets."
@@ -208,6 +215,7 @@ type Market {
   snapshotSourceId: Int
   "Template 7: the window's length in seconds; the window is [closeAt, closeAt + snapshotWindow]."
   snapshotWindow: Int
+  "Template 7: how the snapshot is compared with the threshold. Template 3: which side of the strike is a touch (AtOrAbove or AtOrBelow)."
   comparator: SnapshotComparator
   creator: Creator!
   creatorIsOurs: Boolean!

@@ -1,7 +1,7 @@
 // HunchBookFactory: templates and market creation.
 import { indexer } from "envio";
 import { addr, networkOf } from "../lib/network.js";
-import { marketTerms, snapshotId } from "../lib/params.js";
+import { marketTerms, parlayDetails, snapshotId } from "../lib/params.js";
 import { emptyMarket, Unit } from "../lib/store.js";
 
 indexer.onEvent({ contract: "HunchBookFactory", event: "TemplateAdded" }, async ({ event, context }) => {
@@ -61,6 +61,15 @@ indexer.onEvent({ contract: "HunchBookFactory", event: "MarketCreated" }, async 
   if (market.snapshotKey) {
     const resolver = template?.resolver ?? networkOf(u.m.chainId).resolvers.snapshot;
     if (resolver) market.snapshot_id = snapshotId(resolver, market.snapshotKey);
+  }
+  // Template 6: name the legs by their market numbers, and take the deadline from theirs.
+  if (market.legs && market.closeAt !== undefined) {
+    const legs = [];
+    for (const id of market.legs) {
+      const leg = await u.market(id);
+      legs.push({ id, number: leg?.number, settleDeadline: leg?.settleDeadline });
+    }
+    Object.assign(market, parlayDetails(legs, market.closeAt));
   }
   (await u.creator(creator)).marketCount += 1;
   (await u.wallet(creator)).marketsCreated += 1;

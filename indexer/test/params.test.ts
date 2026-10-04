@@ -2,28 +2,43 @@
 import { describe, expect, it } from "vitest";
 import {
   templateParamsCodecAbi,
+  templateParamsCodecV2Abi,
   templateParamsCodecV3Abi,
 } from "../../packages/shared/src/abis/generated.js";
 import {
+  encodeChainlinkTouchParams,
+  encodeParlayParams,
+  encodePerplFundingSpikeParams,
+  encodePriceRangeParams,
   encodeSnapshotParams,
   snapshotKey as sharedSnapshotKey,
 } from "../../packages/shared/src/templates.js";
 import { TemplateId } from "../../packages/shared/src/types.js";
 import { networkOf } from "../src/lib/network.js";
 import {
+  chainlinkTouchParamsAbi,
   comparatorOf,
   formatDecimal,
   formatUsd,
   formatUtc,
   marketTerms,
+  parlayDetails,
+  parlayParamsAbi,
   perplFundingParamsAbi,
+  perplFundingSpikeParamsAbi,
   priceAtTimeParamsAbi,
+  priceRangeParamsAbi,
   snapshotId,
   snapshotKey,
   snapshotParamsAbi,
+  TEMPLATE_CHAINLINK_TOUCH,
+  TEMPLATE_PARLAY,
   TEMPLATE_PERPL_FUNDING,
+  TEMPLATE_PERPL_FUNDING_SPIKE,
   TEMPLATE_PRICE_AT_TIME,
+  TEMPLATE_PRICE_RANGE,
   TEMPLATE_SNAPSHOT,
+  touchDirectionOf,
 } from "../src/lib/params.js";
 import { perplParams, priceParams, SEED, snapshotParams } from "./helpers.js";
 
@@ -42,6 +57,140 @@ describe("template parameters", () => {
     expect(shapeOf(priceAtTimeParamsAbi[0].components)).toEqual(shapeOf(codec("priceAtTime")));
     expect(TEMPLATE_PERPL_FUNDING).toBe(BigInt(TemplateId.PerplFunding));
     expect(TEMPLATE_PRICE_AT_TIME).toBe(BigInt(TemplateId.PriceAtTime));
+  });
+
+  it("use the structs from ITemplatesV2.sol for templates 3 to 6", () => {
+    const codec = (name: string) => {
+      const fn = templateParamsCodecV2Abi.find((x) => x.type === "function" && x.name === name);
+      if (fn?.type !== "function") throw new Error(name);
+      return (fn.inputs[0] as { components: readonly { name: string; type: string }[] }).components;
+    };
+    expect(shapeOf(chainlinkTouchParamsAbi[0].components)).toEqual(shapeOf(codec("chainlinkTouch")));
+    expect(shapeOf(perplFundingSpikeParamsAbi[0].components)).toEqual(shapeOf(codec("perplFundingSpike")));
+    expect(shapeOf(priceRangeParamsAbi[0].components)).toEqual(shapeOf(codec("priceRange")));
+    expect(shapeOf(parlayParamsAbi[0].components)).toEqual(shapeOf(codec("parlay")));
+    expect([
+      TEMPLATE_CHAINLINK_TOUCH,
+      TEMPLATE_PERPL_FUNDING_SPIKE,
+      TEMPLATE_PRICE_RANGE,
+      TEMPLATE_PARLAY,
+    ]).toEqual([
+      BigInt(TemplateId.ChainlinkTouch),
+      BigInt(TemplateId.PerplFundingSpike),
+      BigInt(TemplateId.PriceRange),
+      BigInt(TemplateId.Parlay),
+    ]);
+  });
+
+  it("decodes touch, spike, range and parlay markets", () => {
+    const touch = encodeChainlinkTouchParams({
+      feed: "0x12C0F44368a02081ce58a936d1C1F606BB301715",
+      strikeE8: 10_000_000_000_000n,
+      direction: 0,
+      lockTime: 1_791_158_400n,
+      startTime: 1_791_158_400n,
+      endTime: 1_791_244_800n,
+    });
+    expect(marketTerms(3n, touch, testnet)).toEqual({
+      question:
+        "Will Chainlink's BTC/USD feed report a price at or above $100,000 in any round updated from 2026-10-05 00:00:00 UTC to 2026-10-06 00:00:00 UTC?",
+      asset: "BTC/USD",
+      priceSource: "Chainlink",
+      feed: "0x12c0f44368a02081ce58a936d1c1f606bb301715",
+      pythId: undefined,
+      strikeE8: 10_000_000_000_000n,
+      comparator: "AtOrAbove",
+      blockClock: false,
+      windowStart: 1_791_158_400n,
+      lockAt: 1_791_158_400n,
+      closeAt: 1_791_244_800n,
+      settleDeadline: 1_791_244_800n + 86_400n + 604_800n,
+    });
+    const down = encodeChainlinkTouchParams({
+      feed: "0x00000000000000000000000000000000000000aa",
+      strikeE8: 5_000_000_000n,
+      direction: 1,
+      lockTime: 1n,
+      startTime: 1n,
+      endTime: 2n,
+    });
+    expect(marketTerms(3n, down, testnet)).toMatchObject({ comparator: "AtOrBelow", asset: undefined });
+
+    const spike = encodePerplFundingSpikeParams({
+      perpId: 16n,
+      startBlock: 100n,
+      endBlock: 200n,
+      threshold: 7_500n,
+      expectedScalingExp: 3,
+    });
+    expect(marketTerms(4n, spike, testnet)).toEqual({
+      question:
+        "Will any single funding event on Perpl (perp 16) after block 100 and at or before block 200 charge BTC longs more than 7,500 raw funding units?",
+      asset: "BTC",
+      perpId: 16n,
+      threshold: 7_500n,
+      blockClock: true,
+      windowStart: 100n,
+      lockAt: 100n,
+      closeAt: 200n,
+    });
+
+    const btcPyth = Object.keys(testnet.pythIds).find(
+      (id) => testnet.pythIds[id] === "BTC/USD",
+    ) as `0x${string}`;
+    const range = encodePriceRangeParams({
+      source: 1,
+      feed: "0x0000000000000000000000000000000000000000",
+      pythId: btcPyth,
+      lowerE8: 9_000_000_000_000n,
+      upperE8: 9_500_000_000_000n,
+      lockTime: 10n,
+      closeTime: 1_791_244_800n,
+    });
+    expect(marketTerms(5n, range, testnet)).toEqual({
+      question:
+        "Will BTC/USD be at or above $90,000 and below $95,000 at 2026-10-06 00:00:00 UTC (unix time 1791244800), per Pyth's BTC/USD feed?",
+      asset: "BTC/USD",
+      priceSource: "Pyth",
+      feed: undefined,
+      pythId: btcPyth,
+      lowerE8: 9_000_000_000_000n,
+      upperE8: 9_500_000_000_000n,
+      blockClock: false,
+      lockAt: 10n,
+      closeAt: 1_791_244_800n,
+      settleDeadline: 1_791_244_800n + 604_800n,
+    });
+
+    const legs = [
+      "0x00000000000000000000000000000000000000b2",
+      "0x00000000000000000000000000000000000000B1",
+    ] as const;
+    const parlay = encodeParlayParams({ legs, lockTime: 5n, closeTime: 1_791_244_800n });
+    // Without the legs' markets, the summary names the legs by address and the deadline stays unknown.
+    expect(marketTerms(6n, parlay, testnet)).toEqual({
+      question:
+        "Will all 2 of these Hunch Book markets settle YES: 0x00000000000000000000000000000000000000b1, 0x00000000000000000000000000000000000000b2?",
+      settleDeadline: undefined,
+      legs: ["0x00000000000000000000000000000000000000b1", "0x00000000000000000000000000000000000000b2"],
+      blockClock: false,
+      lockAt: 5n,
+      closeAt: 1_791_244_800n,
+    });
+    expect(
+      parlayDetails(
+        [
+          { id: "0xb1", number: 3, settleDeadline: 1_791_900_000n },
+          { id: "0xb2", number: 4, settleDeadline: 1_791_000_000n },
+        ],
+        1_791_244_800n,
+      ),
+    ).toEqual({
+      question: "Will all 2 of these Hunch Book markets settle YES: #3, #4?",
+      settleDeadline: 1_791_900_000n + 604_800n,
+    });
+    expect(touchDirectionOf(1)).toBe("AtOrBelow");
+    expect(() => touchDirectionOf(2)).toThrow(/unknown touch direction 2/);
   });
 
   it("decodes the seeded testnet market", () => {
