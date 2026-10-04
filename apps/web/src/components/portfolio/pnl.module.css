@@ -1,0 +1,95 @@
+/* Profit and loss on the portfolio page. Tokens only: var(--...) from globals.css. */
+
+.totals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+@media (min-width: 720px) {
+  .totals {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+.up {
+  color: var(--accent);
+}
+
+.down {
+  color: var(--no);
+}
+
+.subtle {
+  font-size: var(--text-xs);
+  color: var(--subtle);
+}
+
+.partial {
+  font-size: var(--text-xs);
+  color: var(--warn);
+  cursor: help;
+}
+
+.scroll {
+  width: 100%;
+  margin-top: var(--space-4);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  color: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.table .num {
+  text-align: right;
+}
+
+.market {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.question {
+  color: var(--muted);
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.note {
+  max-width: 72ch;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}

@@ -845,11 +845,12 @@ describe("the preview", () => {
 });
 
 describe("the template catalog", () => {
-  it("covers ids 1 to 6 and shows only registered ones, in catalog order", () => {
-    expect([...TEMPLATE_IDS]).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(CREATE_TEMPLATES.map((t) => t.id).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+  it("covers ids 1 to 7 and shows only registered ones, in catalog order", () => {
+    expect([...TEMPLATE_IDS]).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(CREATE_TEMPLATES.map((t) => t.id).sort()).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(availableTemplates([2, 1]).map((t) => t.id)).toEqual([1, 2]);
     expect(availableTemplates([6, 4, 9]).map((t) => t.kind)).toEqual(["perpl-spike", "parlay"]);
+    expect(availableTemplates([7]).map((t) => t.kind)).toEqual(["snapshot"]);
     expect(availableTemplates([])).toEqual([]);
   });
 

@@ -14,6 +14,15 @@ export const NAV_LINKS: readonly NavLink[] = [
   { href: "/create", label: "Create", match: ["/create"] },
   { href: "/portfolio", label: "Portfolio", match: ["/portfolio"] },
   { href: "/proof", label: "Proof", match: ["/proof", "/verify/"] },
+  { href: "/tape", label: "Tape", match: ["/tape"] },
+];
+
+/** Further product pages, listed in the footer. */
+export const MORE_LINKS: readonly NavLink[] = [
+  { href: "/feed", label: "Feed", match: ["/feed"] },
+  { href: "/ladder", label: "Ladders", match: ["/ladder"] },
+  { href: "/parlay", label: "Parlays", match: ["/parlay"] },
+  { href: "/rewards", label: "Rewards", match: ["/rewards"] },
 ];
 
 /** The protocol docs on GitHub. */

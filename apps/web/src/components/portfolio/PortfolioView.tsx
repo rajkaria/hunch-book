@@ -19,6 +19,7 @@ import {
 import type { PortfolioEntry } from "@/lib/market/types";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, type TxStep, useTxRunner } from "@/lib/wallet/useTxRunner";
+import { PortfolioPeriphery } from "../autoredeem/PortfolioPeriphery";
 import { TxList } from "../market/TxList";
 import { marketHeadline } from "../markets/MarketCard";
 import ms from "../markets/markets.module.css";
@@ -26,6 +27,7 @@ import { EmptyState, ErrorState, LoadingRows, NotDeployed } from "../states";
 import { Badge, Button, Panel, Stat } from "../ui";
 import { ConnectButton } from "../wallet/ConnectButton";
 import { FaucetButton, useFaucetAvailable } from "../wallet/Faucet";
+import { PnlPanel } from "./PnlPanel";
 import s from "./portfolio.module.css";
 
 // Every portfolio write refreshes all portfolio, position, balance and market reads.
@@ -56,6 +58,9 @@ export function toTxStep(action: PlannedAction, vault: Address, user: Address): 
     request: { address: action.market.address, abi: marketAbi as Abi, functionName: action.kind },
   };
 }
+
+/** A stable empty list, so the P&L panel's memoised work is not redone on every render. */
+const NO_ENTRIES: PortfolioEntry[] = [];
 
 const ACTION_BUTTON: Record<PlannedAction["kind"], string> = {
   claimTokens: "Claim tokens",
@@ -119,7 +124,14 @@ export function PortfolioRows({ entries }: { entries: PortfolioEntry[] }) {
         <TxList txs={tx.txs} />
       </Panel>
 
+      {user ? (
+        <div style={{ marginTop: 16 }}>
+          <PnlPanel user={user} entries={entries} />
+        </div>
+      ) : null}
+
       <FaucetPanel />
+      <PortfolioPeriphery entries={entries} user={user} />
 
       <ul className={ms.list} style={{ marginTop: 16 }}>
         {entries.map((e) => {
@@ -189,8 +201,7 @@ export function PortfolioRows({ entries }: { entries: PortfolioEntry[] }) {
       </ul>
       <p className={ms.footnote}>
         Amounts in USDC; tokens use the same 6 decimals. Value at mid prices YES at the book's mid and NO at
-        one minus it. Redemptions pay the fixed per-token fee set at graduation. P&amp;L arrives with the
-        indexer.
+        one minus it. Redemptions pay the fixed per-token fee set at graduation.
       </p>
     </>
   );
@@ -225,8 +236,12 @@ export function PortfolioView() {
           </p>
         </EmptyState>
         <div style={{ marginTop: 16 }}>
+          <PnlPanel user={wallet.address} entries={NO_ENTRIES} />
+        </div>
+        <div style={{ marginTop: 16 }}>
           <FaucetPanel />
         </div>
+        <PortfolioPeriphery entries={[]} user={wallet.address} />
       </>
     );
   }

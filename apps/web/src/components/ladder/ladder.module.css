@@ -1,0 +1,228 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.check {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.check input {
+  accent-color: var(--accent);
+}
+
+.note {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.title {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- chart ---------- */
+
+.figure {
+  margin: var(--space-4) 0;
+}
+
+.chartWrap {
+  position: relative;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.axis {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.axisTick {
+  stroke: var(--line-strong);
+}
+
+.tick {
+  fill: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.axisLabel {
+  fill: var(--muted);
+  font-size: 12px;
+}
+
+.curve {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(203, 255, 93, 0.35));
+}
+
+.bar {
+  fill: var(--accent-soft);
+  stroke: var(--accent-line);
+}
+
+.hit {
+  fill: transparent;
+}
+
+.point {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.pointLink {
+  cursor: pointer;
+}
+
+.pointLink:focus {
+  outline: none;
+}
+
+.pointLink:focus-visible .point {
+  stroke: var(--paper);
+  stroke-width: 3;
+}
+
+.pointBook {
+  fill: var(--accent);
+  background: var(--accent);
+}
+
+.pointPool {
+  fill: var(--cyan);
+  background: var(--cyan);
+}
+
+.pointSettled {
+  fill: var(--subtle);
+  background: var(--subtle);
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-card);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 14px));
+}
+
+.tooltip strong {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+}
+
+.tooltipNote {
+  color: var(--muted);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 4px;
+  border-radius: 50%;
+}
+
+/* ---------- table ---------- */
+
+.tableWrap {
+  overflow-x: auto;
+  margin: var(--space-3) 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.table th,
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table thead th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.table tbody th {
+  font-weight: 600;
+}
+
+/* ---------- missing strikes ---------- */
+
+.missing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.missingTitle {
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

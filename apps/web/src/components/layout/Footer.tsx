@@ -8,7 +8,7 @@ import { shortAddress } from "@/lib/format";
 import { Badge } from "../ui";
 import { BrandTile } from "./Brand";
 import s from "./layout.module.css";
-import { DOCS_URL, NAV_LINKS } from "./nav";
+import { DOCS_URL, MORE_LINKS, NAV_LINKS } from "./nav";
 
 function ExternalLink({ href, children, title }: { href: string; children: ReactNode; title?: string }) {
   return (
@@ -59,11 +59,17 @@ export function Footer() {
           <div className={s.footerCols}>
             <nav className={s.footerCol} aria-label="Product">
               <h2 className={s.footerHeading}>Product</h2>
-              {NAV_LINKS.map((link) => (
+              {[...NAV_LINKS, ...MORE_LINKS].map((link) => (
                 <Link key={link.href} className={s.footerLink} href={link.href}>
                   {link.label}
                 </Link>
               ))}
+              <Link className={s.footerLink} href="/hedge">
+                Hedge funding
+              </Link>
+              <Link className={s.footerLink} href="/status">
+                Status
+              </Link>
             </nav>
             <nav className={s.footerCol} aria-label="Contracts">
               <h2 className={s.footerHeading}>Contracts on {appNetworkLabel}</h2>

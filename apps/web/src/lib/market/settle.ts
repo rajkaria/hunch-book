@@ -4,16 +4,19 @@ import {
   chainlinkAggregatorAbi,
   chainlinkEvidence,
   chainlinkLatestRoundAbi,
+  EMPTY_EVIDENCE,
   findBracketingRound,
   Outcome,
   PERPL_EVIDENCE,
   PriceSource,
   type RoundReader,
   resolverAbi,
+  snapshotWindowState,
 } from "@hunch-book/shared";
 import type { Abi, Address, Hex, PublicClient } from "viem";
 import { MULTICALL3 } from "../chain/client";
-import { formatDuration, formatUtc } from "../format";
+import { formatDuration, formatInt, formatUtc } from "../format";
+import { readSnapshotFor } from "../snapshot";
 import { describeTxError, withKnownErrors } from "../wallet/errors";
 import type { MarketView } from "./types";
 
@@ -26,7 +29,15 @@ export type PlanClient = Pick<PublicClient, "readContract" | "multicall" | "simu
 
 export type SettlePlan =
   /** The resolver answers with this evidence: settling now gives `outcome`. */
-  | { status: "ready"; evidence: Hex; outcome: Outcome; evidenceHash: Hex; bracket: BracketResult | null }
+  | {
+      status: "ready";
+      evidence: Hex;
+      outcome: Outcome;
+      evidenceHash: Hex;
+      bracket: BracketResult | null;
+      /** Anything else settling now does, in one sentence (template 7: it takes the snapshot). */
+      note?: string;
+    }
   /** The resolver returns Unresolved: the source has no final answer yet. */
   | { status: "unresolved"; reason: string }
   /** No evidence can settle it from here, and why. */
@@ -126,6 +137,9 @@ export async function planSettlement(client: PlanClient, m: MarketView): Promise
     if (problem || bracket.status !== "found")
       return { status: "blocked", reason: problem ?? "No round found." };
     evidence = chainlinkEvidence(bracket.round.roundId);
+  } else if (m.decoded.kind === "snapshot") {
+    // Template 7 settles with empty evidence; inside the window `settle` takes the snapshot itself.
+    evidence = EMPTY_EVIDENCE;
   } else if (m.decoded.kind === "price-at-time") {
     return {
       status: "blocked",
@@ -135,6 +149,8 @@ export async function planSettlement(client: PlanClient, m: MarketView): Promise
   } else {
     return { status: "blocked", reason: "This app does not know this template's evidence format." };
   }
+
+  if (m.decoded.kind === "snapshot") return planSnapshot(client, m, m.decoded.params);
 
   try {
     const run = await dryRunResolve(client, m, evidence);
@@ -148,6 +164,49 @@ export async function planSettlement(client: PlanClient, m: MarketView): Promise
       };
     }
     return { status: "ready", evidence, outcome: run.outcome, evidenceHash: run.evidenceHash, bracket };
+  } catch (e) {
+    return { status: "blocked", reason: describeTxError(e) };
+  }
+}
+
+/**
+ * Template 7: `settle()` with empty evidence answers from the stored snapshot, or inside the window
+ * takes the snapshot first. Says which, and why it cannot answer outside those cases.
+ */
+async function planSnapshot(
+  client: PlanClient,
+  m: MarketView,
+  p: { closeTime: bigint; snapshotWindow: number },
+): Promise<SettlePlan> {
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const window = snapshotWindowState(p.closeTime, p.snapshotWindow, now);
+  const end = formatUtc(p.closeTime + BigInt(p.snapshotWindow));
+  try {
+    const [{ snapshot }, run] = await Promise.all([
+      readSnapshotFor(client, m.resolver, m.params),
+      dryRunResolve(client, m, EMPTY_EVIDENCE),
+    ]);
+    if (run.outcome === Outcome.Unresolved) {
+      return {
+        status: "unresolved",
+        reason:
+          window === "after"
+            ? "Nobody took a snapshot in its window, so this market has no answer. It voids at its deadline."
+            : window === "before"
+              ? `The snapshot window opens at ${formatUtc(p.closeTime)}.`
+              : `The source cannot be read right now, or it no longer means what it did when the resolver was deployed (for Perpl: an upgrade, a pause or a relisting). Anyone can try again until ${end}.`,
+      };
+    }
+    return {
+      status: "ready",
+      evidence: EMPTY_EVIDENCE,
+      outcome: run.outcome,
+      evidenceHash: run.evidenceHash,
+      bracket: null,
+      note: snapshot
+        ? `It answers from the snapshot taken at block ${formatInt(snapshot.blockNumber)}.`
+        : `Settling now takes the snapshot and settles in one transaction. The window closes at ${end}.`,
+    };
   } catch (e) {
     return { status: "blocked", reason: describeTxError(e) };
   }
