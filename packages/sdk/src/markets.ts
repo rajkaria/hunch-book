@@ -9,6 +9,7 @@ import {
   PHASE_LABEL,
   Phase,
   resolverAbi,
+  snapshotResolverAbi,
   templateLabel,
   type Window,
 } from "@hunch-book/shared";
@@ -16,6 +17,7 @@ import { type Abi, type Address, erc20Abi, getAddress, type Hex, isAddressEqual,
 import type { HunchContext } from "./context.js";
 import { type Call, type CallResult, multicall, ok } from "./multicall.js";
 import { type DecodedParams, decodeMarketParams, marketAsset } from "./params.js";
+import { snapshotAsset } from "./settlement/snapshot.js";
 
 // Reads of markets from the chain: the factory's list, one market in full (decoded params, the
 // resolver's rule sentence, phase, pool totals, the Kuru book's best prices and the implied chance),
@@ -100,6 +102,8 @@ export interface MarketInfo {
   /** Best bid and ask once the market has a book. */
   prices: BestPrices | null;
   chance: Chance;
+  /** Template 7: what the snapshot reads, from the resolver's `source(sourceId)`. */
+  snapshotSource?: { label: string; unit: string; decimals: number } | null;
 }
 
 const MARKET_READS = [
@@ -246,7 +250,7 @@ async function withExtras(
   markets: Omit<MarketInfo, "rule" | "prices" | "chance">[],
 ): Promise<MarketInfo[]> {
   const calls: Call[] = [];
-  const slots: { describe: number; prices: number | null }[] = [];
+  const slots: { describe: number; prices: number | null; source: number | null }[] = [];
   for (const m of markets) {
     const describe = calls.push({
       address: m.resolver,
@@ -258,11 +262,24 @@ async function withExtras(
     if (m.book && m.graduated) {
       prices = calls.push({ address: m.book, abi: kuruOrderBookAbi as Abi, functionName: "bestBidAsk" });
     }
-    slots.push({ describe: describe - 1, prices: prices === null ? null : prices - 1 });
+    let source: number | null = null;
+    if (m.decoded.kind === "snapshot") {
+      source = calls.push({
+        address: m.resolver,
+        abi: snapshotResolverAbi,
+        functionName: "source",
+        args: [m.decoded.params.sourceId],
+      });
+    }
+    slots.push({
+      describe: describe - 1,
+      prices: prices === null ? null : prices - 1,
+      source: source === null ? null : source - 1,
+    });
   }
   const results = await multicall(ctx, calls);
   return markets.map((m, i) => {
-    const slot = slots[i] as { describe: number; prices: number | null };
+    const slot = slots[i] as { describe: number; prices: number | null; source: number | null };
     const rule = ok<string>(results[slot.describe]);
     const bidAsk = slot.prices === null ? undefined : ok<readonly [bigint, bigint]>(results[slot.prices]);
     const prices = bidAsk ? bestPricesFromKuru(bidAsk[0], bidAsk[1]) : null;
@@ -273,6 +290,11 @@ async function withExtras(
       chance: { bps: null, source: "empty" },
     };
     info.chance = marketChance(info);
+    if (slot.source !== null) {
+      const src = ok<{ label: string; unit: string; decimals: number }>(results[slot.source]);
+      info.snapshotSource = src ? { label: src.label, unit: src.unit, decimals: Number(src.decimals) } : null;
+      if (src && info.asset === null) info.asset = snapshotAsset(src);
+    }
     return info;
   });
 }

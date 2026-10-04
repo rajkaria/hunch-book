@@ -7,23 +7,26 @@ import {
   decodePerplFundingSpikeParams,
   decodePriceAtTimeParams,
   decodePriceRangeParams,
+  decodeSnapshotParams,
   encodeChainlinkTouchParams,
   encodeParlayParams,
   encodePerplFundingParams,
   encodePerplFundingSpikeParams,
   encodePriceAtTimeParams,
   encodePriceRangeParams,
+  encodeSnapshotParams,
   type ParlayParams,
   type PerplFundingParams,
   type PerplFundingSpikeParams,
   type PriceAtTimeParams,
   type PriceRangeParams,
   PriceSource,
+  type SnapshotParams,
   TemplateId,
 } from "@hunch-book/shared";
 import type { Address, Hex } from "viem";
 
-// A market's parameters for templates 1 to 6, decoded with the shared codecs (whose ABI shapes come
+// A market's parameters for templates 1 to 7, decoded with the shared codecs (whose ABI shapes come
 // from contracts/src/interfaces/ITemplates*.sol), and the names the deployments file gives their
 // perps and feeds. docs/TEMPLATES.md describes every template.
 
@@ -34,6 +37,7 @@ export type DecodedParams =
   | { kind: "perpl-funding-spike"; templateId: 4; params: PerplFundingSpikeParams }
   | { kind: "price-range"; templateId: 5; params: PriceRangeParams }
   | { kind: "parlay"; templateId: 6; params: ParlayParams }
+  | { kind: "snapshot"; templateId: 7; params: SnapshotParams }
   | { kind: "unknown"; templateId: number; raw: Hex };
 
 export type TemplateKind = DecodedParams["kind"];
@@ -45,7 +49,8 @@ export type MarketParamsInput =
   | { templateId: 3; params: ChainlinkTouchParams }
   | { templateId: 4; params: PerplFundingSpikeParams }
   | { templateId: 5; params: PriceRangeParams }
-  | { templateId: 6; params: ParlayParams };
+  | { templateId: 6; params: ParlayParams }
+  | { templateId: 7; params: SnapshotParams };
 
 /** Decodes a market's params. Never throws: bytes that do not decode come back as "unknown". */
 export function decodeMarketParams(templateId: number, params: Hex): DecodedParams {
@@ -63,6 +68,8 @@ export function decodeMarketParams(templateId: number, params: Hex): DecodedPara
         return { kind: "price-range", templateId, params: decodePriceRangeParams(params) };
       case TemplateId.Parlay:
         return { kind: "parlay", templateId, params: decodeParlayParams(params) };
+      case TemplateId.Snapshot:
+        return { kind: "snapshot", templateId, params: decodeSnapshotParams(params) };
     }
   } catch {
     // fall through: malformed bytes for a known template
@@ -85,6 +92,8 @@ export function encodeMarketParams(input: MarketParamsInput): Hex {
       return encodePriceRangeParams(input.params);
     case TemplateId.Parlay:
       return encodeParlayParams(input.params);
+    case TemplateId.Snapshot:
+      return encodeSnapshotParams(input.params);
   }
 }
 
@@ -108,7 +117,8 @@ export function pythFeedName(deployment: Deployment, id: Hex): string | null {
 
 /**
  * What a market is about, for lists and filters: the perp's symbol for Perpl templates ("BTC"), the
- * feed's pair for price templates ("BTC/USD"), null for parlays and unknown templates.
+ * feed's pair for price templates ("BTC/USD"), null for parlays and unknown templates. A snapshot
+ * market's asset depends on its resolver's source, so `getMarket` fills it in from `source(sourceId)`.
  */
 export function marketAsset(deployment: Deployment, decoded: DecodedParams): string | null {
   switch (decoded.kind) {

@@ -1,7 +1,7 @@
 # @hunch-book/sdk
 
 TypeScript SDK for Hunch Book, built on [viem](https://viem.sh). Read markets, quote trades against the
-live Kuru book, send every lifecycle action, find settlement evidence for templates 1 to 6, verify any
+live Kuru book, send every lifecycle action, find settlement evidence for templates 1 to 7, verify any
 settlement from the chain alone, use the periphery contracts, and build reward trees.
 
 Status: **building**. It runs against the contracts live on Monad testnet and is tested end to end
@@ -54,10 +54,10 @@ const check = await hunch.settlement.verify(market); // check.verified === true
 
 | Area | Functions |
 |---|---|
-| Markets | `list`, `all`, `get`, `book`, `position`, `portfolio`, decoded params for templates 1 to 6, the resolver's rule sentence, phase, pool totals, best prices, implied chance |
+| Markets | `list`, `all`, `get`, `book`, `position`, `portfolio`, decoded params for templates 1 to 7, the resolver's rule sentence, phase, pool totals, best prices, implied chance |
 | Quotes | `buyYes`, `sellYes`, `buyNo`, `sellNo` against the live L2 book, with the slippage limit, the approval needed, price impact, touch price and `maxAmount` |
 | Actions | `approve`, `createMarket`, `stake`, `buildStakeAuthorization` + `signStakeAuthorization` + `stakeWithAuthorization` (gasless staking), `graduate`, `claimTokens`, `trade`, `mintSets`, `mergeSets`, `settle`, `proveYes`, `voidIfExpired`, `redeem`, `claimPool`, `collect`, `withdrawCreatorFees`, `mintTestUsdc` |
-| Settlement | `plan` (evidence, method and dry-run outcome for templates 1 to 6), `verify` (rebuild the evidence hash and re-run the resolver), `findTransaction` |
+| Settlement | `plan` (evidence, method and dry-run outcome for templates 1 to 7), `verify` (rebuild the evidence hash and re-run the resolver), `findTransaction` |
 | Periphery | auto-redeem opt-in (with an EIP-2612 permit), conditional orders, referral binding (with an EIP-712 signature), reward claims, the implied-probability oracle |
 | Rewards | `buildRewardTree` (matches OpenZeppelin's StandardMerkleTree and the MerkleDistributor leaf), `verifyRewardProof`, `mergeClaims` |
 | Errors | every revert decoded to one plain sentence (`HunchError`, `describeError`) |
@@ -78,6 +78,6 @@ pnpm --filter @hunch-book/sdk test
 
 Unit tests run every read, quote, action and settlement path against a fake chain behind viem's
 custom transport. The integration suite (`test/integration/`) starts anvil, deploys the real factory,
-vault, markets, six resolvers (on mock Chainlink and Perpl sources), distributor, referral registry and
+vault, markets, seven resolvers (on mock Chainlink, Perpl and snapshot sources), distributor, referral registry and
 auto-redeemer from `contracts/out`, and runs every template from creation to a verified settlement. It
 skips when anvil or `contracts/out` is missing; run `forge build` in `contracts/` first.

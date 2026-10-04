@@ -9,6 +9,9 @@ import {
   parseUsdc,
   type Quote,
   type SettlementPlan,
+  SNAPSHOT_DEFAULT_WINDOW,
+  SNAPSHOT_MAX_WINDOW,
+  SNAPSHOT_MIN_WINDOW,
   TEMPLATES,
   type TradeKind,
   type Verification,
@@ -237,12 +240,27 @@ const PARAM_SCHEMAS = {
     closeTime: unsignedBig,
   }),
   6: z.object({ legs: z.array(address).min(2).max(5), lockTime: unsignedBig, closeTime: unsignedBig }),
+  7: z.object({
+    sourceId: z.number().int().min(0).max(65_535),
+    threshold: big,
+    comparator: z.enum(["above", "atOrAbove", "below", "atOrBelow"]),
+    lockTime: unsignedBig,
+    closeTime: unsignedBig,
+    snapshotWindow: z
+      .number()
+      .int()
+      .min(SNAPSHOT_MIN_WINDOW)
+      .max(SNAPSHOT_MAX_WINDOW)
+      .default(SNAPSHOT_DEFAULT_WINDOW),
+  }),
 } as const;
+
+const COMPARATOR = { above: 0, atOrAbove: 1, below: 2, atOrBelow: 3 } as const;
 
 /** Turns the JSON params an agent sends into the SDK's typed params for one template. */
 export function parseTemplateParams(templateId: number, raw: unknown): MarketParamsInput {
   const schema = PARAM_SCHEMAS[templateId as keyof typeof PARAM_SCHEMAS];
-  if (!schema) throw new ToolInputError(`Template ${templateId} is not one of 1 to 6.`);
+  if (!schema) throw new ToolInputError(`Template ${templateId} is not one of 1 to 7.`);
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     throw new ToolInputError(
@@ -283,6 +301,18 @@ export function parseTemplateParams(templateId: number, raw: unknown): MarketPar
           lockTime: p.lockTime as bigint,
           startTime: p.startTime as bigint,
           endTime: p.endTime as bigint,
+        },
+      };
+    case 7:
+      return {
+        templateId: 7,
+        params: {
+          sourceId: p.sourceId as number,
+          threshold: p.threshold as bigint,
+          comparator: COMPARATOR[p.comparator as keyof typeof COMPARATOR],
+          lockTime: p.lockTime as bigint,
+          closeTime: p.closeTime as bigint,
+          snapshotWindow: p.snapshotWindow as number,
         },
       };
     default:
@@ -334,10 +364,10 @@ export const TOOLS = [
     name: "list_markets",
     title: "List markets",
     description:
-      "Lists Hunch Book markets, newest first, with each market's rule in one sentence, phase, chance of YES, pool totals and best book prices. Filter by phase (pool, pool-locked, trading, closed, settled, voided), template id (1 to 6) or asset (BTC, ETH, MON, SOL).",
+      "Lists Hunch Book markets, newest first, with each market's rule in one sentence, phase, chance of YES, pool totals and best book prices. Filter by phase (pool, pool-locked, trading, closed, settled, voided), template id (1 to 7) or asset (BTC, ETH, MON, SOL).",
     inputSchema: {
       phase: z.enum(PHASES).optional().describe("Only markets in this phase."),
-      template: z.number().int().min(1).max(6).optional().describe("Only markets on this template id."),
+      template: z.number().int().min(1).max(7).optional().describe("Only markets on this template id."),
       asset: z.string().max(16).optional().describe('Only markets on this asset, for example "BTC".'),
       limit: z
         .number()
@@ -488,10 +518,11 @@ export const TOOLS = [
       "4 Perpl funding spike: as template 1, threshold for one funding event.",
       "5 price range: as template 2 with lowerE8 and upperE8 instead of strikeE8.",
       "6 parlay: legs (2 to 5 market addresses), lockTime, closeTime.",
+      '7 snapshot: sourceId (from the resolver\'s source list), threshold (raw units), comparator ("above", "atOrAbove", "below" or "atOrBelow"), lockTime, closeTime, snapshotWindow (60 to 1800 seconds, default 600).',
       "Numbers may be strings. docs://hunch-book/templates has every rule.",
     ].join(" "),
     inputSchema: {
-      templateId: z.number().int().min(1).max(6),
+      templateId: z.number().int().min(1).max(7),
       params: z
         .record(z.string(), z.unknown())
         .describe("The template's params, as listed in the description."),

@@ -8,6 +8,7 @@ import {
   Phase,
   PriceSource,
   resolverAbi,
+  snapshotWindowState,
   TOUCH_CHALLENGE_SECONDS,
 } from "@hunch-book/shared";
 import type { Address, Hex } from "viem";
@@ -18,8 +19,9 @@ import { multicall, ok } from "../multicall.js";
 import { findBracket, scanTouches } from "./chainlink.js";
 import { perplResolverAbi, resolverExchange, scanSpikes } from "./perpl.js";
 import { fetchHermesUpdate, pythEvidence, pythFeeAbi, resolverPythAbi } from "./pyth.js";
+import { storedSnapshot } from "./snapshot.js";
 
-// Finds the evidence `settle` (or `proveYes`) needs for any market on templates 1 to 6, then runs the
+// Finds the evidence `settle` (or `proveYes`) needs for any market on templates 1 to 7, then runs the
 // market's resolver with it as a call, from the market's own address, so the plan says exactly what
 // settling now would store. Nothing here sends a transaction.
 
@@ -291,6 +293,49 @@ async function findEvidence(
       };
     }
 
+    case "snapshot": {
+      // Template 7: empty evidence. With a snapshot stored, settle answers from it. Without one,
+      // settle inside the window takes it first (the dry run below does the same read). After the
+      // window with no snapshot, the market can never answer and voids at its deadline.
+      const p = d.params;
+      const stored = await storedSnapshot(ctx, m.resolver, m.params);
+      const windowEnd = p.closeTime + BigInt(p.snapshotWindow);
+      if (stored) {
+        return {
+          kind: "evidence",
+          method: "settle",
+          evidence: EMPTY_EVIDENCE,
+          value: 0n,
+          detail: {
+            snapshot: "stored",
+            value: stored.value,
+            snapshotBlock: stored.blockNumber,
+            snapshotTime: stored.timestamp,
+          },
+        };
+      }
+      const state = snapshotWindowState(p.closeTime, p.snapshotWindow, now.timestamp);
+      if (state === "before") {
+        return {
+          kind: "wait",
+          reason: `The snapshot window opens at ${iso(p.closeTime)} and closes at ${iso(windowEnd)}.`,
+        };
+      }
+      if (state === "after") {
+        return {
+          kind: "blocked",
+          reason: `Nobody took a snapshot between ${iso(p.closeTime)} and ${iso(windowEnd)}, so the market cannot answer. It voids at its deadline.`,
+        };
+      }
+      return {
+        kind: "evidence",
+        method: "settle",
+        evidence: EMPTY_EVIDENCE,
+        value: 0n,
+        detail: { snapshot: "taken by settle", windowEnds: windowEnd },
+      };
+    }
+
     default:
       return { kind: "blocked", reason: `The SDK does not know template ${m.templateId}'s evidence format.` };
   }
@@ -305,7 +350,7 @@ export function isClosed(m: Pick<MarketInfo, "window">, now: ChainNow): boolean 
 /**
  * What settling `market` takes right now: the evidence, the method (`settle`, or `proveYes` for a
  * touch proved before close), the MON to send (Pyth's fee), and the outcome and evidence hash the
- * resolver would store, from a dry run. Works for templates 1 to 6.
+ * resolver would store, from a dry run. Works for templates 1 to 7.
  */
 export async function planSettlement(
   ctx: HunchContext,
@@ -354,7 +399,9 @@ export async function planSettlement(
         reason:
           m.decoded.kind === "perpl-funding" || m.decoded.kind === "perpl-funding-spike"
             ? "The resolver cannot answer yet: Perpl's data is not final, or the perp or Perpl's contract changed during the window."
-            : "The resolver cannot answer yet: the source has no final answer for this market.",
+            : m.decoded.kind === "snapshot"
+              ? "The source cannot be read right now, or failed one of the resolver's checks. Try again inside the snapshot window."
+              : "The resolver cannot answer yet: the source has no final answer for this market.",
         detail: found.detail,
       };
     }

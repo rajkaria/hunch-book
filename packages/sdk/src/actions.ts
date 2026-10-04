@@ -8,6 +8,7 @@ import {
   Outcome,
   Phase,
   Side,
+  snapshotResolverAbi,
   type TradeKind,
   testUsdcAbi,
 } from "@hunch-book/shared";
@@ -76,7 +77,7 @@ export function usdcAddress(ctx: HunchContext): Address {
 
 export interface CreateMarketInput {
   templateId: number;
-  /** Encoded params, or typed params for templates 1 to 6 (encoded canonically by the SDK). */
+  /** Encoded params, or typed params for templates 1 to 7 (encoded canonically by the SDK). */
   params: Hex | MarketParamsInput["params"];
   /** The creator's first stake: which side, and how much USDC (base units). */
   side: SideInput;
@@ -339,7 +340,7 @@ export async function voidIfExpired(
 }
 
 /**
- * Settles a market. Without `evidence`, finds it (templates 1 to 6) and dry-runs the resolver first,
+ * Settles a market. Without `evidence`, finds it (templates 1 to 7) and dry-runs the resolver first,
  * so a market that cannot settle yet throws with the reason instead of sending a failing transaction.
  * A touch market proved before close is settled through `proveYes`.
  */
@@ -398,6 +399,33 @@ export async function proveYes(
     proof = plan.evidence;
   }
   return send(ctx, { address: m.address, abi: marketAbi, functionName: "proveYes", args: [proof] }, options);
+}
+
+/**
+ * Template 7: takes the snapshot a market answers from, without settling it (anyone, once per
+ * observation, inside [closeTime, closeTime + snapshotWindow]). Every market on the same source, close
+ * time and window answers from it. `settle` also takes it when nobody has, so this is only needed to
+ * fix the value before settling, for example for many markets at once.
+ */
+export async function takeSnapshot(
+  ctx: HunchContext,
+  market: Address | MarketInfo,
+  options: SendOptions = {},
+): Promise<TxResult<bigint>> {
+  const m = await requireMarket(ctx, market);
+  if (m.decoded.kind !== "snapshot")
+    throw new HunchError("Only snapshot markets (template 7) take a snapshot.");
+  const p = m.decoded.params;
+  return send<bigint>(
+    ctx,
+    {
+      address: m.resolver,
+      abi: snapshotResolverAbi,
+      functionName: "snapshot",
+      args: [p.sourceId, p.closeTime, p.snapshotWindow],
+    },
+    options,
+  );
 }
 
 // ---------------------------------------------------------------- trading

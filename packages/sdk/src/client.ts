@@ -97,6 +97,8 @@ export function createHunchClient(options: HunchClientOptions = {}) {
         actions.settle(ctx, market, o),
       proveYes: (market: Address | markets.MarketInfo, o?: Parameters<typeof actions.proveYes>[2]) =>
         actions.proveYes(ctx, market, o),
+      takeSnapshot: (market: Address | markets.MarketInfo, o?: SendOptions) =>
+        actions.takeSnapshot(ctx, market, o),
       voidIfExpired: (market: Address, o?: SendOptions) => actions.voidIfExpired(ctx, market, o),
       redeem: (
         market: Address | markets.MarketInfo,

@@ -80,9 +80,10 @@ const page = await listMarkets(ctx, { limit: 20 });
 - `id`, `templateId`, `template` ("Perpl net funding"), `phase` with `phaseName` (`pool`, `pool-locked`,
   `trading`, `closed`, `settled`, `voided`) and `phaseLabel`, `outcome` with `outcomeLabel`;
 - `rule`: the resolver's own `describe()` sentence, the rule of record;
-- `decoded`: the params decoded for templates 1 to 6 (`perpl-funding`, `price-at-time`,
-  `chainlink-touch`, `perpl-funding-spike`, `price-range`, `parlay`), and `asset` ("BTC", "BTC/USD")
-  from the deployments file;
+- `decoded`: the params decoded for templates 1 to 7 (`perpl-funding`, `price-at-time`,
+  `chainlink-touch`, `perpl-funding-spike`, `price-range`, `parlay`, `snapshot`), and `asset` ("BTC",
+  "BTC/USD") from the deployments file, or for a snapshot market from its source (`snapshotSource`:
+  the resolver's label, unit and decimals for the value it reads);
 - `pool` (`yes`, `no`, `total` in USDC base units, `stakers`), `window` (`blockClock`, `lock`, `close`,
   `settleDeadline`), `tokens`, `book`, `resolver`, `creator`, `graduationRule`,
   `graduationRuleMet`, `caps`, `evidenceHash`;
@@ -126,6 +127,7 @@ sentence before anything is signed. It then sends, waits for the receipt and ret
 | `actions.mintSets(market, amount)`, `mergeSets(market, amount)` | complete sets on the vault |
 | `actions.settle(market)` | finds the evidence (below) and settles; `{ evidence, value }` to pass your own |
 | `actions.proveYes(market)` | touch templates: proves YES before close with the proof it finds |
+| `actions.takeSnapshot(market)` | template 7: takes the snapshot inside its window without settling (`settle` takes it too when nobody has) |
 | `actions.voidIfExpired(market)` | after the settlement deadline |
 | `actions.redeem(market, side, { amount, to })` | redeems the winning side (or either side after a void) |
 | `actions.claimPool(market)` | a pool-only market's payout or refund |
@@ -176,6 +178,7 @@ switch (plan.status) {
 | 3, price touch | YES: the first round in the window that is answered in itself, positive, and at or past the strike, rounded the resolver's way (truncated for "at or above", rounded up for "at or below"); `proveYes` before close. NO: empty, once the 24-hour challenge period after the window is over |
 | 4, Perpl funding spike | YES: a single funding event in the window whose increment is above the threshold. Read on Perpl's fixed grid in one batch; if any event is off the grid, it walks back one event at a time so none is missed. NO: empty, once `block.number > endBlock + challengeBlocks` |
 | 6, parlay | empty, once any leg is NO or every leg is YES |
+| 7, snapshot | empty. Before the window: wait. Inside [closeTime, closeTime + snapshotWindow]: `settle` takes the snapshot and settles in one transaction (the dry run does the same read, so a source that fails a check reads as wait). With a snapshot stored: settles from it, any time up to the deadline. After the window with none: blocked, the market voids at its deadline |
 
 `actions.settle(market)` runs the plan and sends `settle` (or `proveYes`) only when it is `ready`.
 
@@ -201,7 +204,11 @@ Notes per template: a touch market that settled NO stores the feed's latest roun
 SDK finds the settlement block (searching `phase()` at past blocks, or from `settlementBlock` if you pass
 it) and reads that round there. A touch or spike market that settled NO while a touching round or a
 spike existed is flagged (nobody proved it during the challenge period). A Pyth settlement is checked by
-re-running the resolver with the signed update from the settlement transaction. For a market that has
+re-running the resolver with the signed update from the settlement transaction. A snapshot market
+(template 7) is checked against its stored snapshot: the hash is rebuilt from the source's call, word,
+value, block and time (the shared `snapshotEvidenceHash`), and the source call is made again at the
+snapshot's block and read the resolver's way (`snapshotValueFromReturnData`); a re-read that differs
+is flagged, since a later transaction in the same block can move the value. For a market that has
 not settled, `verify` returns `status: "open"` and the settlement `plan`.
 
 ## Periphery
@@ -250,7 +257,7 @@ try {
 ```
 
 `describeError(e)` gives the sentence for any error, `decodeRevert(data)` decodes raw revert data, and
-`KNOWN_ERRORS_ABI` lists every error of the core, the six resolvers, the periphery, Kuru and the test USDC.
+`KNOWN_ERRORS_ABI` lists every error of the core, the seven resolvers, the periphery, Kuru and the test USDC.
 
 ## Units and JSON
 
@@ -269,10 +276,11 @@ pnpm --filter @hunch-book/sdk test
   are decoded and recorded), and check the evidence hashes against encodings written out from
   TEMPLATES.md.
 - The integration suite starts anvil and deploys, from `contracts/out`, the real factory, vault, markets,
-  outcome tokens, the six real resolvers (reading mock Chainlink and Perpl sources), the distributor, the
-  referral registry and the auto-redeemer. It creates a market on every template, stakes directly and
-  through a relayed USDC authorisation, graduates, claims, mints and merges, settles every template with
-  the evidence the SDK finds (YES and NO for touch and spike markets), and checks that `verify`
+  outcome tokens, the seven real resolvers (reading mock Chainlink, Perpl and snapshot sources), the
+  distributor, the referral registry and the auto-redeemer. It creates a market on every template, stakes
+  directly and through a relayed USDC authorisation, graduates, claims, mints and merges, settles every
+  template with the evidence the SDK finds (YES and NO for touch and spike markets; a snapshot taken by
+  `settle` and one taken by `takeSnapshot`, with two markets sharing one), and checks that `verify`
   reproduces the hash each real resolver stored. It also pays a reward epoch built with
   `buildRewardTree`, binds a referral from a signature and opts in to auto-redeem with a permit. It skips
   when anvil or `contracts/out` is missing: run `forge build` in `contracts/` first.

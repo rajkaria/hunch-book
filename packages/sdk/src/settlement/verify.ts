@@ -10,6 +10,8 @@ import {
   perplEvidenceHash,
   perplOutcome,
   priceToE8,
+  snapshotEvidenceHash,
+  snapshotOutcome,
   TOUCH_CHALLENGE_SECONDS,
 } from "@hunch-book/shared";
 import {
@@ -29,6 +31,7 @@ import { chainNow, dryRunResolve, planSettlement, type SettlementPlan } from "./
 import { parlayHash, spikeNoHash, spikeYesHash, touchNoHash, touchYesHash } from "./hashes.js";
 import { fundingAt, perplResolverAbi, resolverExchange, scanSpikes } from "./perpl.js";
 import { pythFeeAbi, resolverPythAbi } from "./pyth.js";
+import { rereadSource, snapshotSource, storedSnapshot } from "./snapshot.js";
 
 // The settlement verifier: the reads a market's resolver made, done again with a plain public client;
 // the evidence hash rebuilt from those values and compared with the one the market stored; and the
@@ -549,6 +552,72 @@ async function checkTemplate(
             legs,
             outcomes: outcomes.map((o) => OUTCOME_LABEL[o as Outcome]),
             legEvidenceHashes: hashes,
+          },
+        },
+        rerunReproducesHash: true,
+        value: 0n,
+        notes,
+      };
+    }
+
+    case "snapshot": {
+      // Template 7: the market answers from the stored snapshot. Its hash commits to the call, the word
+      // read, the value and the snapshot's block and time. The source call is also made again at that
+      // block, as an independent read of the value.
+      const p = d.params;
+      const [source, stored] = await Promise.all([
+        snapshotSource(ctx, m.resolver, p.sourceId),
+        storedSnapshot(ctx, m.resolver, m.params),
+      ]);
+      const reads: Record<string, unknown> = {
+        sourceId: p.sourceId,
+        source: source.label,
+        unit: source.unit,
+        decimals: source.decimals,
+        target: source.target,
+        callData: source.callData,
+        valueWord: source.valueWord,
+        threshold: p.threshold,
+        comparator: p.comparator,
+      };
+      if (!stored) {
+        return {
+          recomputed: blank(reads),
+          rerunReproducesHash: true,
+          value: 0n,
+          notes: ["The resolver holds no snapshot for this market."],
+        };
+      }
+      const reread = await rereadSource(ctx, source, stored.blockNumber);
+      if (reread === null) {
+        notes.push(
+          "The source call could not be made again at the snapshot's block (the RPC may not keep that state).",
+        );
+      } else if (reread !== stored.value) {
+        notes.push(
+          "The source read again at the end of the snapshot's block differs from the snapshot: a later transaction in that block moved it. The snapshot transaction's trace shows the exact read.",
+        );
+      }
+      return {
+        recomputed: {
+          outcome: OUTCOME_LABEL[snapshotOutcome(stored.value, p.threshold, p.comparator)],
+          evidenceHash: snapshotEvidenceHash({
+            target: source.target,
+            callData: source.callData,
+            valueWord: source.valueWord,
+            value: stored.value,
+            blockNumber: stored.blockNumber,
+            timestamp: stored.timestamp,
+          }),
+          evidence: EMPTY_EVIDENCE,
+          reads: {
+            ...reads,
+            snapshotKey: stored.key,
+            value: stored.value,
+            snapshotBlock: stored.blockNumber,
+            snapshotTime: stored.timestamp,
+            rereadValue: reread,
+            rereadMatches: reread === null ? null : reread === stored.value,
           },
         },
         rerunReproducesHash: true,

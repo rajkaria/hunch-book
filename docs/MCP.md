@@ -29,13 +29,13 @@ Amounts go in and come out as decimal strings: `"12.5"` is 12.5 USDC (or 12.5 to
 
 | Tool | Kind | What it does |
 |---|---|---|
-| `status` | read | network, mode (read-only or the wallet), limits, contract addresses, the six templates |
+| `status` | read | network, mode (read-only or the wallet), limits, contract addresses, the seven templates |
 | `list_markets` | read | markets newest first, filtered by `phase`, `template` or `asset`: rule sentence, phase, chance of YES, pool, best prices, window |
 | `get_market` | read | one market in full, what settling it would take now, and the wallet's position |
 | `quote` | read | a trade quoted against the live book, as the router would fill it: pay, get, average price, impact, the limit |
 | `get_portfolio` | read | a wallet's stakes, tokens and claims across markets (default: the server's wallet) |
 | `verify_settlement` | read | rebuilds a settled market's evidence hash from the source and re-runs the resolver; `verified: true` means the stored outcome is reproduced |
-| `create_market` | write | a market from template 1 to 6 with JSON params, plus the creator's first stake |
+| `create_market` | write | a market from template 1 to 7 with JSON params, plus the creator's first stake |
 | `stake` | write | USDC on YES or NO in a pool |
 | `trade` | write | `buyYes` (amount = USDC), `sellYes` (YES), `buyNo` (NO to receive), `sellNo` (NO) through the router, with a slippage limit |
 | `settle` | write | settles with the evidence the SDK finds; a touch proved before close goes through `proveYes` |
@@ -55,6 +55,7 @@ Resources (Markdown): `docs://hunch-book/protocol`, `docs://hunch-book/templates
 | 4 Perpl funding spike | as template 1; `threshold` is for one funding event |
 | 5 price range | as template 2, with `lowerE8` and `upperE8` |
 | 6 parlay | `legs` (2 to 5 market addresses), `lockTime`, `closeTime` |
+| 7 snapshot | `sourceId` (an id from the resolver's source list), `threshold` (raw units), `comparator` (`"above"`, `"atOrAbove"`, `"below"` or `"atOrBelow"`), `lockTime`, `closeTime`, `snapshotWindow` (60 to 1,800 seconds, default 600) |
 
 Numbers may be strings. [TEMPLATES.md](./TEMPLATES.md) has every rule and creation check; the
 resolver checks the params again when the market is created, and a refusal comes back in plain words.
@@ -165,5 +166,5 @@ pnpm --filter @hunch-book/mcp test
 Tests cover the config (defaults, limits, mainnet gating, a bad key never echoed), every tool's schema
 and handler against a fake SDK (filters, plain-unit output, every per-call limit checked before a
 transaction, settle refusing to send when the answer is not in, errors in plain words, JSON params for
-all six templates), and the server over the MCP protocol itself (an in-memory client lists the tools,
+all seven templates), and the server over the MCP protocol itself (an in-memory client lists the tools,
 calls them and reads the doc resources).

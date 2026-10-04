@@ -11,6 +11,7 @@ import {
 import {
   type Abi,
   type Address,
+  encodeFunctionData,
   erc20Abi,
   type Hex,
   maxUint256,
@@ -46,12 +47,13 @@ import {
   signStakeAuthorization,
   stake,
   stakeWithAuthorization,
+  takeSnapshot,
   verifySettlement,
 } from "../../src/index.js";
 import { Anvil, type Artifact, artifact } from "./anvil.js";
 
 // The SDK against Hunch Book's real contracts on a local anvil chain: the real factory, vault, markets
-// and outcome tokens, the six real resolvers reading mock Chainlink and Perpl sources, and the real
+// and outcome tokens, the seven real resolvers reading mock Chainlink, Perpl and snapshot sources, and the real
 // distributor, referral registry and auto-redeemer. Every market is created, staked, settled with
 // evidence the SDK finds by itself, and verified by the SDK against the hash the real resolver stored.
 // Skips (does not fail) when anvil or contracts/out is missing.
@@ -72,6 +74,8 @@ const ART = {
   distributor: artifact("MerkleDistributor.sol", "MerkleDistributor"),
   referrals: artifact("ReferralRegistry.sol", "ReferralRegistry"),
   autoRedeemer: artifact("AutoRedeemer.sol", "AutoRedeemer"),
+  snapshotSource: artifact("SnapshotMocks.sol", "MockSnapshotSource"),
+  snapshotResolver: artifact("SnapshotResolver.sol", "SnapshotResolver"),
 };
 const built = Object.values(ART).every((a) => a !== null);
 const abi = (name: keyof typeof ART): Abi => (ART[name] as Artifact).abi;
@@ -112,6 +116,60 @@ async function setRound(n: bigint, answer: bigint, updatedAt: bigint, latest = t
 }
 
 const e8 = (usd: bigint): bigint => usd * 100_000_000n;
+
+/** Open interest of the mock Perpl perp: 12.34567 BTC at 5 lot decimals. */
+const OPEN_INTEREST = 1_234_567n;
+
+/**
+ * Template 7's resolver on a mock Perpl source, with the deploy script's source layout: source 0 is
+ * BTC open interest (word 17 of the returned PerpetualInfoV2 tuple, pinned units, funding start and
+ * status, guarded by getContractVersion), source 1 a plain one-word value.
+ */
+async function deploySnapshotResolver(a: Anvil): Promise<Address> {
+  const src = await a.deploy(deployer, ART.snapshotSource as Artifact);
+  await a.send(deployer, src, abi("snapshotSource"), "listPerp", [PERP, "BTC", 1n, 5n]);
+  await a.send(deployer, src, abi("snapshotSource"), "setOpenInterest", [PERP, OPEN_INTEREST]);
+  await a.send(deployer, src, abi("snapshotSource"), "setPlain", [42n]);
+  const perplAbi = parseAbi([
+    "function getPerpetualInfoV2(uint256 perpId)",
+    "function getContractVersion()",
+    "function plain()",
+  ]);
+  const none = "0x0000000000000000000000000000000000000000" as const;
+  const sources = [
+    {
+      label: "Perpl's BTC open interest (perp 16)",
+      unit: "BTC",
+      decimals: 5,
+      target: src,
+      callData: encodeFunctionData({ abi: perplAbi, functionName: "getPerpetualInfoV2", args: [PERP] }),
+      tuple: true,
+      valueWord: 17,
+      signed: false,
+      timestampWord: 0,
+      maxAge: 0,
+      pinnedWords: [2, 3, 19, 22],
+      guardTarget: src,
+      guardCallData: encodeFunctionData({ abi: perplAbi, functionName: "getContractVersion" }),
+    },
+    {
+      label: "the plain word",
+      unit: "units",
+      decimals: 0,
+      target: src,
+      callData: encodeFunctionData({ abi: perplAbi, functionName: "plain" }),
+      tuple: false,
+      valueWord: 0,
+      signed: false,
+      timestampWord: 0,
+      maxAge: 0,
+      pinnedWords: [],
+      guardTarget: none,
+      guardCallData: "0x",
+    },
+  ];
+  return a.deploy(deployer, ART.snapshotResolver as Artifact, [sources]);
+}
 
 beforeAll(async () => {
   if (!built) {
@@ -171,6 +229,7 @@ beforeAll(async () => {
       [],
     ]),
     marketOutcome: await a.deploy(deployer, ART.parlayResolver as Artifact, [factory, 200n]),
+    snapshot: await deploySnapshotResolver(a),
   };
   const order = [
     "perplFunding",
@@ -179,6 +238,7 @@ beforeAll(async () => {
     "perplFundingSpike",
     "priceRange",
     "marketOutcome",
+    "snapshot",
   ] as const;
   for (const [i, key] of order.entries()) {
     await a.send(deployer, factory, abi("factory"), "addTemplate", [i + 1, resolvers[key], RULE]);
@@ -318,6 +378,24 @@ describe.skipIf(!built)("SDK on anvil with the real contracts", () => {
       },
       side: "yes",
       firstStake: 5n * USDC,
+    });
+    // Template 7: two markets on one observation (BTC open interest, window [t0 + 3,300 s, + 600 s]),
+    // and one on the plain source with its own window.
+    const snapshot = (sourceId: number, threshold: bigint, comparator: 0 | 1 | 2 | 3, closeTime: bigint) => ({
+      templateId: 7 as const,
+      params: { sourceId, threshold, comparator, lockTime: lock, closeTime, snapshotWindow: 600 },
+      side: "yes" as const,
+      firstStake: 5n * USDC,
+    });
+    await create("snapOiAbove10", snapshot(0, 1_000_000n, 0, t0 + 3_300n));
+    await create("snapOiAtLeast20", snapshot(0, 2_000_000n, 1, t0 + 3_300n));
+    await create("snapPlain", snapshot(1, 42n, 3, t0 + 3_400n));
+    const snap = await getMarket(ctx, m.snapOiAbove10 as Address);
+    expect(snap).toMatchObject({
+      templateId: 7,
+      asset: "BTC",
+      snapshotSource: { label: "Perpl's BTC open interest (perp 16)", unit: "BTC", decimals: 5 },
+      rule: expect.stringContaining("open interest"),
     });
     const funding = await getMarket(ctx, m.funding as Address);
     expect(funding).toMatchObject({
@@ -499,6 +577,43 @@ describe.skipIf(!built)("SDK on anvil with the real contracts", () => {
     );
     expect(after).toBeGreaterThan(before + 7n * USDC);
   }, 120_000);
+
+  it("template 7: settle takes the snapshot inside the window; every market on it answers from it", async () => {
+    if (!anvil) return;
+    const before = await planSettlement(ctxFor(), m.snapOiAbove10 as Address);
+    expect(before.status).toBe("wait");
+    await anvil.warp(t0 + 3_310n);
+    const plan = await planSettlement(ctxFor(), m.snapOiAbove10 as Address);
+    expect(plan).toMatchObject({ status: "ready", method: "settle", evidence: "0x", outcome: Outcome.Yes });
+    const tx = await settle(ctxFor(bob), m.snapOiAbove10 as Address);
+    expect(tx.outcome).toBe(Outcome.Yes);
+    // The second market on the same observation answers from the stored snapshot: 12.34567 < 20 BTC.
+    const stored = await planSettlement(ctxFor(), m.snapOiAtLeast20 as Address);
+    expect(stored).toMatchObject({
+      status: "ready",
+      outcome: Outcome.No,
+      detail: { snapshot: "stored", value: OPEN_INTEREST },
+    });
+    await settle(ctxFor(bob), m.snapOiAtLeast20 as Address);
+    for (const key of ["snapOiAbove10", "snapOiAtLeast20"]) {
+      const v = await verifySettlement(ctxFor(), m[key] as Address);
+      expect(v).toMatchObject({
+        verified: true,
+        matches: { evidenceHash: true, outcome: true, rerun: true },
+        recomputed: { reads: { value: OPEN_INTEREST, rereadValue: OPEN_INTEREST, rereadMatches: true } },
+      });
+    }
+
+    // The plain source: someone takes the snapshot first, then the market settles from it.
+    await anvil.warp(t0 + 3_405n);
+    await takeSnapshot(ctxFor(alice), m.snapPlain as Address);
+    const plain = await settle(ctxFor(bob), m.snapPlain as Address);
+    expect(plain.outcome).toBe(Outcome.Yes); // 42 at or below 42
+    expect(await verifySettlement(ctxFor(), m.snapPlain as Address)).toMatchObject({
+      verified: true,
+      recomputed: { reads: { value: 42n } },
+    });
+  }, 60_000);
 
   it("template 3: settles a touch market NO after the challenge period and verifies at the settlement block", async () => {
     if (!anvil) return;

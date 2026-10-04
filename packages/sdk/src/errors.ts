@@ -12,6 +12,7 @@ import {
   merkleDistributorAbi,
   outcomeTokenPriceAdapterAbi,
   referralRegistryAbi,
+  snapshotResolverAbi,
   testUsdcAbi,
 } from "@hunch-book/shared";
 import {
@@ -26,7 +27,7 @@ import {
 
 // Every custom error a Hunch Book call can revert with, decoded by name and turned into one plain
 // sentence. A router trade can revert in the router, the vault, the market, Kuru's book or a token,
-// and a settlement in any of six resolvers, so every simulation carries all of them (KNOWN_ERRORS_ABI).
+// and a settlement in any of seven resolvers, so every simulation carries all of them (KNOWN_ERRORS_ABI).
 
 /** Errors defined in the contracts but not in the interfaces the shared ABIs are generated from. */
 const EXTRA_ERRORS = parseAbi([
@@ -115,6 +116,7 @@ export const KNOWN_ERRORS_ABI: readonly AbiError[] = (() => {
     merkleDistributorAbi,
     impliedProbabilityOracleAbi,
     outcomeTokenPriceAdapterAbi,
+    snapshotResolverAbi,
     EXTRA_ERRORS,
   ] as unknown as Abi[];
   for (const abi of abis) {
@@ -144,7 +146,8 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   NonCanonicalParams: "The parameters are not in their one canonical encoding. Encode them with the SDK.",
   FeedNotAllowed: "That price feed is not on the resolver's list.",
   PythIdNotAllowed: "That Pyth price id is not on the resolver's list.",
-  UnknownSource: "The price source must be 0 (Chainlink) or 1 (Pyth).",
+  UnknownSource:
+    "The resolver does not know that source: a price source is 0 (Chainlink) or 1 (Pyth), and a snapshot source is an id from the resolver's list.",
   UnusedFieldSet: "Set only the field for the chosen price source: the feed for Chainlink, the id for Pyth.",
   StrikeNotPositive: "The strike must be above zero.",
   LowerNotPositive: "The lower bound must be above zero.",
@@ -168,6 +171,18 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   LegFinished: "A parlay leg has already settled or voided.",
   LockAfterLeg: "A parlay must lock at or before every leg locks.",
   DeadlineOverflow: "The window is too far in the future.",
+  UnknownComparator: "The comparator must be 0 (above), 1 (at or above), 2 (below) or 3 (at or below).",
+  SnapshotWindowOutOfRange: "The snapshot window must be 60 to 1,800 seconds.",
+  // snapshots (template 7)
+  OutsideSnapshotWindow: "A snapshot can only be taken inside the market's snapshot window.",
+  SnapshotExists: "The snapshot for this source, close time and window was already taken. It is final.",
+  SourceCallFailed: "The snapshot source could not be read right now. Try again inside the window.",
+  SourceReturnTooShort: "The snapshot source returned less data than the resolver reads.",
+  ValueOutOfRange: "The snapshot source returned a value outside the range the resolver accepts.",
+  ValueStale: "The snapshot source's value is older than the resolver accepts. Try again inside the window.",
+  GuardCallFailed: "The source's version check could not be read right now. Try again inside the window.",
+  SourceChanged:
+    "The snapshot source no longer means what it meant when the resolver was deployed (an upgrade, a relisting, new units or a pause).",
   // staking
   StakeTooSmall: "That stake is below this market's minimum.",
   PoolCapExceeded: "That stake would take the pool over its cap.",

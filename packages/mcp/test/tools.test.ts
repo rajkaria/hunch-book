@@ -429,10 +429,39 @@ describe("tool handlers", () => {
       }).params,
     ).toMatchObject({ source: 1 });
     expect(parseTemplateParams(6, { legs: [MARKET, ME], lockTime: 1, closeTime: 2 }).templateId).toBe(6);
+    expect(
+      parseTemplateParams(7, {
+        sourceId: 2,
+        threshold: "1000000",
+        comparator: "atOrBelow",
+        lockTime: 1,
+        closeTime: 2,
+      }),
+    ).toEqual({
+      templateId: 7,
+      params: {
+        sourceId: 2,
+        threshold: 1_000_000n,
+        comparator: 3,
+        lockTime: 1n,
+        closeTime: 2n,
+        snapshotWindow: 600,
+      },
+    });
+    expect(() =>
+      parseTemplateParams(7, {
+        sourceId: 0,
+        threshold: 1,
+        comparator: "above",
+        lockTime: 1,
+        closeTime: 2,
+        snapshotWindow: 10,
+      }),
+    ).toThrow(/snapshotWindow/);
     expect(() =>
       parseTemplateParams(2, { source: "chainlink", strikeE8: 1, lockTime: 1, closeTime: 2 }),
     ).toThrow(/needs `feed`/);
-    expect(() => parseTemplateParams(9, {})).toThrow(/not one of 1 to 6/);
+    expect(() => parseTemplateParams(9, {})).toThrow(/not one of 1 to 7/);
     expect(() => parseTemplateParams(1, { perpId: "x" })).toThrow(/perpId/);
   });
 

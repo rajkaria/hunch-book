@@ -1,5 +1,5 @@
 // @hunch-book/sdk: read Hunch Book markets, quote trades on their Kuru books, send every lifecycle
-// action, find settlement evidence for templates 1 to 6, verify settlements, use the periphery, and
+// action, find settlement evidence for templates 1 to 7, verify settlements, use the periphery, and
 // build reward trees. Every function takes a context first (tree-shakeable); createHunchClient binds
 // them all to one. docs/SDK.md has the guide.
 
@@ -10,8 +10,10 @@ export {
   type Deployment,
   deployments,
   EMPTY_EVIDENCE,
+  type GraduationRule,
   type L2Level,
   loadDeployment,
+  type MarketCaps,
   monadMainnet,
   monadTestnet,
   type Network,
@@ -25,11 +27,22 @@ export {
   type PriceRangeParams,
   PriceSource,
   Side,
+  SNAPSHOT_DEFAULT_WINDOW,
+  SNAPSHOT_MAX_WINDOW,
+  SNAPSHOT_MIN_WINDOW,
+  SnapshotComparator,
+  type SnapshotParams,
+  snapshotEvidenceHash,
+  snapshotKey,
+  snapshotOutcome,
+  snapshotValueFromReturnData,
+  snapshotWindowState,
   TEMPLATES,
   TemplateId,
   TouchDirection,
   type TradeKind,
   txUrl,
+  type Window,
 } from "@hunch-book/shared";
 export * from "./actions.js";
 export * from "./book.js";
@@ -54,6 +67,7 @@ export * from "./settlement/evidence.js";
 export * from "./settlement/hashes.js";
 export * from "./settlement/perpl.js";
 export * from "./settlement/pyth.js";
+export * from "./settlement/snapshot.js";
 export * from "./settlement/verify.js";
 export * from "./tx.js";
 export * from "./units.js";
