@@ -23,7 +23,8 @@ DEPLOYER_PRIVATE_KEY=... MONAD_TESTNET_RPC=... forge script script/GoldenPath.s.
 [`contracts/script/GoldenPath.s.sol`](../contracts/script/GoldenPath.s.sol) creates a Perpl MON
 funding market (template 1) from Hunch Book's deployer wallet, then stakes from seven more wallets
 derived from the same key, labelled "hunch-book testnet seed" exactly like the other seeding script.
-**These eight stakes are ours**, and the app and this page say so. The pool ends at 480 USDC
+**These eight stakes are ours**: the script prints every one of these addresses, and the app's
+landing page marks markets our wallets created as seeded by Hunch Book. The pool ends at 480 USDC
 (240 on YES, 240 on NO) from 8 stakers. Two outside wallets, yours, each staking at least 10 USDC
 (one on YES, one on NO) complete the rule.
 

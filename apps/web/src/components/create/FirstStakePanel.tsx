@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { type Abi, type Address, erc20Abi, type Hex, maxUint256 } from "viem";
 import { appNetworkLabel } from "@/lib/config";
-import { createKeys } from "@/lib/create/hooks";
 import type { CreateConfig } from "@/lib/create/reads";
 import { maxFirstStake, nextCreateStep, validateFirstStake } from "@/lib/create/stake";
 import { useCreateMarket } from "@/lib/create/useCreateMarket";
@@ -48,11 +47,8 @@ export function FirstStakePanel({
   const [input, setInput] = useState("");
   const wallet = useAppChain();
   const usdc = useUsdcState(wallet.address, { vault: config.vault, usdc: config.usdc });
-  const refresh = [
-    queryKeys.usdc(wallet.address ?? "0x"),
-    queryKeys.markets(),
-    createKeys.marketOf(marketKey ?? "0x"),
-  ];
+  // The market-of query is left alone: once this market exists, the preview would call it a copy.
+  const refresh = [queryKeys.usdc(wallet.address ?? "0x"), queryKeys.markets()];
   const tx = useTxRunner(refresh);
   const create = useCreateMarket(refresh);
   const [countdown, setCountdown] = useState<number | null>(null);

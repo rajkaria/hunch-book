@@ -110,7 +110,7 @@ export function FeedPicker({
             "Reading the current price..."
           )}
           {option.source === PriceSource.Pyth
-            ? " Chainlink has no feed for this asset on this network, so the market settles from Pyth."
+            ? " Chainlink has no feed for this asset on this network, so the market settles from Pyth: settling needs Pyth's signed update for the close time, from Pyth's Hermes service, which asks for an API key."
             : ""}
         </p>
       ) : null}

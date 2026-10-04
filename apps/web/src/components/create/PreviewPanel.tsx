@@ -80,8 +80,8 @@ export function PreviewPanel({
 
   return (
     <Panel title="Preview" labelledBy="preview-title" variant="glass">
-      <div className={s.preview} aria-live="polite">
-        <div className={s.ruleBox}>
+      <div className={s.preview}>
+        <div className={s.ruleBox} aria-live="polite">
           <span className={s.blockTitle}>The rule</span>
           {ruleBody}
         </div>
