@@ -187,3 +187,15 @@ What to look at:
   leave orders resting. If it was killed, clear its orders with
   `MAKER_ENABLED=1 pnpm --filter @hunch-book/maker cancel-all` (it finds them on the books, no local state
   needed).
+
+## Watching it from outside
+
+The [watchdog](../services/watchdog) checks the protocol from the chain every 30 minutes on GitHub
+Actions (`.github/workflows/liveness.yml`): vault solvency, YES and NO supply, settlement lag,
+graduations about to be missed, and both services' MON balances. Any problem opens one issue
+labelled `liveness`, which closes itself when the next run is healthy.
+
+To have it check the services' health too, make the `/health` endpoints reachable from the internet
+(Railway gives each service a public URL) and set the repository variables `KEEPER_HEALTH_URL` and
+`MAKER_HEALTH_URL`. For alerts beyond GitHub notifications, set the `WATCHDOG_WEBHOOK` secret.
+Run the same checks by hand with `pnpm --filter @hunch-book/watchdog check`.
