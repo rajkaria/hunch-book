@@ -1,0 +1,74 @@
+name: liveness
+# Every 30 minutes: read the chain and check solvency, supply, settlement lag, graduation, the
+# keeper's and maker's gas, and (when their URLs are set as repository variables) their health.
+# A problem opens one issue labelled "liveness" (GitHub notifies the repo's watchers, phones
+# included) and keeps its body current; the issue closes itself when everything is healthy again.
+# Optional: repository variables KEEPER_HEALTH_URL and MAKER_HEALTH_URL, and a WATCHDOG_WEBHOOK
+# secret that receives a JSON POST on every non-ok run.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: liveness
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NETWORK: monad-testnet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @hunch-book/shared build
+
+      - name: Run the checks
+        id: run
+        env:
+          WATCHDOG_NETWORK: ${{ env.NETWORK }}
+          KEEPER_HEALTH_URL: ${{ vars.KEEPER_HEALTH_URL }}
+          MAKER_HEALTH_URL: ${{ vars.MAKER_HEALTH_URL }}
+          WATCHDOG_WEBHOOK: ${{ secrets.WATCHDOG_WEBHOOK }}
+        run: |
+          set +e
+          pnpm --filter @hunch-book/watchdog check --markdown "$RUNNER_TEMP/report.md"
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the liveness issue
+        if: steps.run.outputs.code == '1' || steps.run.outputs.code == '2'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create liveness --color B60205 --description "Opened by the scheduled liveness check" --force
+          title="Liveness: ${NETWORK} needs attention"
+          number=$(gh issue list --label liveness --state open --json number --jq '.[0].number')
+          if [ -z "$number" ]; then
+            gh issue create --title "$title" --label liveness --body-file "$RUNNER_TEMP/report.md"
+          else
+            gh issue edit "$number" --body-file "$RUNNER_TEMP/report.md"
+          fi
+
+      - name: Close the liveness issue when healthy
+        if: steps.run.outputs.code == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for number in $(gh issue list --label liveness --state open --json number --jq '.[].number'); do
+            gh issue close "$number" --comment "Healthy again: every check passed in run ${GITHUB_RUN_ID}."
+          done
+
+      - name: Fail the run on a failed check or a check that could not run
+        if: steps.run.outputs.code == '2' || steps.run.outputs.code == '3'
+        run: exit 1
