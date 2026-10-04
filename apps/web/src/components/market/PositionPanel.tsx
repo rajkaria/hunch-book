@@ -1,32 +1,43 @@
 "use client";
 
-import { marketAbi, Phase } from "@hunch-book/shared";
+import { ONE_USDC, Outcome, Phase } from "@hunch-book/shared";
 import Link from "next/link";
-import type { Abi } from "viem";
 import { formatUsdc } from "@/lib/format";
-import { queryKeys, useUserPosition } from "@/lib/hooks";
+import { useUserPosition, useWalletBalances } from "@/lib/hooks";
+import { bookMid, PRICE_SCALE } from "@/lib/market/logic";
 import type { MarketView } from "@/lib/market/types";
 import { useAppChain } from "@/lib/wallet/useAppChain";
-import { useTxRunner } from "@/lib/wallet/useTxRunner";
-import { Button, Panel, Stat } from "../ui";
+import { Panel, Stat } from "../ui";
 import s from "./market.module.css";
-import { TxList } from "./TxList";
 
-/** The connected wallet's stake and claims here. Claims are single no-argument calls, so they are wired. */
+/** YES and NO tokens valued at the book's mid: YES at the mid, NO at 1 − mid. Null without a two-sided book. */
+export function valueAtMid(m: Pick<MarketView, "quote">, tokens: { yes: bigint; no: bigint }): bigint | null {
+  const mid = bookMid(m.quote);
+  if (mid === null) return null;
+  const midE6 = (mid * ONE_USDC) / PRICE_SCALE;
+  return (tokens.yes * midE6 + tokens.no * (ONE_USDC - midE6)) / ONE_USDC;
+}
+
+/** What settled tokens are worth: the winning side at 1, the other at 0; after a void both at 0.50. */
+export function settledValue(
+  m: Pick<MarketView, "phase" | "outcome">,
+  tokens: { yes: bigint; no: bigint },
+): bigint | null {
+  if (m.phase === Phase.Voided) return tokens.yes / 2n + tokens.no / 2n;
+  if (m.phase !== Phase.Settled) return null;
+  return m.outcome === Outcome.Yes ? tokens.yes : tokens.no;
+}
+
+/** The connected wallet's stake, claims and tokens in this market. Actions live in the Actions panel. */
 export function PositionPanel({ m }: { m: MarketView }) {
   const wallet = useAppChain();
   const position = useUserPosition(m.address, wallet.address);
-  const tx = useTxRunner([
-    queryKeys.position(m.address, wallet.address ?? "0x"),
-    queryKeys.market(m.address),
-    queryKeys.portfolio(wallet.address ?? "0x"),
-  ]);
+  const balances = useWalletBalances(wallet.address, m);
   if (!wallet.isConnected || !wallet.address) return null;
   const p = position.data;
-  const account = wallet.address;
-  const canSend = wallet.onAppChain && !tx.busy;
-  const tokens = p ? p.claimableTokens.yes + p.claimableTokens.no : 0n;
-  const pool = p ? p.claimablePool.paid : 0n;
+  const held = { yes: balances.data?.yes ?? 0n, no: balances.data?.no ?? 0n };
+  const atMid = m.graduated ? valueAtMid(m, held) : null;
+  const final = settledValue(m, held);
 
   return (
     <Panel title="Your position" labelledBy="position-title">
@@ -43,9 +54,20 @@ export function PositionPanel({ m }: { m: MarketView }) {
               <>
                 <Stat label="YES to claim" value={formatUsdc(p.claimableTokens.yes)} hint="tokens" />
                 <Stat label="NO to claim" value={formatUsdc(p.claimableTokens.no)} hint="tokens" />
+                <Stat label="YES held" value={formatUsdc(held.yes)} hint="tokens" />
+                <Stat label="NO held" value={formatUsdc(held.no)} hint="tokens" />
+                {final !== null ? (
+                  <Stat label="Worth at settlement" value={formatUsdc(final)} hint="USDC, before the fee" />
+                ) : (
+                  <Stat
+                    label="Value at mid"
+                    value={atMid === null ? "n/a" : formatUsdc(atMid)}
+                    hint={atMid === null ? "no two-sided book" : "USDC"}
+                  />
+                )}
               </>
             ) : null}
-            {m.phase === Phase.Settled || m.phase === Phase.Voided ? (
+            {!m.graduated && (m.phase === Phase.Settled || m.phase === Phase.Voided) ? (
               <Stat
                 label="Pool payout to claim"
                 value={formatUsdc(p.claimablePool.paid)}
@@ -55,85 +77,11 @@ export function PositionPanel({ m }: { m: MarketView }) {
               />
             ) : null}
           </div>
-          <div className={s.steps} style={{ marginTop: 16 }}>
-            {tokens > 0n ? (
-              <Button
-                block
-                variant="primary"
-                disabled={!canSend}
-                onClick={() =>
-                  void tx.run(
-                    "Claim YES and NO tokens",
-                    { address: m.address, abi: marketAbi as Abi, functionName: "claimTokens" },
-                    account,
-                  )
-                }
-              >
-                Claim tokens
-              </Button>
-            ) : null}
-            {pool > 0n ? (
-              <Button
-                block
-                variant="primary"
-                disabled={!canSend}
-                onClick={() =>
-                  void tx.run(
-                    "Claim pool payout",
-                    { address: m.address, abi: marketAbi as Abi, functionName: "claimPool" },
-                    account,
-                  )
-                }
-              >
-                Claim {formatUsdc(pool)} USDC
-              </Button>
-            ) : null}
-          </div>
-          {tx.error ? (
-            <p className={s.txError} role="alert">
-              {tx.error}
-            </p>
-          ) : null}
-          <TxList txs={tx.txs} />
           <p className={s.laterNote} style={{ marginTop: 12 }}>
             Every market you hold is on your <Link href="/portfolio">portfolio</Link>.
           </p>
         </>
       )}
-    </Panel>
-  );
-}
-
-/** Lifecycle calls that need more than one button press of wiring. Present, honest, disabled. */
-export function LaterActions({ m }: { m: MarketView }) {
-  const items: { label: string; when: string }[] = [];
-  if (m.phase === Phase.Pool)
-    items.push({ label: "Graduate to Kuru", when: "once the graduation rule is met" });
-  if (m.phase === Phase.PoolLocked || m.phase === Phase.Closed)
-    items.push({ label: "Settle", when: "anyone can settle after close" });
-  if (m.phase === Phase.Settled || m.phase === Phase.Voided) {
-    if (m.graduated) items.push({ label: "Redeem tokens", when: "winning tokens redeem for USDC" });
-    items.push({ label: "Verify settlement", when: "re-run the read from your browser" });
-  }
-  if (items.length === 0) return null;
-  return (
-    <Panel title="Other actions" labelledBy="later-title">
-      <div className={s.later}>
-        {items.map((item) => (
-          <Button key={item.label} block disabled title="Coming in the next build">
-            {item.label}
-          </Button>
-        ))}
-        <p className={s.laterNote}>
-          Coming in the next build. Anyone will be able to call these; no one needs our permission.
-          {m.phase === Phase.Settled ? (
-            <>
-              {" "}
-              See what settled it on the <Link href={`/verify/${m.address}`}>verify page</Link>.
-            </>
-          ) : null}
-        </p>
-      </div>
     </Panel>
   );
 }

@@ -21,8 +21,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description: headline
-      ? `${headline} A Hunch Book market on Monad: stake USDC on YES or NO, settled by reading the chain.`
-      : "A Hunch Book market on Monad: stake USDC on YES or NO, settled by reading the chain.",
+      ? `${headline} A Hunch Book market on Monad: stake USDC on YES or NO, trade it on Kuru once it graduates, settled by reading the chain.`
+      : "A Hunch Book market on Monad: stake USDC on YES or NO, trade it on Kuru once it graduates, settled by reading the chain.",
   };
 }
 

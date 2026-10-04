@@ -2,12 +2,16 @@ import {
   deployments,
   encodePerplFundingParams,
   encodePriceAtTimeParams,
+  HUNCH_BOOK_PARAMS,
+  type L2Level,
   Outcome,
   Phase,
   PriceSource,
   TemplateId,
 } from "@hunch-book/shared";
 import type { Address } from "viem";
+import { type BookSnapshot, BookState } from "../src/lib/chain/kuru";
+import type { WalletBalances } from "../src/lib/chain/reads";
 import { decodeMarketParams } from "../src/lib/market/params";
 import type { ChainClock, MarketView, PortfolioEntry } from "../src/lib/market/types";
 
@@ -89,6 +93,40 @@ export function makeEntry(overrides: Partial<PortfolioEntry> = {}): PortfolioEnt
     claimableTokens: { yes: 0n, no: 0n },
     claimablePool: { paid: 0n, fee: 0n },
     balances: { yes: 0n, no: 0n },
+    ...overrides,
+  };
+}
+
+// A Hunch book like the fork suite's: asks 100 YES at 0.40 and 200 at 0.45, bids 100 at 0.35 and 300 at 0.30.
+const lvl = (price: number, size: bigint): L2Level => ({ price: BigInt(price), size });
+
+export function makeBook(overrides: Partial<BookSnapshot> = {}): BookSnapshot {
+  return {
+    address: "0x00000000000000000000000000000000000000bb",
+    block: 68_000_000n,
+    readAt: 1_799_000_000_000,
+    asks: [lvl(400_000, USDC(100)), lvl(450_000, USDC(200))],
+    bids: [lvl(350_000, USDC(100)), lvl(300_000, USDC(300))],
+    params: {
+      ...HUNCH_BOOK_PARAMS,
+      tickSize: 1_000n,
+      minSize: USDC(1),
+      maxSize: USDC(5_000),
+      base: "0x00000000000000000000000000000000000000c1",
+      quote: "0x00000000000000000000000000000000000000ab",
+    },
+    state: BookState.Active,
+    owned: null,
+    ...overrides,
+  };
+}
+
+export function makeBalances(overrides: Partial<WalletBalances> = {}): WalletBalances {
+  return {
+    usdc: USDC(1_000),
+    yes: USDC(50),
+    no: USDC(80),
+    allowance: { usdcToRouter: 0n, usdcToVault: 0n, yesToRouter: 0n, noToRouter: 0n },
     ...overrides,
   };
 }

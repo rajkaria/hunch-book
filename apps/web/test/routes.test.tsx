@@ -294,14 +294,15 @@ describe("with contracts deployed", () => {
     expect(screen.getByText("If NO wins you get")).toBeTruthy();
   });
 
-  it("/m/[address] shows a graduated market's book and disabled trading", async () => {
+  it("/m/[address] shows a graduated market's book and a trade ticket that waits for a wallet", async () => {
     state.market = ok(trading);
     await renderWithProviders(await MarketPage(params(trading.address)));
     expect(screen.getByText("Best bid (Kuru)")).toBeTruthy();
     expect(screen.getByText("0.600 USDC")).toBeTruthy();
-    expect(screen.getByText(/Book depth and trading arrive in the next build/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Order book" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Trade" }).getAttribute("aria-selected")).toBe("true");
     expect((screen.getByRole("button", { name: "Buy YES" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Connect a browser wallet to trade.")).toBeTruthy();
   });
 
   it("/m/[address] says when an address is not a market", async () => {
@@ -333,12 +334,10 @@ describe("with contracts deployed", () => {
       makeMarket({ phase: Phase.Settled, outcome: Outcome.Yes, evidenceHash: `0x${"ab".repeat(32)}` }),
     );
     const settled = await renderWithProviders(await VerifyPage(params(MARKET)));
-    expect(screen.getByRole("heading", { name: "What settled it" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "What the market stored" })).toBeTruthy();
     expect(screen.getByText("YES")).toBeTruthy();
     expect(screen.getByText(`0x${"ab".repeat(32)}`)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Re-run the read" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(screen.getByRole("button", { name: "Re-run this read from your browser" })).toBeTruthy();
     settled.unmount();
 
     state.market = ok(pool);

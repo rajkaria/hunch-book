@@ -57,7 +57,7 @@ export function ChancePanel({ m }: { m: MarketView }) {
               (<AddressLink address={m.book} />)
             </>
           ) : null}
-          . Book depth and trading arrive in the next build.
+          . The order book below shows its depth.
         </p>
       ) : null}
     </Panel>

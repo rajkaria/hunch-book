@@ -8,7 +8,7 @@ import { PORTFOLIO_WILL_SHOW } from "@/lib/copy";
 export const metadata: Metadata = {
   title: "Portfolio",
   description:
-    "Your Hunch Book stakes, claimable YES and NO tokens, and claimable pool payouts, read from the chain.",
+    "Your Hunch Book stakes, YES and NO tokens, redemptions and pool payouts, read from the chain, with one-click claims.",
 };
 
 export default function PortfolioPage() {
@@ -16,8 +16,8 @@ export default function PortfolioPage() {
     <div className="page">
       <PageHeader eyebrow={appNetworkLabel} title="Portfolio">
         <p>
-          What your wallet staked, the tokens it can claim after graduation, and pool payouts after
-          settlement.
+          What your wallet staked, the tokens it holds and can claim, what it can redeem now, and pool payouts
+          after settlement. Claim and redeem from here, one market at a time or all at once.
         </p>
       </PageHeader>
       {isDeployed(appDeployment) ? <PortfolioView /> : <NotDeployed willShow={PORTFOLIO_WILL_SHOW} />}

@@ -1,9 +1,11 @@
 "use client";
 
+import { testUsdcAbi } from "@hunch-book/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
-import { getPublicClient } from "./chain/client";
+import { getPublicClient, makePublicClient } from "./chain/client";
+import { readBookSnapshot } from "./chain/kuru";
 import {
   listMarkets,
   measureMsPerBlock,
@@ -13,9 +15,12 @@ import {
   readProtocolAddresses,
   readUsdcState,
   readUserPosition,
+  readWalletBalances,
 } from "./chain/reads";
-import { appChain, appDeployment, appNetwork, isDeployed } from "./config";
-import type { ChainClock } from "./market/types";
+import { appChain, appDeployment, appNetwork, isDeployed, usdcOf } from "./config";
+import { planSettlement } from "./market/settle";
+import type { ChainClock, MarketView } from "./market/types";
+import { findSettlementTx, runVerification } from "./verify/read";
 
 // React Query hooks over the read layer. Query keys never hold bigints.
 
@@ -31,7 +36,31 @@ export const queryKeys = {
   blockTime: () => ["block-time", appNetwork] as const,
   protocol: () => ["protocol", appNetwork] as const,
   usdc: (user: Address) => ["usdc", appNetwork, user.toLowerCase()] as const,
+  book: (book: Address) => ["book", appNetwork, book.toLowerCase()] as const,
+  balances: (market: Address, user: Address) =>
+    ["balances", appNetwork, market.toLowerCase(), user.toLowerCase()] as const,
+  settlePlan: (market: Address) => ["settle-plan", appNetwork, market.toLowerCase()] as const,
+  verification: (market: Address) => ["verification", appNetwork, market.toLowerCase()] as const,
+  settlementTx: (market: Address) => ["settlement-tx", appNetwork, market.toLowerCase()] as const,
+  faucet: () => ["faucet", appNetwork] as const,
+  mon: (user: Address) => ["mon", appNetwork, user.toLowerCase()] as const,
 };
+
+/** Every query a wallet's transaction can change for one market, to refresh after it lands. */
+export function walletQueryKeys(market: MarketView, user: Address | undefined) {
+  const u = user ?? "0x";
+  return [
+    queryKeys.market(market.address),
+    queryKeys.markets(),
+    queryKeys.usdc(u),
+    queryKeys.position(market.address, u),
+    queryKeys.portfolio(u),
+    queryKeys.balances(market.address, u),
+    queryKeys.settlePlan(market.address),
+    queryKeys.mon(u),
+    ...(market.book ? [queryKeys.book(market.book)] : []),
+  ];
+}
 
 export function useMarkets() {
   return useQuery({
@@ -130,4 +159,119 @@ export function useNow(intervalMs = 1_000): number | null {
     return () => clearInterval(id);
   }, [intervalMs]);
   return now;
+}
+
+/** A graduated market's Kuru book: levels, params and our maker's share of each level. */
+export function useBook(book: Address | null) {
+  return useQuery({
+    queryKey: queryKeys.book(book ?? "0x"),
+    queryFn: () => readBookSnapshot(getPublicClient(), book as Address, appDeployment.wallets.maker),
+    enabled: deployed && book !== null,
+    refetchInterval: 5_000,
+  });
+}
+
+/** The wallet's USDC, YES and NO for one market, and its allowances to the router and the vault. */
+export function useWalletBalances(user: Address | undefined, market: MarketView) {
+  const protocol = useProtocolAddresses();
+  return useQuery({
+    queryKey: queryKeys.balances(market.address, user ?? "0x"),
+    queryFn: () =>
+      readWalletBalances(
+        getPublicClient(),
+        {
+          usdc: protocol.data?.usdc as Address,
+          vault: protocol.data?.vault as Address,
+          router: appDeployment.hunchBook.router,
+          yes: market.tokens.yes,
+          no: market.tokens.no,
+        },
+        user as Address,
+      ),
+    enabled: deployed && Boolean(user && protocol.data),
+    refetchInterval: 10_000,
+  });
+}
+
+/** The wallet's MON, for gas. */
+export function useMonBalance(user: Address | undefined) {
+  return useQuery({
+    queryKey: queryKeys.mon(user ?? "0x"),
+    queryFn: () => getPublicClient().getBalance({ address: user as Address }),
+    enabled: Boolean(user),
+    refetchInterval: 20_000,
+  });
+}
+
+/** The evidence that settles this market now, found and dry-run from the browser. */
+export function useSettlePlan(market: MarketView, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.settlePlan(market.address),
+    queryFn: () => planSettlement(getPublicClient(), market),
+    enabled: deployed && enabled,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+/**
+ * The settlement verifier's reads. Each run uses a fresh public client over the deployment's RPC, with
+ * no wallet and no cache, so a re-run really asks the chain again.
+ */
+export function useVerification(market: MarketView) {
+  return useQuery({
+    // The phase is part of the key, so the read runs again once the market settles.
+    queryKey: [...queryKeys.verification(market.address), market.phase],
+    queryFn: async () => {
+      const client = makePublicClient();
+      const head = await client.getBlockNumber();
+      return runVerification(client, appDeployment, market, head);
+    },
+    enabled: deployed,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+}
+
+/** Where a settled or voided market settled: block, transaction and settler. */
+export function useSettlementTx(market: MarketView, final: boolean) {
+  return useQuery({
+    queryKey: queryKeys.settlementTx(market.address),
+    queryFn: async () => {
+      const client = getPublicClient();
+      const head = await client.getBlockNumber();
+      const from = market.window.blockClock
+        ? market.window.close
+        : BigInt(appDeployment.hunchBook.deployBlock ?? 0);
+      return findSettlementTx(client, market, from, head);
+    },
+    enabled: deployed && final,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+}
+
+/**
+ * Hunch Book's own test USDC with a public faucet: testnet only, the token deployed with the protocol,
+ * and it answers FAUCET_LIMIT(). Resolves to the token and its limit per request.
+ */
+export function useTestUsdcFaucet() {
+  const usdc = usdcOf(appDeployment);
+  const candidate = appNetwork === "monad-testnet" && Boolean(appDeployment.hunchBook.usdc) && Boolean(usdc);
+  return useQuery({
+    queryKey: queryKeys.faucet(),
+    queryFn: async () => {
+      const limit = await getPublicClient().readContract({
+        address: usdc as Address,
+        abi: testUsdcAbi,
+        functionName: "FAUCET_LIMIT",
+      });
+      return { usdc: usdc as Address, limit };
+    },
+    enabled: candidate,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: 1,
+  });
 }
