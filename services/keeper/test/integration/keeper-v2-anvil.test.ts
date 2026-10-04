@@ -473,7 +473,11 @@ describe("the keeper's v2 jobs against the real resolvers and periphery on anvil
     ]);
     await chain.send(deployer, a.feed, abiOf("mockFeed"), "setLatest", [roundId(3n)]);
     const head = await chain.client.getBlockNumber();
-    await chain.test.mine({ blocks: Number(A2 + 200n + CHALLENGE_BLOCKS + 5n - head) });
+    // In chunks: one call mining the whole challenge period can outlast the client's timeout on a busy
+    // machine.
+    for (let left = Number(A2 + 200n + CHALLENGE_BLOCKS + 5n - head); left > 0; left -= 5_000) {
+      await chain.test.mine({ blocks: Math.min(left, 5_000) });
+    }
     const now = (await chain.client.getBlock()).timestamp;
     const target = T + 20_000n + 86_400n + 10n;
     if (now < target) await chain.test.setNextBlockTimestamp({ timestamp: target });
@@ -488,5 +492,5 @@ describe("the keeper's v2 jobs against the real resolvers and periphery on anvil
     expect(await outcome(m.parlay)).toBe(Outcome.No);
     expect(await outcome(m.spikeNo)).toBe(Outcome.No);
     expect(health().jobs.prove.lastAction).toMatchObject({ action: "proveYes", status: "success" });
-  });
+  }, 300_000);
 });
