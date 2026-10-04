@@ -10,6 +10,9 @@ import { phaseLabel, phaseTone } from "@/lib/market/logic";
 import { templateLabel } from "@/lib/market/params";
 import type { ChainClock, MarketView } from "@/lib/market/types";
 import { Countdown, marketHeadline } from "../markets/MarketCard";
+import { OrdersPanel } from "../orders/OrdersPanel";
+import { ReferralBindPrompt } from "../referral/ReferralBindPrompt";
+import { ShareMarket } from "../referral/ShareMarket";
 import { EmptyState, ErrorState, LoadingRows, NotDeployed } from "../states";
 import { Badge } from "../ui";
 import { ActionsPanel } from "./ActionsPanel";
@@ -57,6 +60,7 @@ export function MarketBody({
           <span className="mono">
             <Countdown m={m} clock={clock} now={now} />
           </span>
+          <ShareMarket m={m} />
         </div>
         <h1 className={s.headline}>{marketHeadline(m)}</h1>
         {m.description === null ? (
@@ -78,9 +82,11 @@ export function MarketBody({
           <ContractsPanel m={m} />
         </div>
         <div className={s.sideCol}>
+          <ReferralBindPrompt />
           <StakeTicket m={m} />
           <PositionPanel m={m} />
           <ActionsPanel m={m} head={clock ? { block: clock.blockNumber, time: clock.timestamp } : null} />
+          <OrdersPanel m={m} />
         </div>
       </div>
     </>

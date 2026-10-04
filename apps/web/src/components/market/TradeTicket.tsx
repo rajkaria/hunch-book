@@ -35,9 +35,9 @@ import t from "./trade.module.css";
 const SIDE_NAME: Record<Side, string> = { [Side.Yes]: "YES", [Side.No]: "NO" };
 
 /** Buy or sell YES or NO on a graduated market's Kuru book, through the Hunch router. */
-export function TradeTicket({ m }: { m: MarketView }) {
+export function TradeTicket({ m, initialSide = Side.Yes }: { m: MarketView; initialSide?: Side }) {
   const [tab, setTab] = useState<TradeTab>("buy");
-  const [side, setSide] = useState<Side>(Side.Yes);
+  const [side, setSide] = useState<Side>(initialSide);
   const [input, setInput] = useState("");
   const [slippage, setSlippage] = useState<bigint>(DEFAULT_SLIPPAGE_BPS);
   const [custom, setCustom] = useState("");
