@@ -71,13 +71,13 @@ export function NetworkSwitch() {
         onClick={() => setOpen((v) => !v)}
       >
         <span className={active === "monad-mainnet" ? n.dotMain : n.dotTest} aria-hidden="true" />
-        {SHORT[active]}
+        <span className={n.label}>{SHORT[active]}</span>
         <span className={n.caret} aria-hidden="true">
           ▾
         </span>
       </button>
       {open ? (
-        <div className={s.menu} id={menuId}>
+        <div className={`${s.menu} ${n.menu}`} id={menuId}>
           <p className={s.menuHeading}>Network</p>
           {options.map((o) =>
             o.selectable ? (

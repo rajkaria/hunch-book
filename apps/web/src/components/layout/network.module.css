@@ -31,6 +31,28 @@
   outline-offset: 2px;
 }
 
+/* Under 720px the brand already says which network; the switch keeps only its dot. */
+.label {
+  display: none;
+}
+
+@media (min-width: 720px) {
+  .label {
+    display: inline;
+  }
+}
+
+/* On a phone the menu spans the screen under the header instead of hanging off the button. */
+@media (max-width: 719px) {
+  .trigger ~ .menu {
+    position: fixed;
+    top: calc(var(--header-h) + 4px);
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+  }
+}
+
 .caret {
   font-size: 10px;
   color: var(--subtle);

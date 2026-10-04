@@ -2,8 +2,8 @@
 
 Status: **building**. The indexer in [`indexer/`](../indexer) is an [Envio HyperIndex](https://docs.envio.dev)
 3.x project. Its handlers are tested on simulated logs that match what the contracts emit, and an opt-in
-test indexes real Monad testnet blocks. It is not deployed to a hosted endpoint yet, so the app does
-not read from it yet.
+test indexes real Monad testnet blocks. It is not deployed to a hosted endpoint yet. The app reads it as
+soon as the build names an endpoint (below); until then every page that can use it reads the chain.
 
 It turns Hunch Book's onchain events into a GraphQL API: markets, stakes, graduations, fills on our
 Kuru books, positions, settlements, redemptions, and the totals behind the proof page
@@ -158,6 +158,22 @@ Envio Cloud deploys from git, like Vercel. Steps, by name only (no secrets in th
    into the app's configuration.
 
 Envio Cloud needs `envio` pinned in `package.json` (it is: 3.12.1) and pnpm 10.32 (the repo uses it).
+
+## Point the app at it
+
+The app (`apps/web`) reads the endpoint from its build environment:
+
+| Variable | For |
+|---|---|
+| `NEXT_PUBLIC_INDEXER_URL` | the Monad testnet indexer (`config.yaml`) |
+| `NEXT_PUBLIC_INDEXER_URL_MAINNET` | the Monad mainnet indexer (`config.mainnet.yaml`), once it exists |
+
+Its queries live in [`apps/web/src/lib/indexer/queries.ts`](../apps/web/src/lib/indexer/queries.ts), and a
+test checks them against `schema.graphql`. The proof page, the trade tape, the portfolio's profit and
+loss and the creator pages use the indexer when it answers within 8 seconds, serves the right chain
+(its `_meta` view) and is within 300 blocks of the chain head. Otherwise they read the chain directly
+and say so with a "Live from chain" tag; figures the chain alone cannot give say "needs the indexer"
+instead of showing an estimate. After a failure the app leaves the indexer alone for 30 seconds.
 
 ## Limits
 

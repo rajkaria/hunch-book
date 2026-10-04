@@ -91,12 +91,8 @@ function Earnings({ creator, data }: { creator: Address; data: CreatorData | und
         />
         <Stat
           label="Earned in total"
-          value={
-            data?.earned === null || data?.earned === undefined
-              ? "needs the indexer"
-              : formatUsdc(data.earned)
-          }
-          hint={data?.earned === null ? undefined : "USDC"}
+          value={data?.earned === null || data?.earned === undefined ? "n/a" : formatUsdc(data.earned)}
+          hint={data?.earned === null ? "needs the indexer" : "USDC"}
           source={
             data?.earned === null
               ? undefined
@@ -106,11 +102,9 @@ function Earnings({ creator, data }: { creator: Address; data: CreatorData | und
         <Stat
           label="Withdrawn"
           value={
-            data?.withdrawn === null || data?.withdrawn === undefined
-              ? "needs the indexer"
-              : formatUsdc(data.withdrawn)
+            data?.withdrawn === null || data?.withdrawn === undefined ? "n/a" : formatUsdc(data.withdrawn)
           }
-          hint={data?.withdrawn === null ? undefined : "USDC"}
+          hint={data?.withdrawn === null ? "needs the indexer" : "USDC"}
           source={
             data?.withdrawn === null
               ? undefined

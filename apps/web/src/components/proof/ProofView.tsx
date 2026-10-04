@@ -28,18 +28,28 @@ const fromIndexer = (field: string): StatSource => ({
 const onExplorer = (address: Address | undefined, label: string): StatSource | undefined =>
   address ? { href: addressUrl(appDeployment, address), label, external: true } : undefined;
 
+/** A figure the chain alone cannot give. The page explains why once, at the top. */
 function NeedsIndexer({ what, children }: { what: string; children?: ReactNode }) {
   return (
     <Notice tone="accent" title={`${what}: needs the indexer`}>
+      {children}
+    </Notice>
+  );
+}
+
+/** Shown once when the page reads the chain: what that means for the figures below. */
+function ChainOnly() {
+  return (
+    <Notice title="Read from the chain directly">
       <p className="muted">
-        This counts every stake and fill since the deploy, which takes the indexer. Until it answers, this
-        page shows no figure here rather than an estimate.{" "}
+        Market counts and solvency below come straight from the contracts. Distinct wallets, all-time fills
+        and volume, and timings across every market count every event since the deploy, which takes the
+        indexer. Until it answers, those show no figure rather than an estimate.{" "}
         <a href={INDEXER_DOCS_URL} target="_blank" rel="noreferrer">
-          How the indexer counts it
+          How the indexer counts them
         </a>
         .
       </p>
-      {children}
     </Notice>
   );
 }
@@ -633,6 +643,7 @@ export function ProofView() {
         <SourceTag source={source} fallback={fallback} indexedBlock={indexedBlock} />
         <Badge tone="muted">updated {formatUtc(Math.floor(proof.dataUpdatedAt / 1000))}</Badge>
       </div>
+      {source === "chain" ? <ChainOnly /> : null}
       <MarketsPanel data={data} source={source} />
       <WalletsPanel data={data} />
       <TradesPanel data={data} />
