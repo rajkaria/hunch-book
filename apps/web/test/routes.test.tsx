@@ -26,6 +26,7 @@ const state = vi.hoisted(() => ({
   portfolio: {} as QueryState,
   position: {} as QueryState,
   tape: {} as QueryState,
+  proof: {} as QueryState,
 }));
 
 vi.mock("@/lib/config", async (importOriginal) => {
@@ -99,6 +100,22 @@ vi.mock("@/lib/tape/hooks", async (importOriginal) => {
   };
 });
 
+// The proof page reads the indexer or the chain; here it gets fixed data.
+vi.mock("@/lib/proof/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/proof/hooks")>();
+  return {
+    ...actual,
+    useProof: () => ({
+      isPending: !state.proof.error && state.proof.data === undefined,
+      isError: Boolean(state.proof.error),
+      data: state.proof.data,
+      dataUpdatedAt: 1_799_000_000_000,
+      refetch: vi.fn(),
+    }),
+    useChainTimings: () => ({ started: false, start: vi.fn(), isPending: true, isError: false }),
+  };
+});
+
 const ok = <T,>(data: T) => ({ data: { status: "ok", data } });
 const params = (address: string) => ({ params: Promise.resolve({ address }) });
 const noSearch = { searchParams: Promise.resolve({}) };
@@ -110,6 +127,7 @@ beforeEach(() => {
   state.portfolio = {};
   state.position = {};
   state.tape = {};
+  state.proof = {};
 });
 
 describe("with no contracts deployed", () => {
@@ -150,12 +168,11 @@ describe("with no contracts deployed", () => {
     expect(screen.getAllByRole("heading", { name: /Contracts not deployed/ }).length).toBe(2);
   });
 
-  it("/proof lists what will be measured, no numbers, and labels our wallets", async () => {
+  it("/proof says what it will measure until the contracts are deployed", async () => {
     await renderWithProviders(<ProofPage />);
-    expect(screen.getByText("No numbers yet")).toBeTruthy();
-    expect(screen.getByText("Maker share")).toBeTruthy();
-    expect(screen.getByText("Maker bot (ours)")).toBeTruthy();
-    expect(screen.getByText("Keeper (ours)")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Contracts not deployed on Monad testnet yet" })).toBeTruthy();
+    expect(screen.getByText(/Distinct wallets that staked or traded/)).toBeTruthy();
+    expect(screen.getByText(/fills against Hunch's maker and fills between other parties/)).toBeTruthy();
   });
 
   it("the header offers a wallet and the main links, and the footer says the factory is not deployed", async () => {
@@ -422,6 +439,102 @@ describe("with contracts deployed", () => {
     expect(screen.getByText("0.620")).toBeTruthy();
     expect(screen.getByText(/Read from blocks 67,999,001 to 68,000,000/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Look further back" })).toBeTruthy();
+  });
+
+  const proofBase = {
+    markets: { created: 12, graduated: 7, settled: 4, voided: 1, pools: 4, trading: 3, covered: 12 },
+    settlements: [],
+    perMarket: [
+      {
+        market: trading.address,
+        number: 8,
+        question: null,
+        stage: "Trading",
+        owed: USDC(400),
+        pool: 0n,
+        sets: USDC(400),
+        collateralIn: USDC(400),
+        collateralOut: 0n,
+        fees: 0n,
+        margin: 0n,
+        yesSupply: USDC(400),
+        noSupply: USDC(400),
+        backed: true,
+      },
+    ],
+    daily: [],
+    negative: [],
+    vault: { balance: USDC(400.5), obligations: USDC(400), margin: USDC(0.5) },
+    liveVault: { balance: USDC(400.5), obligations: USDC(400), margin: USDC(0.5) },
+  };
+
+  it("/proof shows every figure from the indexer, with our maker's share apart and sources linked", async () => {
+    state.proof = {
+      data: {
+        source: "indexer",
+        indexedBlock: 68_000_000n,
+        data: {
+          ...proofBase,
+          listed: null,
+          wallets: { total: 40, ours: 13, external: 27, stakers: 35, traders: 9 },
+          trades: {
+            fills: 200,
+            fillsOurMaker: 150,
+            fillsOurTrader: 10,
+            fillsBetweenOthers: 45,
+            volume: USDC(50_000),
+            volumeOurMaker: USDC(40_000),
+            volumeBetweenOthers: USDC(9_000),
+            ourMakerShareBps: 7_500,
+            ourMakerVolumeShareBps: 8_000,
+            routerTrades: 60,
+            routerVolume: USDC(20_000),
+          },
+          timing: {
+            avgSettleSeconds: 42n,
+            settlementsTimed: 3,
+            avgSettleBlocks: 150n,
+            settlementsBlockClock: 1,
+            earlySettlements: 1,
+            avgFirstRedemptionSeconds: 600n,
+            marketsRedeemed: 4,
+          },
+        },
+      },
+    };
+    await renderWithProviders(<ProofPage />);
+    expect(screen.getByText("From the indexer")).toBeTruthy();
+    expect(screen.getByText("indexed to block 68,000,000")).toBeTruthy();
+    expect(screen.getByText("75.0%")).toBeTruthy();
+    expect(screen.getByText("Fills between other parties")).toBeTruthy();
+    expect(screen.getByText("Against our maker (ours)")).toBeTruthy();
+    expect(screen.getByText("42s")).toBeTruthy();
+    expect(screen.getByText("10m 0s")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /indexer: ProtocolStats.wallets/ }).getAttribute("href")).toMatch(
+      /lib\/indexer\/queries\.ts$/,
+    );
+    expect(screen.getByText("Maker bot (ours)")).toBeTruthy();
+    expect(screen.queryByText(/needs the indexer/)).toBeNull();
+  });
+
+  it("/proof falls back to the chain and says what needs the indexer", async () => {
+    state.proof = {
+      data: {
+        source: "chain",
+        fallback: "The indexer did not answer, so this reads the chain directly.",
+        data: { ...proofBase, listed: [], wallets: null, trades: null, timing: null },
+      },
+    };
+    await renderWithProviders(<ProofPage />);
+    expect(screen.getByText("Live from chain")).toBeTruthy();
+    expect(screen.getByText("The indexer did not answer, so this reads the chain directly.")).toBeTruthy();
+    expect(screen.getByText("Distinct wallets that staked or traded: needs the indexer")).toBeTruthy();
+    expect(screen.getByText("All-time fills, volume and our maker's share: needs the indexer")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /factory.marketCount/ }).getAttribute("href")).toMatch(
+      /address\/0x/,
+    );
+    expect(screen.getByText("sets = YES = NO")).toBeTruthy();
+    expect(screen.getAllByText("0.50").length).toBeGreaterThan(0);
   });
 
   it("/ says when live figures cannot be read, and the menu says the contracts are live", async () => {
