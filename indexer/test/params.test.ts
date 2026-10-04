@@ -1,19 +1,31 @@
 // Market parameters: decoding and the one-sentence summary, against the contracts' own shapes.
 import { describe, expect, it } from "vitest";
-import { templateParamsCodecAbi } from "../../packages/shared/src/abis/generated.js";
+import {
+  templateParamsCodecAbi,
+  templateParamsCodecV3Abi,
+} from "../../packages/shared/src/abis/generated.js";
+import {
+  encodeSnapshotParams,
+  snapshotKey as sharedSnapshotKey,
+} from "../../packages/shared/src/templates.js";
 import { TemplateId } from "../../packages/shared/src/types.js";
 import { networkOf } from "../src/lib/network.js";
 import {
+  comparatorOf,
   formatDecimal,
   formatUsd,
   formatUtc,
   marketTerms,
   perplFundingParamsAbi,
   priceAtTimeParamsAbi,
+  snapshotId,
+  snapshotKey,
+  snapshotParamsAbi,
   TEMPLATE_PERPL_FUNDING,
   TEMPLATE_PRICE_AT_TIME,
+  TEMPLATE_SNAPSHOT,
 } from "../src/lib/params.js";
-import { perplParams, priceParams, SEED } from "./helpers.js";
+import { perplParams, priceParams, SEED, snapshotParams } from "./helpers.js";
 
 const testnet = networkOf(10143);
 const shapeOf = (components: readonly { name?: string; type: string }[]) =>
@@ -118,9 +130,55 @@ describe("template parameters", () => {
     expect(terms.question).toContain("per Pyth's BTC/USD feed?");
   });
 
+  it("decodes template 7 with the struct from ITemplatesV3.sol and the resolver's snapshot key", () => {
+    const fn = templateParamsCodecV3Abi.find((x) => x.type === "function" && x.name === "snapshot");
+    if (fn?.type !== "function") throw new Error("snapshot");
+    const components = (fn.inputs[0] as { components: readonly { name: string; type: string }[] }).components;
+    expect(shapeOf(snapshotParamsAbi[0].components)).toEqual(shapeOf(components));
+    expect(TEMPLATE_SNAPSHOT).toBe(BigInt(TemplateId.Snapshot));
+
+    const terms = {
+      sourceId: 7,
+      threshold: -2_500n,
+      comparator: 2,
+      lockTime: 100n,
+      closeTime: 1_791_244_800n,
+    };
+    const params = snapshotParams({ ...terms, snapshotWindow: 1_800 });
+    expect(params).toBe(encodeSnapshotParams({ ...terms, comparator: 2, snapshotWindow: 1_800 }));
+    expect(marketTerms(7n, params, testnet)).toEqual({
+      question:
+        "Will snapshot source 7 read below -2,500 (raw units) in the first snapshot taken from 2026-10-06 00:00:00 UTC to 2026-10-06 00:30:00 UTC?",
+      threshold: -2_500n,
+      blockClock: false,
+      lockAt: 100n,
+      closeAt: 1_791_244_800n,
+      settleDeadline: 1_791_244_800n + 1_800n + 604_800n,
+      snapshotKey: sharedSnapshotKey(7, 1_791_244_800n, 1_800),
+      snapshotSourceId: 7,
+      snapshotWindow: 1_800,
+      comparator: "Below",
+    });
+    expect(snapshotKey(0, 5n, 60)).toBe(sharedSnapshotKey(0, 5n, 60));
+    expect(["Above", "AtOrAbove", "Below", "AtOrBelow"].map((_, i) => comparatorOf(i))).toEqual([
+      "Above",
+      "AtOrAbove",
+      "Below",
+      "AtOrBelow",
+    ]);
+    expect(() => comparatorOf(4)).toThrow(/unknown comparator 4/);
+    // A comparator the resolver would refuse leaves the market without terms rather than failing.
+    expect(marketTerms(7n, snapshotParams({ ...terms, comparator: 9, snapshotWindow: 60 }), testnet)).toEqual(
+      {},
+    );
+    expect(snapshotId("0xABCDEF", "0x12AB")).toBe("0xabcdef-0x12ab");
+  });
+
   it("gives no terms for unknown templates or malformed bytes", () => {
     expect(marketTerms(3n, SEED.params, testnet)).toEqual({});
+    expect(marketTerms(99n, SEED.params, testnet)).toEqual({});
     expect(marketTerms(1n, "0x1234", testnet)).toEqual({});
+    expect(marketTerms(7n, "0x1234", testnet)).toEqual({});
   });
 
   it("formats numbers like ResolverText", () => {

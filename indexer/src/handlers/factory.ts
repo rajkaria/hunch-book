@@ -1,7 +1,7 @@
 // HunchBookFactory: templates and market creation.
 import { indexer } from "envio";
 import { addr, networkOf } from "../lib/network.js";
-import { marketTerms } from "../lib/params.js";
+import { marketTerms, snapshotId } from "../lib/params.js";
 import { emptyMarket, Unit } from "../lib/store.js";
 
 indexer.onEvent({ contract: "HunchBookFactory", event: "TemplateAdded" }, async ({ event, context }) => {
@@ -57,6 +57,11 @@ indexer.onEvent({ contract: "HunchBookFactory", event: "MarketCreated" }, async 
 
   const template = await u.find("Template", templateId.toString());
   if (template) template.marketCount += 1;
+  // Template 7: link the snapshot the market answers from. It exists once someone takes it.
+  if (market.snapshotKey) {
+    const resolver = template?.resolver ?? networkOf(u.m.chainId).resolvers.snapshot;
+    if (resolver) market.snapshot_id = snapshotId(resolver, market.snapshotKey);
+  }
   (await u.creator(creator)).marketCount += 1;
   (await u.wallet(creator)).marketsCreated += 1;
   u.flush();

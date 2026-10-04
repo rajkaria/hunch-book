@@ -2,7 +2,8 @@
 // Each event is also kept as a VaultEvent, whose id guards the handler against running twice.
 import { type Enum, indexer } from "envio";
 import { sideOf } from "../lib/enums.js";
-import { addr, isPlumbing, ZERO_ADDRESS } from "../lib/network.js";
+import { addr, isAutoRedeemer, isPlumbing, ZERO_ADDRESS } from "../lib/network.js";
+import { creditReferral } from "../lib/referrals.js";
 import { emptyMarket, Unit } from "../lib/store.js";
 
 interface VaultRecord {
@@ -232,8 +233,12 @@ indexer.onEvent({ contract: "CollateralVault", event: "MarketVoided" }, async ({
 indexer.onEvent({ contract: "CollateralVault", event: "Redeemed" }, async ({ event, context }) => {
   const u = await Unit.start(context, event, "VaultEvent");
   if (!u) return;
-  const { market: marketId, holder, to, side: sideOrdinal, amount, paid, fee } = event.params;
+  const { market: marketId, to, side: sideOrdinal, amount, paid, fee } = event.params;
   const side = sideOf(sideOrdinal);
+  // The AutoRedeemer redeems tokens it pulled from a holder a moment earlier and has the vault pay that
+  // holder (`to`), so the holder, not the AutoRedeemer, is the one who redeemed.
+  const viaAutoRedeemer = isAutoRedeemer(u.m.chainId, event.params.holder);
+  const holder = addr(viaAutoRedeemer ? to : event.params.holder);
   recordVaultEvent(u, "Redeem", { market: marketId, account: holder, amount: paid, fee });
   const s = await u.stats();
   const d = await u.daily();
@@ -267,8 +272,9 @@ indexer.onEvent({ contract: "CollateralVault", event: "Redeemed" }, async ({ eve
   u.create("Redemption", {
     id: u.m.id,
     market_id: market.id,
-    wallet_id: addr(holder),
+    wallet_id: holder,
     to: addr(to),
+    viaAutoRedeemer,
     side,
     amount,
     paid,
@@ -296,6 +302,8 @@ indexer.onEvent({ contract: "CollateralVault", event: "Redeemed" }, async ({ eve
   s.redemptionFees += fee;
   d.redemptionCount += 1;
   d.redeemedUsdc += paid;
+  // Referral credit: the fee counts for the address that received the USDC (docs/PERIPHERY.md).
+  await creditReferral(u, { user: to, market: market.id, kind: "Redemption", fee });
   u.flush();
 });
 

@@ -8,6 +8,8 @@ import type {
   Market,
   Position,
   ProtocolStats,
+  RewardEpoch,
+  RewardToken,
   Staker,
   Wallet,
 } from "envio";
@@ -131,6 +133,24 @@ export class Unit {
     return row as unknown as Mut<Entity<N>>;
   }
 
+  /**
+   * The nearest earlier record of `name` in this transaction, looking back at most `logs` log indexes,
+   * that `match` accepts. Per-event records are keyed "<block>-<logIndex>", so this finds the record a
+   * contract call left just before the event being handled (the vault's Redeemed before AutoRedeemed,
+   * the router's Trade before OrderExecuted).
+   */
+  async findBack<N extends EntityName>(
+    name: N,
+    logs: number,
+    match: (row: Mut<Entity<N>>) => boolean,
+  ): Promise<Mut<Entity<N>> | undefined> {
+    for (let i = this.m.logIndex - 1; i >= Math.max(0, this.m.logIndex - logs); i--) {
+      const row = await this.find(name, `${this.m.block}-${i}`);
+      if (row && (row as unknown as { tx: string }).tx === this.m.tx && match(row)) return row;
+    }
+    return undefined;
+  }
+
   // ---- well-known entities ----
 
   stats(): Promise<Mut<ProtocolStats>> {
@@ -242,6 +262,14 @@ export class Unit {
         const c = row as unknown as Mut<Creator>;
         c.feesOwed = c.feesAccrued - c.feesWithdrawn;
       }
+      if (name === "RewardEpoch") {
+        const e = row as unknown as Mut<RewardEpoch>;
+        e.outstanding = e.total - e.claimed - e.sweptAmount;
+      }
+      if (name === "RewardToken") {
+        const t = row as unknown as Mut<RewardToken>;
+        t.outstanding = t.funded - t.claimed - t.swept;
+      }
       this.ops(name).set({ ...row });
     }
     this.rows.clear();
@@ -339,6 +367,34 @@ export function emptyStats(m: Pick<EventMeta, "chainId" | "timestamp" | "block">
     vaultUsdcOut: 0n,
     vaultUsdcBalance: 0n,
     solvencyMargin: 0n,
+    snapshotsTaken: 0,
+    snapshotsTakenOurs: 0,
+    autoRedeemHolders: 0,
+    autoRedemptionCount: 0,
+    autoRedeemedUsdc: 0n,
+    autoRedemptionCountOurCaller: 0,
+    autoRedeemFailures: 0,
+    conditionalOrdersPlaced: 0,
+    conditionalOrdersOpen: 0,
+    conditionalOrdersExecuted: 0,
+    conditionalOrdersCancelled: 0,
+    conditionalOrdersExecutedByUs: 0,
+    referralBindings: 0,
+    referralBindingsRelayedByUs: 0,
+    referrers: 0,
+    referredFeeCount: 0,
+    referredFees: 0n,
+    referredProtocolShare: 0n,
+    rewardEpochs: 0,
+    rewardClaimCount: 0,
+    oraclePokes: 0,
+    oraclePokesOurs: 0,
+    oracleCheckpoints: 0,
+    priceAdapters: 0,
+    timelockQueued: 0,
+    timelockExecuted: 0,
+    timelockCancelled: 0,
+    timelockPending: 0,
     updatedAt: m.timestamp,
     updatedAtBlock: m.block,
   };
@@ -370,6 +426,18 @@ export function emptyDaily(m: Pick<EventMeta, "chainId" | "date" | "dayStart">):
     newWallets: 0,
     vaultUsdcIn: 0n,
     vaultUsdcOut: 0n,
+    snapshotsTaken: 0,
+    autoRedemptionCount: 0,
+    autoRedeemedUsdc: 0n,
+    conditionalOrdersPlaced: 0,
+    conditionalOrdersExecuted: 0,
+    conditionalOrdersCancelled: 0,
+    referralBindings: 0,
+    referredFeeCount: 0,
+    referredProtocolShare: 0n,
+    rewardClaimCount: 0,
+    oraclePokes: 0,
+    oraclePokesOurs: 0,
   };
 }
 
@@ -395,6 +463,7 @@ export function emptyWallet(id: string, m: Pick<EventMeta, "chainId" | "timestam
     marketsCreated: 0,
     redemptionCount: 0,
     redeemedUsdc: 0n,
+    referral_id: undefined,
   };
 }
 
@@ -466,6 +535,11 @@ export function emptyMarket(
     lockAt: undefined,
     closeAt: undefined,
     settleDeadline: undefined,
+    snapshot_id: undefined,
+    snapshotKey: undefined,
+    snapshotSourceId: undefined,
+    snapshotWindow: undefined,
+    comparator: undefined,
     creator_id: addr(tokens.creator),
     creatorIsOurs: staticRoleOf(m.chainId, tokens.creator) !== "None",
     yesToken: addr(tokens.yes),
@@ -522,5 +596,11 @@ export function emptyMarket(
     createdAt: m.timestamp,
     createdAtBlock: m.block,
     createdTx: m.tx,
+    conditionalOrderCount: 0,
+    conditionalOrdersOpen: 0,
+    conditionalOrdersExecuted: 0,
+    autoRedemptionCount: 0,
+    autoRedeemedUsdc: 0n,
+    oracle_id: undefined,
   };
 }

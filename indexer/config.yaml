@@ -58,6 +58,44 @@ contracts:
       - event: OrderCreated(uint40 orderId, address owner, uint96 size, uint32 price, bool isBuy)
       - event: OrderCanceled(uint40 orderId, address owner, uint32 price, uint96 size, bool isBuy)
       - event: OrdersCanceled(uint40[] orderId, address owner)
+  - name: SnapshotResolver
+    events:
+      - event: SnapshotTaken(bytes32 indexed key, uint16 indexed sourceId, address indexed caller, uint64 closeTime, uint32 snapshotWindow, int256 value, uint64 blockNumber, uint64 timestamp)
+  - name: AutoRedeemer
+    events:
+      - event: OptInSet(address indexed holder, bool optedIn)
+      - event: MarketOptOutSet(address indexed holder, address indexed market, bool optedOut)
+      - event: AutoRedeemed(address indexed market, address indexed holder, uint8 side, uint256 amount, uint256 paid, address indexed caller)
+      - event: RedeemFailed(address indexed market, address indexed holder, bytes reason)
+  - name: ConditionalOrders
+    events:
+      - event: OrderPlaced(uint256 indexed orderId, address indexed owner, address indexed market, uint8 kind, uint8 condition, uint32 triggerPriceE6, uint64 expiry, uint16 executorTipBps, uint128 amountIn, uint128 limit)
+      - event: OrderCancelled(uint256 indexed orderId, address indexed owner)
+      - event: OrderExecuted(uint256 indexed orderId, address indexed owner, address indexed executor, uint256 priceE6, uint256 spent, uint256 received, uint256 tip)
+  - name: ReferralRegistry
+    events:
+      - event: Bound(address indexed user, address indexed referrer, uint64 boundAt, uint64 expiresAt, address indexed relayer)
+  - name: MerkleDistributor
+    events:
+      - event: EpochCreated(uint256 indexed epoch, address indexed token, bytes32 root, uint256 total, uint64 claimDeadline)
+      - event: Claimed(uint256 indexed epoch, address indexed account, uint256 amount, address indexed caller)
+      - event: Swept(uint256 indexed epoch, address indexed to, uint256 amount)
+      - event: FunderTransferStarted(address indexed current, address indexed pending)
+      - event: FunderTransferred(address indexed previous, address indexed current)
+  - name: ImpliedProbabilityOracle
+    events:
+      - event: Poked(address indexed market, uint256 chanceE6, uint256 spreadE6, bool stale, bool checkpoint)
+  - name: PriceAdapterFactory
+    events:
+      - event: AdapterCreated(address indexed market, uint8 indexed side, address adapter)
+  - name: TemplateTimelock
+    events:
+      - event: OperationQueued(bytes32 indexed id, uint256 indexed nonce, bytes4 indexed selector, bytes data, uint256 readyAt)
+      - event: OperationExecuted(bytes32 indexed id, uint256 indexed nonce, address indexed executor)
+      - event: OperationCancelled(bytes32 indexed id)
+      - event: CreationPauseSet(bool paused)
+      - event: GraduationPauseSet(bool paused)
+      - event: GuardianAccepted()
 chains:
   - id: 10143
     start_block: 67856277
@@ -68,6 +106,8 @@ chains:
         for: ${ENVIO_RPC_MODE:-fallback}
         initial_block_interval: 100
         interval_ceiling: 100
+    # Contracts without an address are registered while indexing (markets, tokens, books), or are
+    # not deployed on this network yet and are never read.
     contracts:
       - name: HunchBookFactory
         address: "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A"
@@ -82,3 +122,19 @@ chains:
       - name: Market
       - name: OutcomeToken
       - name: KuruOrderBook
+      - name: SnapshotResolver
+        address: "0x1E62C389D7c035acfDD971C7E6b7157C1D34D632"
+      - name: AutoRedeemer
+        address: "0x26EFB3D0d50DCBB97FBb369471fcc59a2677A534"
+      - name: ConditionalOrders
+        address: "0xDf733F2AD02Fcd3eA1a02d319D720c94d67c7eB6"
+      - name: ReferralRegistry
+        address: "0x063713eb539f2c9458d4836341ce3a74CF948569"
+      - name: MerkleDistributor
+        address: "0x1872C4AaD2941410F81778467864e113b74Cc2D9"
+      - name: ImpliedProbabilityOracle
+        address: "0xEc0fCfD5ee0fC6Dd8938B72810697f7BbfdA9134"
+      - name: PriceAdapterFactory
+        address: "0x348476c0602C3BEfd1064d54636DD791240B508B"
+      - name: TemplateTimelock
+        address: "0xCe858DF2C95851275ed97e9Ba764b22d6394290b"
