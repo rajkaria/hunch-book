@@ -1,4 +1,5 @@
 import { type Address, decodeAbiParameters, encodeAbiParameters, type Hex, keccak256 } from "viem";
+import type { SnapshotComparator } from "./templates.js";
 import { Outcome } from "./types.js";
 
 // What the resolvers read and commit to, rebuilt in TypeScript so anyone can check a settlement and
@@ -254,4 +255,90 @@ export function perplEvidenceHash(a: {
 /** YES if ΔF = F(end) − F(start) is above the threshold; equal is NO. */
 export function perplOutcome(sumStart: bigint, sumEnd: bigint, threshold: bigint): Outcome {
   return sumEnd - sumStart > threshold ? Outcome.Yes : Outcome.No;
+}
+
+// ---------------------------------------------------------------- template 7: snapshot
+
+/**
+ * SnapshotResolver's evidence hash: keccak256(abi.encode(address target, bytes callData,
+ * uint16 valueWord, int256 value, uint64 blockNumber, uint64 timestamp)): the call made, the word
+ * read, the value, and the block and time of the snapshot transaction.
+ */
+export function snapshotEvidenceHash(a: {
+  target: Address;
+  callData: Hex;
+  valueWord: number;
+  value: bigint;
+  blockNumber: bigint;
+  timestamp: bigint;
+}): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [
+        { type: "address" },
+        { type: "bytes" },
+        { type: "uint16" },
+        { type: "int256" },
+        { type: "uint64" },
+        { type: "uint64" },
+      ],
+      [a.target, a.callData, a.valueWord, a.value, a.blockNumber, a.timestamp],
+    ),
+  );
+}
+
+/**
+ * Template 7's rule: YES if the snapshot value meets the threshold under the comparator (0 above,
+ * 1 at or above, 2 below, 3 at or below). Equal counts only for the "at or" comparators.
+ */
+export function snapshotOutcome(value: bigint, threshold: bigint, comparator: SnapshotComparator): Outcome {
+  let yes: boolean;
+  if (comparator === 0) yes = value > threshold;
+  else if (comparator === 1) yes = value >= threshold;
+  else if (comparator === 2) yes = value < threshold;
+  else yes = value <= threshold;
+  return yes ? Outcome.Yes : Outcome.No;
+}
+
+/**
+ * Where `now` (unix seconds) sits against a snapshot window [closeTime, closeTime + snapshotWindow]:
+ * "open" while a snapshot can be taken (both ends included), "before" and "after" otherwise. A market
+ * with no snapshot once the window is "after" can never settle; it voids at its deadline.
+ */
+export function snapshotWindowState(
+  closeTime: bigint,
+  snapshotWindow: number,
+  now: bigint,
+): "before" | "open" | "after" {
+  if (now < closeTime) return "before";
+  return now <= closeTime + BigInt(snapshotWindow) ? "open" : "after";
+}
+
+/**
+ * Reads a source's value out of its call's return data the way SnapshotResolver does: the 32-byte
+ * word at `valueWord`, counted from the head of the returned tuple when `tuple` is set (word 0 then
+ * holds the head's offset), as a signed or unsigned integer. Lets a verifier re-run the source call
+ * and compare. Returns null where the resolver's read would fail: data too short, or an unsigned
+ * value above the int256 range.
+ */
+export function snapshotValueFromReturnData(
+  data: Hex,
+  source: { tuple: boolean; valueWord: number; signed: boolean },
+): bigint | null {
+  const bytes = (data.length - 2) / 2;
+  const word = (offset: number): bigint | null => {
+    if (offset > bytes || bytes - offset < 32) return null;
+    return BigInt(`0x${data.slice(2 + offset * 2, 2 + (offset + 32) * 2)}`);
+  };
+  let base = 0;
+  if (source.tuple) {
+    const head = word(0);
+    if (head === null || head > BigInt(bytes)) return null;
+    base = Number(head);
+  }
+  const raw = word(base + source.valueWord * 32);
+  if (raw === null) return null;
+  const max = (1n << 255n) - 1n;
+  if (!source.signed) return raw > max ? null : raw;
+  return raw > max ? raw - (1n << 256n) : raw;
 }

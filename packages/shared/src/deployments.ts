@@ -11,7 +11,7 @@ export interface HunchBookContracts {
   router?: Address;
   usdc?: Address;
   /** One resolver per template: 1 perplFunding, 2 priceAtTime, 3 chainlinkTouch, 4 perplFundingSpike,
-   * 5 priceRange, 6 marketOutcome (parlays). */
+   * 5 priceRange, 6 marketOutcome (parlays), 7 snapshot. */
   resolvers?: {
     perplFunding?: Address;
     priceAtTime?: Address;
@@ -19,6 +19,7 @@ export interface HunchBookContracts {
     perplFundingSpike?: Address;
     priceRange?: Address;
     marketOutcome?: Address;
+    snapshot?: Address;
   };
   /** Optional contracts around the core (docs/PERIPHERY.md). */
   periphery?: PeripheryContracts;
