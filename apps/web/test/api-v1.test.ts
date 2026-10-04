@@ -598,6 +598,21 @@ describe("GET /api/v1/feed", () => {
     });
     expect(body.cards[0]).toMatchObject({ status: "pool", book: null });
   });
+
+  it("titles Perpl markets with estimated times instead of block numbers", async () => {
+    markets[1] = market(2, "trading", {
+      rule: "Will MON longs pay more than $0.000015 per MON in funding on Perpl (MON Perp, perp 64) between block 68058301 and block 68264005?",
+    });
+    const body = await (await getFeed(req("/api/v1/feed"), deps())).json();
+    const title: string = body.cards[1].title;
+    expect(title).toMatch(
+      /^Will MON longs pay more than \$0\.000015 per MON in funding on Perpl between about .+ UTC\?$/,
+    );
+    expect(title).not.toContain("block");
+    const html = await (await getEmbed(req("/embed/m/x"), addr(0x1002), deps())).text();
+    expect(html).toContain("between about");
+    expect(html).not.toContain("between block");
+  });
 });
 
 describe("GET /embed/m/{address}", () => {

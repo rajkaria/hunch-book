@@ -1,6 +1,6 @@
 import { formatUsdc, type MarketInfo } from "@hunch-book/sdk";
 import type { ApiDeps } from "./deps";
-import { type ChainClock, embedUrl, marketUrl, pointTime, priceString } from "./markets";
+import { type ChainClock, embedUrl, marketTitleText, marketUrl, pointTime, priceString } from "./markets";
 
 // The feed the main Hunch app (and anyone) reads to list Hunch Book markets: one small card per open
 // market (a pool taking stakes, or a book trading), in a schema that stays stable across versions.
@@ -13,7 +13,7 @@ export interface FeedCard {
   id: string;
   marketId: number;
   address: string;
-  /** The rule in one sentence, from the market's resolver. */
+  /** The question in one sentence: the resolver's rule, with Perpl block windows as estimated times. */
   title: string;
   template: string;
   asset: string | null;
@@ -44,7 +44,7 @@ export function feedCard(m: MarketInfo, deps: ApiDeps, clock: ChainClock | null)
     id: `hunch-book:${deps.network}:${m.address.toLowerCase()}`,
     marketId: m.id,
     address: m.address,
-    title: m.rule ?? `${m.template}${m.asset ? ` on ${m.asset}` : ""}`,
+    title: m.rule ? marketTitleText(m, clock) : `${m.template}${m.asset ? ` on ${m.asset}` : ""}`,
     template: m.template,
     asset: m.asset,
     status,

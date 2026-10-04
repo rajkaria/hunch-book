@@ -1,6 +1,6 @@
 import { formatBps, formatUsdc, type MarketInfo } from "@hunch-book/sdk";
 import type { ApiDeps } from "./deps";
-import { type ChainClock, marketUrl, pointTime, priceString } from "./markets";
+import { type ChainClock, marketTitleText, marketUrl, pointTime, priceString } from "./markets";
 
 // The embeddable market card (/embed/m/<address>): one self-contained HTML page with no script, in the
 // main Hunch app's style (ink, paper and lime, Archivo), sized for an iframe. Every value that comes
@@ -128,7 +128,7 @@ export function renderMarketCard(
       : `Pool ${formatUsdc(m.pool.total)} USDC · ${m.pool.stakers} ${m.pool.stakers === 1 ? "staker" : "stakers"}`;
   const when = whenText(m, clock);
   const url = marketUrl(deps, m.address);
-  const title = m.rule ?? `${m.template} market #${m.id}`;
+  const title = marketTitleText(m, clock);
   const cta = m.phaseName === "pool" ? "Stake" : m.phaseName === "trading" ? "Trade" : "View";
   const body = `<main class="card">
 <div class="meta"><span class="brand"><i aria-hidden="true"></i>Hunch Book</span><span class="badge ${TONE[m.phaseName] ?? ""}">${escapeHtml(m.phaseLabel)}</span><span>${escapeHtml(m.template)}</span><span class="right">#${m.id}</span></div>

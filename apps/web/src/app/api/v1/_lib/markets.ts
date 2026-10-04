@@ -8,6 +8,7 @@ import {
   type Window,
 } from "@hunch-book/sdk";
 import { type Address, getAddress, isAddress, isAddressEqual } from "viem";
+import { friendlyQuestion } from "../../../../lib/market/title";
 import { cached } from "./cache";
 import type { ApiDeps } from "./deps";
 
@@ -36,6 +37,21 @@ export interface ChainClock {
 }
 
 const FALLBACK_MS_PER_BLOCK = 400;
+
+/**
+ * A market's title for people: the resolver's sentence, with a Perpl window's block numbers turned into
+ * estimated clock times (the same wording as the app). The exact sentence stays in `rule`.
+ */
+export function marketTitleText(
+  m: Pick<MarketInfo, "rule" | "template" | "id">,
+  clock: ChainClock | null,
+): string {
+  if (!m.rule) return `${m.template} market #${m.id}`;
+  return friendlyQuestion(
+    m.rule,
+    clock ? { blockNumber: clock.block, timestamp: clock.timestamp, msPerBlock: clock.msPerBlock } : null,
+  );
+}
 
 /** The chain head and its measured block time, cached for 30 seconds (the block time for 10 minutes). */
 export async function chainClock(deps: ApiDeps): Promise<ChainClock> {
