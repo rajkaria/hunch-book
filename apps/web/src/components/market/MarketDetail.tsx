@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import type { Address } from "viem";
-import { appNetworkLabel } from "@/lib/config";
+import { isSeededByUs } from "@/lib/chain/landing";
+import { appDeployment, appNetworkLabel } from "@/lib/config";
 import { MARKET_WILL_SHOW } from "@/lib/copy";
 import { shortAddress } from "@/lib/format";
 import { useChainClock, useMarket, useNow } from "@/lib/hooks";
@@ -14,6 +15,7 @@ import { OrdersPanel } from "../orders/OrdersPanel";
 import { ReferralBindPrompt } from "../referral/ReferralBindPrompt";
 import { ShareMarket } from "../referral/ShareMarket";
 import { EmptyState, ErrorState, LoadingRows, NotDeployed } from "../states";
+import { MarketTape } from "../tape/MarketTape";
 import { Badge } from "../ui";
 import { ActionsPanel } from "./ActionsPanel";
 import { BookPanel } from "./BookPanel";
@@ -60,6 +62,10 @@ export function MarketBody({
           <span className="mono">
             <Countdown m={m} clock={clock} now={now} />
           </span>
+          <Link href={`/creator/${m.creator}`}>
+            Created by <span className="mono">{shortAddress(m.creator)}</span>
+            {isSeededByUs(appDeployment, m.creator) ? " (ours)" : ""}
+          </Link>
           <ShareMarket m={m} />
         </div>
         <h1 className={s.headline}>{marketHeadline(m)}</h1>
@@ -75,6 +81,7 @@ export function MarketBody({
         </div>
         <div className={s.main}>
           {m.graduated && m.book ? <BookPanel m={m} /> : null}
+          {m.graduated && m.book ? <MarketTape m={m} /> : null}
           <GraduationPanel m={m} />
           <TimelinePanel m={m} clock={clock} now={now} />
           <SourcePanel m={m} />

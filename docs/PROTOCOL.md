@@ -327,7 +327,7 @@ deployProxy(uint8 _type, address base, address quote, uint96 sizePrecision, uint
 | Perp ids | BTC 1, MON 10, ETH 20, SOL 31 | BTC 16, ETH 32, SOL 48, MON 64 |
 | Funding interval | 8,571 blocks | 8,571 blocks |
 
-Perp ids are enumerated onchain with `getPerpetualExistsBitmap()` and described by `getPerpetualInfoV2(id)`. `getFundingSumAtBlock` is Perpl's only by-block historical getter; mark price, oracle price and open interest are current-state only. Templates 1 to 6 do not use them; template 7 (building) settles on open interest and mark price from a snapshot it takes itself right after close ([TEMPLATES.md](./TEMPLATES.md#template-7-snapshot)).
+Perp ids are enumerated onchain with `getPerpetualExistsBitmap()` and described by `getPerpetualInfoV2(id)`. `getFundingSumAtBlock` is Perpl's only by-block historical getter; mark price, oracle price and open interest are current-state only. Templates 1 to 6 do not use them; template 7 (live on testnet) settles on open interest and mark price from a snapshot it takes itself right after close ([TEMPLATES.md](./TEMPLATES.md#template-7-snapshot)).
 
 ### 8.3 Price feeds
 

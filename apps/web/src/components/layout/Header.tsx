@@ -4,6 +4,7 @@ import { Brand } from "./Brand";
 import s from "./layout.module.css";
 import { MobileNav } from "./MobileNav";
 import { NavLinks } from "./NavLinks";
+import { NetworkSwitch } from "./NetworkSwitch";
 
 export function Header() {
   return (
@@ -12,6 +13,7 @@ export function Header() {
         <Brand />
         <NavLinks />
         <div className={s.wallet}>
+          <NetworkSwitch />
           <ConnectButton />
           <MobileNav networkStatus={isDeployed(appDeployment) ? "live" : "not deployed yet"} />
         </div>

@@ -1,3 +1,4 @@
+import { formatInt } from "@/lib/format";
 import type { TxRecord } from "@/lib/wallet/useTxRunner";
 import { TxLink } from "../ui";
 import s from "./market.module.css";
@@ -21,6 +22,12 @@ export function TxList({ txs }: { txs: TxRecord[] }) {
               {STATE[tx.status].text}
             </span>{" "}
             <TxLink hash={tx.hash} />
+            {tx.includedMs !== undefined ? (
+              <span title="Measured in your browser: from your wallet's signature to the receipt.">
+                {" "}
+                · included in {formatInt(tx.includedMs)} ms
+              </span>
+            ) : null}
           </span>
         </li>
       ))}
