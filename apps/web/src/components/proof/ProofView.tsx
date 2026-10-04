@@ -148,7 +148,7 @@ function WalletsPanel({ data }: { data: ProofModel }) {
 function RecentFillsFromChain({ listed }: { listed: ProofModel["listed"] }) {
   const books = useMemo(() => (listed ? booksOf(listed) : null), [listed]);
   const tape = useTape({ books, limit: 200 });
-  const data = tape.data?.source === "chain" ? tape.data.data : null;
+  const data = tape.data?.data ?? null;
   if (!books || books.length === 0) {
     return <p className={s.note}>No market has graduated to a book yet, so there are no fills to count.</p>;
   }
@@ -157,7 +157,9 @@ function RecentFillsFromChain({ listed }: { listed: ProofModel["listed"] }) {
   return (
     <div className={s.recent}>
       <p className={s.recentTitle}>
-        Meanwhile, from the chain: fills in {data.window ? windowText(data.window) : "recent blocks"}
+        {data.window
+          ? `Meanwhile, from the chain: fills in ${windowText(data.window)}`
+          : "Meanwhile: the newest fills the indexer returned"}
       </p>
       <div className={s.grid}>
         <Stat
@@ -543,7 +545,15 @@ function SolvencyPanel({ data, source }: { data: ProofModel; source: DataSource 
 function DailyPanel({ data }: { data: ProofModel }) {
   if (data.daily.length === 0) return null;
   return (
-    <Panel title="Last 30 days" labelledBy="proof-daily">
+    <Panel
+      title="Last 30 days"
+      labelledBy="proof-daily"
+      aside={
+        <a className={s.subtle} href={QUERIES_URL} target="_blank" rel="noreferrer">
+          indexer: DailyStats ↗
+        </a>
+      }
+    >
       <div className={s.scroll}>
         <table className={s.table}>
           <caption className="visually-hidden">Activity per UTC day</caption>

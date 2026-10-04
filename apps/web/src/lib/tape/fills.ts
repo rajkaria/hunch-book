@@ -270,8 +270,10 @@ export class TapeScanner {
       return fill ? [fill] : [];
     });
     if (found.length === 0) return;
-    const seen = new Set(this.fills.map((f) => f.id));
-    const merged = [...this.fills, ...found.filter((f) => !seen.has(f.id))].sort(byNewest);
+    // One entry per log, even if an RPC answers overlapping ranges.
+    const byId = new Map(this.fills.map((f) => [f.id, f]));
+    for (const f of found) if (!byId.has(f.id)) byId.set(f.id, f);
+    const merged = [...byId.values()].sort(byNewest);
     this.fills = merged.slice(0, this.opts.keep ?? TAPE_KEEP);
     await this.stampTimes();
   }

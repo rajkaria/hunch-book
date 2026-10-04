@@ -8,7 +8,7 @@ import { appNetworkLabel } from "@/lib/config";
 import { formatChance, formatInt, formatUsdc } from "@/lib/format";
 import { useMarkets, useNow } from "@/lib/hooks";
 import type { MarketView } from "@/lib/market/types";
-import { type Fill, isBetweenOthers, tapeStats } from "@/lib/tape/fills";
+import { type Fill, tapeStats } from "@/lib/tape/fills";
 import { booksOf, TAPE_POLL_MS, type TapeData, useTape } from "@/lib/tape/hooks";
 import { useTxTimings } from "@/lib/wallet/txTiming";
 import { SourceTag } from "../indexer/SourceTag";
@@ -76,16 +76,16 @@ export function TapeView({ market }: { market?: Address }) {
   const markets = useMarkets();
   const list: MarketView[] | null = markets.data?.status === "ok" ? markets.data.data.markets : null;
   const books = useMemo(() => (list ? booksOf(list) : markets.isError ? [] : null), [list, markets.isError]);
-  const tape = useTape({ market, books, limit: 50 });
+  const [othersOnly, setOthersOnly] = useState(false);
+  const tape = useTape({ market, books, limit: 50, othersOnly });
   const now = useNow();
   const timings = useTxTimings();
   const user = useConnection().address;
-  const [othersOnly, setOthersOnly] = useState(false);
   const focus = market ? list?.find((m) => m.address.toLowerCase() === market.toLowerCase()) : undefined;
 
   if (markets.data?.status === "not-deployed") return null;
   const data = tape.data?.data;
-  const fills = data ? (othersOnly ? data.fills.filter(isBetweenOthers) : data.fills) : [];
+  const fills = data?.fills ?? [];
 
   return (
     <Panel
