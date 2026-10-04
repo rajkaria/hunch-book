@@ -1,0 +1,663 @@
+# Hunch Book indexer schema (docs/INDEXER.md, docs/PROTOCOL.md section 9.3).
+#
+# Conventions:
+# - Ids of contracts and wallets are lowercase addresses. Ids of event records are "<block>-<logIndex>".
+# - Every USDC and outcome-token amount is in base units (6 decimals) as a BigInt: 1 USDC = 1000000.
+# - Prices ending in E6 are USDC base units per whole YES token (0.416 USDC = 416000).
+# - Timestamps are unix seconds. Block numbers and timestamps are BigInt.
+# - Activity by Hunch Book's own wallets (maker bot, keeper, guardian, fee recipient) and by wallets
+#   our wallets paid to seed is labelled as ours: see Wallet.ourRole and the *Ours / *OurMaker fields.
+
+enum MarketStage {
+  "Staking open or locked, never graduated. Lock and close are derived from the clock by readers."
+  Pool
+  "Graduated to a Kuru book. Trading until close, then settlement."
+  Graduated
+  Settled
+  Voided
+}
+
+enum Side {
+  Yes
+  No
+}
+
+enum Outcome {
+  Unresolved
+  Yes
+  No
+}
+
+"Why a wallet's activity counts as ours."
+enum OurRole {
+  None
+  Maker
+  Keeper
+  Guardian
+  FeeRecipient
+  "A wallet whose stake one of our wallets paid for (for example the testnet seed stakers)."
+  Seeded
+}
+
+enum RouterTradeKind {
+  BuyYes
+  SellYes
+  BuyNo
+  SellNo
+}
+
+enum BookSource {
+  "The Graduator created the book on Kuru (testnet)."
+  Created
+  "Kuru created the book and someone registered it with the Graduator (mainnet)."
+  Registered
+}
+
+enum BookOrderStatus {
+  Open
+  Filled
+  Cancelled
+}
+
+enum SetFlowKind {
+  Mint
+  Merge
+}
+
+enum PoolPayoutKind {
+  "A winner's pool payout: stake plus winnings, minus the fee."
+  Winnings
+  "A full refund: the market voided, or only one side was staked."
+  Refund
+  "Rounding dust moved to the fee balances after the last winner claimed."
+  Dust
+}
+
+enum VaultEventKind {
+  PoolDeposit
+  PoolGraduate
+  PoolPay
+  Mint
+  Merge
+  Redeem
+  Finalize
+  Void
+  FeeAccrual
+  ProtocolFeeWithdrawal
+  CreatorFeeWithdrawal
+  FlashLoan
+  "USDC transferred into the vault (any reason, including flash-loan repayments)."
+  UsdcIn
+  "USDC transferred out of the vault (any reason, including flash-loan principal)."
+  UsdcOut
+}
+
+type Template {
+  id: ID!
+  templateId: BigInt!
+  resolver: String!
+  minPool: BigInt!
+  minStakers: BigInt!
+  minChanceBps: BigInt!
+  maxChanceBps: BigInt!
+  marketCount: Int!
+  addedAtBlock: BigInt!
+  addedAt: BigInt!
+  addedTx: String!
+  markets: [Market!]! @derivedFrom(field: "template")
+}
+
+type Market {
+  id: ID!
+  "1, 2, 3...: the factory's market number, which also names the tokens (HB1-YES)."
+  number: Int!
+  template: Template!
+  templateId: BigInt!
+  key: String!
+  "abi.encode of the template's parameter struct."
+  params: String!
+  "A one-sentence summary built from the parameters. The resolver's describe() is the exact rule."
+  question: String
+  "BTC, MON, BTC/USD...: from the perp id or price feed, when the deployments file names it."
+  asset: String
+  perpId: BigInt
+  threshold: BigInt
+  priceSource: String
+  feed: String
+  pythId: String
+  strikeE8: BigInt
+  "True when lock and close are block numbers (Perpl markets), false for unix seconds."
+  blockClock: Boolean
+  lockAt: BigInt
+  closeAt: BigInt
+  "Unix seconds. Known from the parameters for price markets; read Market.window() for block-clock markets."
+  settleDeadline: BigInt
+  creator: Creator!
+  creatorIsOurs: Boolean!
+  yesToken: String!
+  noToken: String!
+  stage: MarketStage! @index
+  "Pool totals, USDC base units."
+  yesTotal: BigInt!
+  noTotal: BigInt!
+  poolTotal: BigInt!
+  "Pool-phase implied chance of YES, basis points: yesTotal / poolTotal."
+  impliedChanceBps: Int!
+  stakeCount: Int!
+  stakerCount: Int!
+  yesStakerCount: Int!
+  noStakerCount: Int!
+  "Last stake recorded, used to attach the payer from the vault's PoolDeposited in the same transaction."
+  lastStakeId: String
+  book: Book
+  graduated: Boolean!
+  graduatedAt: BigInt
+  graduatedAtBlock: BigInt
+  openingPriceE6: BigInt
+  "Redemption fee per winning token, USDC base units per whole token (PROTOCOL.md section 5.3)."
+  redeemFeeYesE6: BigInt
+  redeemFeeNoE6: BigInt
+  "The vault's redemption fee fraction for the winning side, set at settlement (fee = amount * n / d, rounded up)."
+  redemptionFeeNumerator: BigInt
+  redemptionFeeDenominator: BigInt
+  "Kuru fills on this market's book."
+  fillCount: Int!
+  fillCountOurMaker: Int!
+  volume: BigInt!
+  volumeOurMaker: BigInt!
+  lastPriceE6: BigInt
+  lastFillAt: BigInt
+  routerTradeCount: Int!
+  routerVolume: BigInt!
+  setsMinted: BigInt!
+  setsMerged: BigInt!
+  outcome: Outcome!
+  evidenceHash: String
+  settler: String
+  settledAt: BigInt
+  settledAtBlock: BigInt
+  settleTx: String
+  voidedAt: BigInt
+  firstRedemptionAt: BigInt
+  redemptionCount: Int!
+  redeemedTokens: BigInt!
+  redeemedUsdc: BigInt!
+  redemptionFees: BigInt!
+  poolPaidOut: BigInt!
+  poolFees: BigInt!
+  "The vault's ledger for this market, replayed from its events."
+  vaultPool: BigInt!
+  vaultSets: BigInt!
+  collateralIn: BigInt!
+  collateralOut: BigInt!
+  feesAccrued: BigInt!
+  "collateralIn - collateralOut - vaultPool - vaultSets - feesAccrued. Zero when every event is accounted for."
+  solvencyMargin: BigInt!
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  createdTx: String!
+  stakes: [Stake!]! @derivedFrom(field: "market")
+  stakers: [Staker!]! @derivedFrom(field: "market")
+  positions: [Position!]! @derivedFrom(field: "market")
+  trades: [Trade!]! @derivedFrom(field: "market")
+  routerTrades: [RouterTrade!]! @derivedFrom(field: "market")
+  tokenClaims: [TokenClaim!]! @derivedFrom(field: "market")
+  poolPayouts: [PoolPayout!]! @derivedFrom(field: "market")
+  redemptions: [Redemption!]! @derivedFrom(field: "market")
+  setFlows: [SetFlow!]! @derivedFrom(field: "market")
+  vaultEvents: [VaultEvent!]! @derivedFrom(field: "market")
+}
+
+type OutcomeToken {
+  id: ID!
+  market: Market!
+  side: Side!
+}
+
+"Any address seen by the indexer. Only wallets that staked or traded count in the stats."
+type Wallet {
+  id: ID!
+  ourRole: OurRole!
+  isOurs: Boolean! @index
+  "Staked or traded at least once: counted in ProtocolStats.wallets."
+  participant: Boolean!
+  staked: Boolean!
+  traded: Boolean!
+  firstSeenAt: BigInt!
+  firstSeenAtBlock: BigInt!
+  firstActiveAt: BigInt
+  lastActiveAt: BigInt
+  stakeCount: Int!
+  stakedUsdc: BigInt!
+  "Kuru fills where this wallet was the taker (directly or through the router) or the maker."
+  fillCount: Int!
+  fillVolume: BigInt!
+  routerTradeCount: Int!
+  routerVolume: BigInt!
+  marketsCreated: Int!
+  redemptionCount: Int!
+  redeemedUsdc: BigInt!
+  stakes: [Stake!]! @derivedFrom(field: "wallet")
+  positions: [Position!]! @derivedFrom(field: "wallet")
+}
+
+type Stake {
+  id: ID!
+  market: Market!
+  wallet: Wallet!
+  staker: Staker!
+  side: Side!
+  amount: BigInt!
+  yesTotalAfter: BigInt!
+  noTotalAfter: BigInt!
+  "Who paid the USDC: the wallet itself, a third party (stakeFor), or the wallet through a relayer."
+  payer: String
+  relayed: Boolean!
+  paidByUs: Boolean!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+  logIndex: Int!
+}
+
+"One wallet's stake in one market."
+type Staker {
+  id: ID!
+  market: Market!
+  wallet: Wallet!
+  yesStake: BigInt!
+  noStake: BigInt!
+  stakeCount: Int!
+  firstStakeAt: BigInt!
+  tokensClaimed: Boolean!
+  yesClaimed: BigInt!
+  noClaimed: BigInt!
+  poolClaimed: Boolean!
+  poolPaid: BigInt!
+  poolFee: BigInt!
+}
+
+type Graduation {
+  id: ID!
+  market: Market!
+  total: BigInt!
+  yesTotal: BigInt!
+  noTotal: BigInt!
+  openingPriceE6: BigInt!
+  book: String!
+  stakerCount: Int!
+  caller: String!
+  callerIsOurs: Boolean!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+type TokenClaim {
+  id: ID!
+  market: Market!
+  wallet: Wallet!
+  side: Side!
+  amount: BigInt!
+  "The transaction sender: the staker, or whoever pushed the claim (claimTokensFor)."
+  caller: String!
+  pushedByUs: Boolean!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+"Rounding dust of outcome tokens sent to the fee recipient after the last claim on a side."
+type DustSweep {
+  id: ID!
+  market: Market!
+  side: Side!
+  amount: BigInt!
+  to: String!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+type Book {
+  id: ID!
+  market: Market!
+  source: BookSource!
+  registrar: String
+  fillCount: Int!
+  fillCountOurMaker: Int!
+  volume: BigInt!
+  volumeOurMaker: BigInt!
+  lastPriceE6: BigInt
+  orderCount: Int!
+  orderCountOurMaker: Int!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+  trades: [Trade!]! @derivedFrom(field: "book")
+  orders: [BookOrder!]! @derivedFrom(field: "book")
+}
+
+"One fill on a Hunch Book market's Kuru book (Kuru's Trade event)."
+type Trade @index(fields: ["market", ["timestamp", "DESC"]]) {
+  id: ID!
+  market: Market!
+  book: Book!
+  orderId: BigInt!
+  maker: String! @index
+  "Kuru's taker: the router for trades through Hunch Book's router."
+  taker: String!
+  txOrigin: String!
+  "The wallet on the taking side: the transaction sender when the taker is our router, else the taker."
+  trader: String! @index
+  viaRouter: Boolean!
+  "True when the taker bought YES (lifted an ask), false when the taker sold YES (hit a bid)."
+  takerBuysYes: Boolean!
+  "Kuru's price, 18 decimals."
+  priceE18: BigInt!
+  priceE6: BigInt!
+  "YES base units filled."
+  size: BigInt!
+  "USDC base units: size times price, rounded down, before any Kuru fee."
+  notional: BigInt!
+  "The maker order's size left after this fill."
+  makerRemaining: BigInt!
+  "The maker is Hunch Book's maker bot (deployments wallets.maker)."
+  isOurMaker: Boolean!
+  makerIsOurs: Boolean!
+  traderIsOurs: Boolean!
+  "Neither side is one of our wallets."
+  betweenOthers: Boolean!
+  block: BigInt!
+  timestamp: BigInt! @index
+  tx: String!
+  logIndex: Int!
+}
+
+"A trade through Hunch Book's router (its Trade event). Each one fills on the book as one or more Trades."
+type RouterTrade {
+  id: ID!
+  market: Market!
+  user: Wallet!
+  kind: RouterTradeKind!
+  "USDC in for buys, tokens in for sells."
+  amountIn: BigInt!
+  "Tokens out for buys, USDC out for sells."
+  amountOut: BigInt!
+  "The USDC side of the trade."
+  usdc: BigInt!
+  "The token side of the trade."
+  tokens: BigInt!
+  "Average USDC per whole token of the traded side (YES for BuyYes and SellYes, NO for BuyNo and SellNo)."
+  priceE6: BigInt!
+  book: String!
+  userIsOurs: Boolean!
+  block: BigInt!
+  timestamp: BigInt! @index
+  tx: String!
+}
+
+"A limit order on one of our books (Kuru's OrderCreated), kept up to date by fills and cancels."
+type BookOrder {
+  id: ID!
+  book: Book!
+  market: Market!
+  orderId: BigInt!
+  owner: String! @index
+  isBuy: Boolean!
+  priceE6: BigInt!
+  size: BigInt!
+  remaining: BigInt!
+  status: BookOrderStatus! @index
+  isOurMaker: Boolean!
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  updatedAt: BigInt!
+  tx: String!
+}
+
+"One wallet in one market: token balances from transfers, plus every USDC flow the indexer can attribute."
+type Position {
+  id: ID!
+  market: Market!
+  wallet: Wallet!
+  yesBalance: BigInt!
+  noBalance: BigInt!
+  yesStaked: BigInt!
+  noStaked: BigInt!
+  yesClaimed: BigInt!
+  noClaimed: BigInt!
+  poolPaid: BigInt!
+  poolFee: BigInt!
+  redeemedYes: BigInt!
+  redeemedNo: BigInt!
+  redeemedUsdc: BigInt!
+  redemptionFees: BigInt!
+  setsMinted: BigInt!
+  setsMerged: BigInt!
+  "USDC this wallet paid in: stakes it paid for, sets it minted, router buys, direct book buys and maker bids filled."
+  usdcSpent: BigInt!
+  "USDC this wallet received: pool payouts, merges, redemptions, router sells, direct book sells and maker asks filled."
+  usdcReceived: BigInt!
+  updatedAt: BigInt!
+}
+
+type Settlement {
+  id: ID!
+  market: Market!
+  voided: Boolean!
+  outcome: Outcome!
+  evidenceHash: String
+  settler: String
+  settlerIsOurs: Boolean!
+  "The transaction sender."
+  caller: String!
+  graduated: Boolean!
+  "Settled YES before close from a touch proof (time-clock markets only)."
+  early: Boolean!
+  "Settlement time minus close, for time-clock markets."
+  latencySeconds: BigInt
+  "Settlement block minus close block, for block-clock markets."
+  latencyBlocks: BigInt
+  redemptionFeeNumerator: BigInt
+  redemptionFeeDenominator: BigInt
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+type Redemption {
+  id: ID!
+  market: Market!
+  wallet: Wallet!
+  to: String!
+  side: Side!
+  amount: BigInt!
+  paid: BigInt!
+  fee: BigInt!
+  voided: Boolean!
+  secondsAfterSettlement: BigInt
+  block: BigInt!
+  timestamp: BigInt! @index
+  tx: String!
+}
+
+type PoolPayout {
+  id: ID!
+  market: Market!
+  "The paid wallet. Unset for dust, which goes to the fee balances."
+  wallet: Wallet
+  kind: PoolPayoutKind!
+  paid: BigInt!
+  fee: BigInt!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+"A complete-set mint (1 USDC in, 1 YES + 1 NO out) or merge (the reverse)."
+type SetFlow {
+  id: ID!
+  market: Market!
+  kind: SetFlowKind!
+  "The payer for a mint, the holder whose tokens were burned for a merge."
+  account: String!
+  to: String!
+  amount: BigInt!
+  viaRouter: Boolean!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+"Every vault ledger event and every USDC transfer into or out of the vault."
+type VaultEvent {
+  id: ID!
+  kind: VaultEventKind! @index
+  market: Market
+  account: String
+  amount: BigInt!
+  fee: BigInt!
+  block: BigInt!
+  timestamp: BigInt! @index
+  tx: String!
+}
+
+"Transfers of YES and NO tokens."
+type TokenTransfer {
+  id: ID!
+  market: Market!
+  side: Side!
+  from: String! @index
+  to: String! @index
+  amount: BigInt!
+  block: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+type Creator {
+  id: ID!
+  isOurs: Boolean!
+  marketCount: Int!
+  feesAccrued: BigInt!
+  feesWithdrawn: BigInt!
+  feesOwed: BigInt!
+  markets: [Market!]! @derivedFrom(field: "creator")
+}
+
+"Totals for the whole protocol on one chain. Id: the chain id. These feed the proof page."
+type ProtocolStats {
+  id: ID!
+  chainId: Int!
+  marketsCreated: Int!
+  "Markets by stage (Pool includes locked pools; Graduated includes closed books awaiting settlement)."
+  marketsPool: Int!
+  marketsGraduated: Int!
+  marketsSettled: Int!
+  marketsVoided: Int!
+  "Markets that ever graduated."
+  marketsGraduatedTotal: Int!
+  "Distinct wallets that staked or traded, and how many of them are ours."
+  wallets: Int!
+  ourWallets: Int!
+  externalWallets: Int!
+  stakerWallets: Int!
+  traderWallets: Int!
+  stakeCount: Int!
+  stakedUsdc: BigInt!
+  stakeCountOurs: Int!
+  stakedUsdcOurs: BigInt!
+  "Kuru fills on our books."
+  fillCount: Int!
+  fillCountOurMaker: Int!
+  "Fills where the taking side is one of our wallets."
+  fillCountOurTrader: Int!
+  fillCountBetweenOthers: Int!
+  volume: BigInt!
+  volumeOurMaker: BigInt!
+  volumeBetweenOthers: BigInt!
+  "Share of fills, and of volume, where our maker bot was the maker, in basis points."
+  ourMakerShareBps: Int!
+  ourMakerVolumeShareBps: Int!
+  routerTradeCount: Int!
+  routerVolume: BigInt!
+  orderCount: Int!
+  orderCountOurMaker: Int!
+  "Settlement latency: settlement time minus close. Seconds for time-clock markets, blocks for block-clock ones."
+  settlementsTimed: Int!
+  settlementLatencySecondsTotal: BigInt!
+  avgSettlementLatencySeconds: BigInt
+  settlementsBlockClock: Int!
+  settlementLatencyBlocksTotal: BigInt!
+  avgSettlementLatencyBlocks: BigInt
+  earlySettlements: Int!
+  redemptionCount: Int!
+  redeemedTokens: BigInt!
+  redeemedUsdc: BigInt!
+  redemptionFees: BigInt!
+  "Time from settlement to the first redemption, over markets that have one."
+  marketsRedeemed: Int!
+  firstRedemptionLatencySecondsTotal: BigInt!
+  avgSecondsToFirstRedemption: BigInt
+  poolPayoutCount: Int!
+  poolPaidOut: BigInt!
+  poolFees: BigInt!
+  setsMinted: BigInt!
+  setsMerged: BigInt!
+  flashLoanCount: Int!
+  flashLoanVolume: BigInt!
+  protocolFeesAccrued: BigInt!
+  protocolFeesWithdrawn: BigInt!
+  creatorFeesAccrued: BigInt!
+  creatorFeesWithdrawn: BigInt!
+  "Vault ledger, replayed from its events: pools + sets + fees not yet withdrawn."
+  vaultPool: BigInt!
+  vaultSets: BigInt!
+  vaultFeesOwed: BigInt!
+  vaultObligations: BigInt!
+  "USDC transfers into and out of the vault, and the balance they add up to."
+  vaultUsdcIn: BigInt!
+  vaultUsdcOut: BigInt!
+  vaultUsdcBalance: BigInt!
+  "vaultUsdcBalance - vaultObligations. Must never be negative (PROTOCOL.md section 5.1)."
+  solvencyMargin: BigInt!
+  updatedAt: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+"Activity on one UTC day. Id: <chainId>-<YYYY-MM-DD>."
+type DailyStats {
+  id: ID!
+  chainId: Int!
+  date: String! @index
+  dayStart: BigInt!
+  marketsCreated: Int!
+  marketsGraduated: Int!
+  marketsSettled: Int!
+  marketsVoided: Int!
+  stakeCount: Int!
+  stakedUsdc: BigInt!
+  fillCount: Int!
+  fillCountOurMaker: Int!
+  fillCountBetweenOthers: Int!
+  volume: BigInt!
+  volumeOurMaker: BigInt!
+  routerTradeCount: Int!
+  routerVolume: BigInt!
+  redemptionCount: Int!
+  redeemedUsdc: BigInt!
+  "Distinct wallets that staked or traded that day, how many of them are ours, and how many were new."
+  activeWallets: Int!
+  activeOurWallets: Int!
+  newWallets: Int!
+  vaultUsdcIn: BigInt!
+  vaultUsdcOut: BigInt!
+}
+
+"Marks a wallet as active on a day, so DailyStats counts it once. Id: <date>-<wallet>."
+type WalletDay {
+  id: ID!
+  date: String!
+  wallet: String!
+}

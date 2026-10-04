@@ -1,0 +1,156 @@
+# One market with its latest fills, stakes and router trades, its graduation and its settlement.
+# $id is the market address in lowercase.
+query MarketDetail($id: String!, $fills: Int = 50, $stakes: Int = 50) {
+  Market_by_pk(id: $id) {
+    id
+    number
+    templateId
+    key
+    params
+    question
+    asset
+    perpId
+    threshold
+    priceSource
+    feed
+    pythId
+    strikeE8
+    blockClock
+    lockAt
+    closeAt
+    settleDeadline
+    stage
+    yesToken
+    noToken
+    yesTotal
+    noTotal
+    poolTotal
+    impliedChanceBps
+    stakeCount
+    stakerCount
+    yesStakerCount
+    noStakerCount
+    graduated
+    graduatedAt
+    openingPriceE6
+    redeemFeeYesE6
+    redeemFeeNoE6
+    fillCount
+    fillCountOurMaker
+    volume
+    volumeOurMaker
+    lastPriceE6
+    routerTradeCount
+    routerVolume
+    setsMinted
+    setsMerged
+    outcome
+    evidenceHash
+    settler
+    settledAt
+    settledAtBlock
+    settleTx
+    voidedAt
+    redemptionCount
+    redeemedUsdc
+    poolPaidOut
+    vaultPool
+    vaultSets
+    solvencyMargin
+    createdAt
+    createdTx
+    creatorIsOurs
+    creator {
+      id
+      isOurs
+      feesAccrued
+    }
+    template {
+      id
+      resolver
+      minPool
+      minStakers
+      minChanceBps
+      maxChanceBps
+    }
+    book {
+      id
+      source
+      registrar
+      fillCount
+      volume
+      lastPriceE6
+    }
+    trades(order_by: [{ block: desc }, { logIndex: desc }], limit: $fills) {
+      id
+      block
+      timestamp
+      tx
+      priceE6
+      size
+      notional
+      takerBuysYes
+      maker
+      trader
+      viaRouter
+      isOurMaker
+      makerIsOurs
+      traderIsOurs
+      betweenOthers
+    }
+    stakes(order_by: [{ block: desc }, { logIndex: desc }], limit: $stakes) {
+      id
+      side
+      amount
+      payer
+      relayed
+      paidByUs
+      timestamp
+      tx
+      wallet {
+        id
+        isOurs
+        ourRole
+      }
+    }
+    routerTrades(order_by: { timestamp: desc }, limit: $fills) {
+      id
+      kind
+      usdc
+      tokens
+      priceE6
+      userIsOurs
+      timestamp
+      tx
+      user {
+        id
+      }
+    }
+  }
+  Graduation_by_pk(id: $id) {
+    total
+    yesTotal
+    noTotal
+    openingPriceE6
+    book
+    stakerCount
+    caller
+    callerIsOurs
+    block
+    timestamp
+    tx
+  }
+  Settlement_by_pk(id: $id) {
+    voided
+    outcome
+    evidenceHash
+    settler
+    settlerIsOurs
+    early
+    latencySeconds
+    latencyBlocks
+    block
+    timestamp
+    tx
+  }
+}

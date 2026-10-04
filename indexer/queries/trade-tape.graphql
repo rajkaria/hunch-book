@@ -1,0 +1,30 @@
+# The live trade tape: the last $limit fills on Hunch Book books, newest first, each with its block
+# number and transaction. Narrow it with $where, for example { market_id: { _eq: "0x..." } } or
+# { betweenOthers: { _eq: true } } for fills where neither side is one of our wallets.
+query TradeTape($where: Trade_bool_exp = {}, $limit: Int = 50) {
+  Trade(where: $where, order_by: [{ block: desc }, { logIndex: desc }], limit: $limit) {
+    id
+    block
+    timestamp
+    tx
+    logIndex
+    priceE6
+    size
+    notional
+    takerBuysYes
+    maker
+    taker
+    trader
+    viaRouter
+    isOurMaker
+    makerIsOurs
+    traderIsOurs
+    betweenOthers
+    market {
+      id
+      number
+      question
+      asset
+    }
+  }
+}
