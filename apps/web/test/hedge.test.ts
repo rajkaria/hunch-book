@@ -356,7 +356,13 @@ describe("a new market when none fits", () => {
 
   it("builds the create link in the create form's terms", () => {
     expect(
-      createPrefillUrl({ asset: "BTC", startUnix: 1_800_000_000.4, endUnix: 1_800_086_400, threshold: "-0.5", side: "no" }),
+      createPrefillUrl({
+        asset: "BTC",
+        startUnix: 1_800_000_000.4,
+        endUnix: 1_800_086_400,
+        threshold: "-0.5",
+        side: "no",
+      }),
     ).toBe("/create?template=1&asset=BTC&start=1800000000&end=1800086400&threshold=-0.5&side=no");
   });
 
