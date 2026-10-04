@@ -368,6 +368,17 @@ describe("with contracts deployed", () => {
     expect(screen.getAllByText("40.00").length).toBeGreaterThan(0);
   });
 
+  it("/portfolio works out profit and loss from chain state, with a CSV of the history", async () => {
+    state.portfolio = ok([makeEntry()]);
+    await renderWithProviders(<PortfolioPage />, { connected: true });
+    expect(await screen.findByText("Rebuilt from chain state")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Profit and loss" })).toBeTruthy();
+    expect(screen.getAllByText("Live from chain").length).toBeGreaterThan(0);
+    // An open pool has no price yet.
+    expect(screen.getByText("1 without a price left out")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download history (CSV)" })).toBeTruthy();
+  });
+
   it("/portfolio says when the wallet has nothing", async () => {
     state.portfolio = ok([]);
     await renderWithProviders(<PortfolioPage />, { connected: true });
