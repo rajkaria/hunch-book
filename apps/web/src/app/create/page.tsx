@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { NotDeployed } from "@/components/states";
 import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
 import { CREATE_DESCRIPTION, CREATE_WILL_SHOW } from "@/lib/create/copy";
+import { parseCreatePrefill } from "@/lib/create/prefill";
 import { parseTemplateParam } from "@/lib/create/templates";
 
 export const metadata: Metadata = {
@@ -16,7 +17,8 @@ export default async function CreatePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { template } = await searchParams;
+  const query = await searchParams;
+  const { template } = query;
   return (
     <div className="page">
       <PageHeader eyebrow={appNetworkLabel} title="Create a market">
@@ -27,7 +29,7 @@ export default async function CreatePage({
         </p>
       </PageHeader>
       {isDeployed(appDeployment) ? (
-        <CreateFlow initialTemplate={parseTemplateParam(template)} />
+        <CreateFlow initialTemplate={parseTemplateParam(template)} prefill={parseCreatePrefill(query)} />
       ) : (
         <NotDeployed willShow={CREATE_WILL_SHOW} />
       )}

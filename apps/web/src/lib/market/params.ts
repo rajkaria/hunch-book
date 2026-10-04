@@ -3,7 +3,9 @@ import {
   type Deployment,
   decodePerplFundingParams,
   decodePriceAtTimeParams,
+  decodeSnapshotParams,
   PriceSource,
+  templateLabel as sharedTemplateLabel,
   TemplateId,
 } from "@hunch-book/shared";
 import type { Address, Hex } from "viem";
@@ -15,8 +17,9 @@ export const TEMPLATE_LABEL: Record<number, string> = {
   [TemplateId.PriceAtTime]: "Price at a time",
 };
 
+/** This app's short label, else the shared package's name for templates 3 and up. */
 export function templateLabel(templateId: number): string {
-  return TEMPLATE_LABEL[templateId] ?? `Template ${templateId}`;
+  return TEMPLATE_LABEL[templateId] ?? sharedTemplateLabel(templateId);
 }
 
 /** Decodes a market's params with the shared decoders. Never throws: bad bytes come back as "unknown". */
@@ -27,6 +30,9 @@ export function decodeMarketParams(templateId: number, params: Hex): DecodedPara
     }
     if (templateId === TemplateId.PriceAtTime) {
       return { kind: "price-at-time", params: decodePriceAtTimeParams(params) };
+    }
+    if (templateId === TemplateId.Snapshot) {
+      return { kind: "snapshot", params: decodeSnapshotParams(params) };
     }
   } catch {
     // fall through
@@ -79,6 +85,11 @@ export function fallbackHeadline(deployment: Deployment, decoded: DecodedParams)
     const p = decoded.params;
     const asset = priceAssetName(deployment, decoded) ?? "the asset";
     return `Will ${asset} be at or above ${formatE8Usd(p.strikeE8)} at ${formatUtc(p.closeTime)}?`;
+  }
+  if (decoded.kind === "snapshot") {
+    const p = decoded.params;
+    const cmp = ["above", "at or above", "below", "at or below"][p.comparator] ?? "compared with";
+    return `Will snapshot source ${p.sourceId} read ${cmp} ${p.threshold.toString()} (raw units) in the snapshot taken from ${formatUtc(p.closeTime)}?`;
   }
   return "Market with an unknown template";
 }
@@ -174,6 +185,24 @@ export function describeSource(
       ],
       trust:
         "Pyth's publishers sign the price. Settlement accepts only the first update published at or after the observation time.",
+    };
+  }
+
+  if (decoded.kind === "snapshot") {
+    const p = decoded.params;
+    return {
+      title: "A value read onchain in a snapshot",
+      items: [
+        resolverItem,
+        { label: "Source", value: `id ${p.sourceId} in the resolver's source list`, mono: true },
+        {
+          label: "Snapshot window",
+          value: `${formatUtc(p.closeTime)} to ${formatUtc(p.closeTime + BigInt(p.snapshotWindow))}`,
+        },
+        { label: "Threshold", value: `${p.threshold.toString()} raw units`, mono: true },
+      ],
+      trust:
+        "The resolver reads the value itself, once, in the first snapshot anyone takes inside the window, and keeps it. Whoever takes it first picks the block inside the window. The value is what the source (for Perpl, Perpl's own contract) holds at that moment.",
     };
   }
 

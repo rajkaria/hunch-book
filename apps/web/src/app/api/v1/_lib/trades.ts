@@ -1,0 +1,269 @@
+import { formatUsdc, type MarketInfo } from "@hunch-book/sdk";
+import { kuruOrderBookAbi } from "@hunch-book/shared";
+import { type Address, getAbiItem, type Hex, isAddressEqual } from "viem";
+import { cached } from "./cache";
+import type { ApiDeps } from "./deps";
+import { isOurs } from "./markets";
+
+// Fills on a market's Kuru book. From the indexer when one is configured (complete history); else from
+// Kuru's Trade logs over the last blocks, read in 100-block windows because public Monad RPCs answer
+// eth_getLogs for at most 100 blocks. Kuru's Trade event: isBuy is the taker's side (true when the
+// taker bought YES), price has 18 decimals, filledSize is in YES base units (docs/INDEXER.md).
+
+export interface ApiTrade {
+  block: string;
+  time: string | null;
+  tx: Hex;
+  logIndex: number;
+  /** "buy" when the taker bought YES from a resting ask, "sell" when the taker sold YES into a bid. */
+  takerSide: "buy" | "sell";
+  /** USDC per YES token. */
+  price: string;
+  sizeYes: string;
+  notionalUsdc: string;
+  maker: Address;
+  /** The maker is Hunch Book's own maker bot (deployments `wallets.maker`). */
+  makerIsHunchMaker: boolean;
+  taker: Address;
+  /** The wallet on the taking side: the transaction sender when the taker is the router. */
+  trader: Address;
+  viaRouter: boolean;
+  traderIsHunch: boolean;
+}
+
+export interface TradesResult {
+  source: "indexer" | "logs";
+  trades: ApiTrade[];
+  fromBlock: string | null;
+  toBlock: string | null;
+  note: string | null;
+}
+
+const LOG_WINDOW = 100n;
+export const DEFAULT_LOOKBACK = 1_000n;
+export const MAX_LOOKBACK = 5_000n;
+const CONCURRENCY = 5;
+
+const tradeEvent = getAbiItem({ abi: kuruOrderBookAbi, name: "Trade" });
+const PRICE_SCALE = 10n ** 18n;
+
+function shape(
+  deps: ApiDeps,
+  t: {
+    block: bigint;
+    time: number | null;
+    tx: Hex;
+    logIndex: number;
+    isBuy: boolean;
+    priceE18: bigint;
+    size: bigint;
+    maker: Address;
+    taker: Address;
+    txOrigin: Address;
+  },
+): ApiTrade {
+  const router = deps.deployment.hunchBook.router;
+  const viaRouter = router !== undefined && isAddressEqual(t.taker, router);
+  const trader = viaRouter ? t.txOrigin : t.taker;
+  return {
+    block: t.block.toString(),
+    time: t.time === null ? null : new Date(t.time * 1000).toISOString(),
+    tx: t.tx,
+    logIndex: t.logIndex,
+    takerSide: t.isBuy ? "buy" : "sell",
+    price: formatUsdc(t.priceE18 / 10n ** 12n),
+    sizeYes: formatUsdc(t.size),
+    notionalUsdc: formatUsdc((t.size * t.priceE18) / PRICE_SCALE),
+    maker: t.maker,
+    makerIsHunchMaker: isAddressEqual(t.maker, deps.deployment.wallets.maker),
+    taker: t.taker,
+    trader,
+    viaRouter,
+    traderIsHunch: isOurs(deps, trader),
+  };
+}
+
+async function inBatches<T, R>(items: T[], size: number, run: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += size)
+    out.push(...(await Promise.all(items.slice(i, i + size).map(run))));
+  return out;
+}
+
+/** Which blocks to read: the last `blocks`, or `blocks` from `fromBlock` on. */
+export interface BlockRange {
+  blocks: bigint;
+  fromBlock: bigint | null;
+}
+
+/** Fills from Kuru's logs over a range of blocks (at most MAX_LOOKBACK), newest first. */
+export async function tradesFromLogs(
+  deps: ApiDeps,
+  book: Address,
+  range: BlockRange,
+  limit: number,
+): Promise<TradesResult> {
+  const client = deps.sdk.context.publicClient;
+  const head = await client.getBlockNumber();
+  const from =
+    range.fromBlock !== null ? range.fromBlock : head > range.blocks ? head - range.blocks + 1n : 0n;
+  const lastWanted = from + range.blocks - 1n;
+  const to = lastWanted < head ? lastWanted : head;
+  const windows: { fromBlock: bigint; toBlock: bigint }[] = [];
+  for (let start = from; start <= to; start += LOG_WINDOW) {
+    const end = start + LOG_WINDOW - 1n;
+    windows.push({ fromBlock: start, toBlock: end > to ? to : end });
+  }
+  const logs = (
+    await inBatches(windows, CONCURRENCY, (w) =>
+      client.getLogs({ address: book, event: tradeEvent, fromBlock: w.fromBlock, toBlock: w.toBlock }),
+    )
+  ).flat();
+  logs.sort(
+    (a, b) => Number((b.blockNumber ?? 0n) - (a.blockNumber ?? 0n)) || (b.logIndex ?? 0) - (a.logIndex ?? 0),
+  );
+  const kept = logs.slice(0, limit);
+  const blocks = [...new Set(kept.map((l) => l.blockNumber as bigint))];
+  const times = new Map<bigint, number>();
+  await inBatches(blocks, CONCURRENCY, async (b) => {
+    const block = await client.getBlock({ blockNumber: b });
+    times.set(b, Number(block.timestamp));
+  });
+  return {
+    source: "logs",
+    fromBlock: from.toString(),
+    toBlock: to.toString(),
+    note:
+      range.fromBlock === null
+        ? `Fills from Kuru's logs over the last ${range.blocks} blocks. Set INDEXER_URL for the full history.`
+        : `Fills from Kuru's logs in blocks ${from} to ${to}.`,
+    trades: kept.map((l) =>
+      shape(deps, {
+        block: l.blockNumber as bigint,
+        time: times.get(l.blockNumber as bigint) ?? null,
+        tx: l.transactionHash as Hex,
+        logIndex: l.logIndex ?? 0,
+        isBuy: l.args.isBuy as boolean,
+        priceE18: l.args.price as bigint,
+        size: BigInt(l.args.filledSize as bigint),
+        maker: l.args.makerAddress as Address,
+        taker: l.args.takerAddress as Address,
+        txOrigin: l.args.txOrigin as Address,
+      }),
+    ),
+  };
+}
+
+const TRADES_QUERY = `query Trades($market: String!, $limit: Int!) {
+  Trade(where: { market_id: { _eq: $market } }, order_by: [{ block: desc }, { logIndex: desc }], limit: $limit) {
+    block timestamp tx logIndex priceE6 size takerBuysYes maker taker trader viaRouter txOrigin
+  }
+}`;
+
+interface IndexerTrade {
+  block: string;
+  timestamp: string;
+  tx: Hex;
+  logIndex: number;
+  priceE6: string;
+  size: string;
+  takerBuysYes: boolean;
+  maker: Address;
+  taker: Address;
+  txOrigin: Address;
+}
+
+/** Fills from the Envio indexer (docs/INDEXER.md), newest first. */
+export async function tradesFromIndexer(
+  deps: ApiDeps,
+  market: Address,
+  limit: number,
+): Promise<TradesResult> {
+  const res = await deps.fetch(deps.indexerUrl as string, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ query: TRADES_QUERY, variables: { market: market.toLowerCase(), limit } }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`The indexer answered HTTP ${res.status}.`);
+  const body = (await res.json()) as { data?: { Trade?: IndexerTrade[] }; errors?: { message: string }[] };
+  if (body.errors?.length || !body.data?.Trade)
+    throw new Error(body.errors?.[0]?.message ?? "The indexer returned no trades.");
+  return {
+    source: "indexer",
+    fromBlock: null,
+    toBlock: null,
+    note: null,
+    trades: body.data.Trade.map((t) =>
+      shape(deps, {
+        block: BigInt(t.block),
+        time: Number(t.timestamp),
+        tx: t.tx,
+        logIndex: t.logIndex,
+        isBuy: t.takerBuysYes,
+        priceE18: BigInt(t.priceE6) * 10n ** 12n,
+        size: BigInt(t.size),
+        maker: t.maker,
+        taker: t.taker,
+        txOrigin: t.txOrigin,
+      }),
+    ),
+  };
+}
+
+/**
+ * The market's fills: the indexer's latest when one is configured, else (or when it fails) Kuru's logs
+ * over the range. An explicit `fromBlock` always reads that range from the logs. Cached for 15 seconds.
+ */
+export async function marketTrades(
+  deps: ApiDeps,
+  m: MarketInfo,
+  range: BlockRange,
+  limit: number,
+): Promise<TradesResult> {
+  if (!m.book)
+    return {
+      source: "logs",
+      trades: [],
+      fromBlock: null,
+      toBlock: null,
+      note: "This market has no book yet.",
+    };
+  const book = m.book;
+  return cached(
+    `trades:${deps.network}:${m.address}:${range.blocks}:${range.fromBlock ?? "head"}:${limit}`,
+    15_000,
+    async () => {
+      if (deps.indexerUrl && range.fromBlock === null) {
+        try {
+          return await tradesFromIndexer(deps, m.address, limit);
+        } catch (e) {
+          const fallback = await tradesFromLogs(deps, book, range, limit);
+          return {
+            ...fallback,
+            note: `The indexer failed (${e instanceof Error ? e.message : "unknown error"}); ${fallback.note}`,
+          };
+        }
+      }
+      return tradesFromLogs(deps, book, range, limit);
+    },
+    deps.now(),
+  );
+}
+
+export const TRADE_CSV_COLUMNS = [
+  "block",
+  "time",
+  "tx",
+  "logIndex",
+  "takerSide",
+  "price",
+  "sizeYes",
+  "notionalUsdc",
+  "maker",
+  "makerIsHunchMaker",
+  "taker",
+  "trader",
+  "viaRouter",
+  "traderIsHunch",
+] as const;

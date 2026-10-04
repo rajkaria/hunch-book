@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "hunch-book": {
+      "command": "node",
+      "args": ["/absolute/path/to/hunch-book/packages/mcp/dist/main.js"],
+      "env": {
+        "HUNCH_MCP_NETWORK": "monad-testnet",
+        "HUNCH_MCP_PRIVATE_KEY": "${AGENT_KEY}",
+        "HUNCH_MCP_MAX_USDC_PER_CALL": "25"
+      }
+    }
+  }
+}

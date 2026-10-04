@@ -10,6 +10,7 @@ import { marketChance, parseUsdcInput, previewStake, validateStake } from "@/lib
 import type { MarketView } from "@/lib/market/types";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, useTxRunner } from "@/lib/wallet/useTxRunner";
+import { GaslessStake } from "../account/GaslessStake";
 import { Button, Panel } from "../ui";
 import { ConnectButton } from "../wallet/ConnectButton";
 import { LowBalanceFaucet } from "../wallet/Faucet";
@@ -19,10 +20,11 @@ import { TxList } from "./TxList";
 
 const SIDE_NAME: Record<Side, string> = { [Side.Yes]: "YES", [Side.No]: "NO" };
 
-export function StakeTicket({ m }: { m: MarketView }) {
+/** `initialSide` preselects YES or NO, for example when the swipe feed opens the ticket. */
+export function StakeTicket({ m, initialSide = Side.Yes }: { m: MarketView; initialSide?: Side }) {
   const open = m.phase === Phase.Pool;
   const [tab, setTab] = useState<"stake" | "trade">(open || !m.graduated ? "stake" : "trade");
-  const [side, setSide] = useState<Side>(Side.Yes);
+  const [side, setSide] = useState<Side>(initialSide);
   const [input, setInput] = useState("");
 
   const wallet = useAppChain();
@@ -165,7 +167,7 @@ export function StakeTicket({ m }: { m: MarketView }) {
       </div>
 
       {tab === "trade" ? (
-        <TradeTicket m={m} />
+        <TradeTicket m={m} initialSide={initialSide} />
       ) : (
         <div role="tabpanel">
           {!open ? (
@@ -258,6 +260,15 @@ export function StakeTicket({ m }: { m: MarketView }) {
             <LowBalanceFaucet balance={usdc.data?.balance ?? null} need={amount} />
           ) : null}
           {action}
+          {open ? (
+            <GaslessStake
+              m={m}
+              side={side}
+              amount={amount}
+              ready={wallet.onAppChain && amount !== null && !problem}
+              onDone={() => setInput("")}
+            />
+          ) : null}
           {tx.error ? (
             <p className={s.txError} role="alert">
               {tx.error}

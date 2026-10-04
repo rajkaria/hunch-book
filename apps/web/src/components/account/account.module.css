@@ -1,0 +1,70 @@
+/* Passkey accounts and gas help. Tokens only: var(--...) from globals.css. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.note {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.small {
+  font-size: var(--text-xs);
+  color: var(--subtle);
+}
+
+.error {
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+
+.ok {
+  font-size: var(--text-xs);
+  color: var(--accent);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+
+.boxTitle {
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+
+.remembered {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--subtle);
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,7 @@
+# Written by the running notifier; never committed (subscriptions hold Telegram chat ids).
+.subscriptions.json
+.subscriptions.json.tmp
+.notifier-state.json
+.notifier-state.json.tmp
+health.json
+health.json.tmp

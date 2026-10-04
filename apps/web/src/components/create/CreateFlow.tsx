@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { appNetworkLabel } from "@/lib/config";
 import { EMPTY_RESULT, type FormResult } from "@/lib/create/build";
 import { useCreateConfig, useExistingMarket, usePreview } from "@/lib/create/hooks";
+import type { CreatePrefill } from "@/lib/create/prefill";
 import { availableTemplates, type CreateTemplate } from "@/lib/create/templates";
 import { useNow } from "@/lib/hooks";
 import { EmptyState, ErrorState, LoadingRows } from "../states";
@@ -14,6 +15,7 @@ import { ParlayForm } from "./ParlayForm";
 import { PerplForm } from "./PerplForm";
 import { PreviewPanel } from "./PreviewPanel";
 import { PriceForm } from "./PriceForm";
+import { SnapshotForm } from "./SnapshotForm";
 import { TemplatePicker } from "./TemplatePicker";
 import { TouchForm } from "./TouchForm";
 
@@ -68,17 +70,19 @@ function TemplateForm({
   resolver,
   now,
   onResult,
+  prefill,
 }: {
   template: CreateTemplate;
   resolver: `0x${string}`;
   now: number;
   onResult: (r: FormResult) => void;
+  prefill?: CreatePrefill;
 }) {
   switch (template.kind) {
     case "perpl-funding":
-      return <PerplForm now={now} rule="window" resolver={resolver} onResult={onResult} />;
+      return <PerplForm now={now} rule="window" resolver={resolver} onResult={onResult} prefill={prefill} />;
     case "perpl-spike":
-      return <PerplForm now={now} rule="spike" resolver={resolver} onResult={onResult} />;
+      return <PerplForm now={now} rule="spike" resolver={resolver} onResult={onResult} prefill={prefill} />;
     case "price-at-time":
       return <PriceForm now={now} rule="at" resolver={resolver} onResult={onResult} />;
     case "price-range":
@@ -87,13 +91,22 @@ function TemplateForm({
       return <TouchForm now={now} resolver={resolver} onResult={onResult} />;
     case "parlay":
       return <ParlayForm now={now} resolver={resolver} onResult={onResult} />;
+    case "snapshot":
+      return <SnapshotForm now={now} resolver={resolver} onResult={onResult} />;
     default:
       return null;
   }
 }
 
 /** /create: pick a template, fill its parameters, preview the exact rule, make the first stake. */
-export function CreateFlow({ initialTemplate }: { initialTemplate: number | null }) {
+export function CreateFlow({
+  initialTemplate,
+  prefill,
+}: {
+  initialTemplate: number | null;
+  /** Values handed over in the query string; used only for the template the link named. */
+  prefill?: CreatePrefill;
+}) {
   const config = useCreateConfig();
   const now = useNow(30_000);
   const [templateId, setTemplateId] = useState<number | null>(initialTemplate);
@@ -104,6 +117,7 @@ export function CreateFlow({ initialTemplate }: { initialTemplate: number | null
   const templates = availableTemplates(registered);
   const selected = templates.find((t) => t.id === templateId) ?? null;
   const registration = selected && config.data ? config.data.templates[selected.id] : undefined;
+  const activePrefill = selected && selected.id === initialTemplate ? prefill : undefined;
 
   const preview = usePreview(registration?.resolver, result.params);
   const existing = useExistingMarket(config.data?.factory, selected?.id ?? null, result.params);
@@ -176,6 +190,7 @@ export function CreateFlow({ initialTemplate }: { initialTemplate: number | null
               resolver={registration.resolver}
               now={now}
               onResult={onResult}
+              prefill={activePrefill}
             />
           </div>
           <div className={s.previewArea}>
@@ -198,6 +213,7 @@ export function CreateFlow({ initialTemplate }: { initialTemplate: number | null
               marketKey={paramsOk ? existing.key : null}
               paramsOk={paramsOk}
               existing={existingMarket}
+              initialSide={activePrefill?.side}
             />
           </div>
         </div>

@@ -81,7 +81,7 @@ export function describeCreateRevert(name: string, args: readonly unknown[] = []
     case "PythNotConfigured":
       return "Pyth is not set up for this resolver on this network. Pick a Chainlink feed.";
     case "UnknownSource":
-      return "The resolver does not know that price source.";
+      return "The resolver does not know that source.";
     case "FeedNotAllowed":
       return "The resolver does not accept that Chainlink feed.";
     case "PythIdNotAllowed":
@@ -121,6 +121,21 @@ export function describeCreateRevert(name: string, args: readonly unknown[] = []
       return "One of the legs has already settled or voided, so it cannot be part of a new parlay.";
     case "LockAfterLeg":
       return "The parlay must lock at or before every leg can lock. Pick an earlier lock.";
+    // template 7: snapshot
+    case "UnknownComparator":
+      return "Pick above, at or above, below, or at or below.";
+    case "SnapshotWindowOutOfRange":
+      return "The snapshot window is 1 to 30 minutes long.";
+    case "SourceCallFailed":
+    case "SourceReturnTooShort":
+      return "The resolver cannot read this source right now, so it takes no new markets on it. Try again later.";
+    case "ValueOutOfRange":
+      return "The source returned a value the resolver cannot hold, so it takes no new markets on it.";
+    case "ValueStale":
+      return "The source's value is older than the resolver accepts right now. Try again in a minute.";
+    case "GuardCallFailed":
+    case "SourceChanged":
+      return "Perpl changed since this resolver was deployed (an upgrade, a pause or a relisted perp), so it takes no new markets on this source.";
     default:
       return null;
   }

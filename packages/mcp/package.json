@@ -1,0 +1,41 @@
+{
+  "name": "@hunch-book/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP server for Hunch Book: agents list markets, quote, trade, settle and verify settlements, with their own wallet.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "hunch-book-mcp": "./dist/main.js"
+  },
+  "main": "./dist/server.js",
+  "types": "./src/server.ts",
+  "exports": {
+    ".": {
+      "types": "./src/server.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hunch-book/sdk": "workspace:*",
+    "@hunch-book/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.0",
+    "viem": "2.57.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  }
+}
