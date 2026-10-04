@@ -8,7 +8,8 @@ import type { JobName } from "./plan.js";
 // served at GET /health. Per job: when it last ran, its last action (with the transaction link) and
 // its last error. Overall: markets per phase, the keeper's MON balance and the last error.
 
-export type HealthJob = JobName | "discover";
+/** Per-market jobs (plan.ts), plus the jobs that run once per cycle over every market. */
+export type HealthJob = JobName | "discover" | "series" | "autoRedeem" | "orders" | "oracle";
 
 export interface LastAction {
   at: string;
@@ -28,6 +29,8 @@ export interface JobHealth {
   due: number;
   lastError?: string;
   lastErrorAt?: string;
+  /** What the job knows beyond its last action (counts, cursors, what is next), as plain fields. */
+  info?: Record<string, unknown>;
 }
 
 export interface HealthSnapshot {
@@ -50,7 +53,20 @@ export interface HealthSnapshot {
   lastErrorAt?: string;
 }
 
-export const JOBS: HealthJob[] = ["discover", "graduate", "claims", "settle", "void", "payouts"];
+export const JOBS: HealthJob[] = [
+  "discover",
+  "graduate",
+  "claims",
+  "prove",
+  "snapshot",
+  "settle",
+  "void",
+  "payouts",
+  "series",
+  "autoRedeem",
+  "orders",
+  "oracle",
+];
 
 export class Health {
   private snapshot: HealthSnapshot;
@@ -88,6 +104,11 @@ export class Health {
     const at = new Date().toISOString();
     this.snapshot.jobs[job].lastActionAt = at;
     this.snapshot.jobs[job].lastAction = { at, ...action };
+  }
+
+  /** Replaces the job's info block. */
+  jobInfo(job: HealthJob, info: Record<string, unknown>): void {
+    this.snapshot.jobs[job].info = info;
   }
 
   jobError(job: HealthJob, message: string): void {

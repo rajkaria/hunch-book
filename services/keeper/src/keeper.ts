@@ -23,7 +23,7 @@ import {
   zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { kuruRouterComputeAbi, marketWithResolverErrorsAbi } from "./abis.js";
+import { kuruRouterComputeAbi, marketWithResolverErrorsAbi, resolverErrorsAbi } from "./abis.js";
 import { Alerter } from "./alerts.js";
 import { chunks, claimableUsers, halves, uniqueAddresses } from "./batch.js";
 import { type KeeperConfig, secretsOf } from "./config.js";
@@ -33,7 +33,7 @@ import { type Globals, MarketDirectory, type MarketSnapshot, readGlobals } from 
 import { type ActionKind, type Decision, isFinal, needsBookLookup, planMarket } from "./plan.js";
 import { rateLimitedFetch } from "./rpc.js";
 import { ScanBudget, type ScanContext } from "./scan.js";
-import { type ChainNow, defaultSettlers, type SettlerRegistry } from "./settlers/index.js";
+import { type ChainNow, defaultSettlers, type SettleDeps, type SettlerRegistry } from "./settlers/index.js";
 import { IndexerStakerSource, RpcStakerSource, type StakerSource } from "./stakers.js";
 import { StateStore } from "./state.js";
 import {
@@ -85,6 +85,8 @@ interface Retry {
   delaySeconds: number;
 }
 
+type RetryKind = "settle" | "prove" | "snapshot";
+
 type BookParams = {
   sizePrecision: bigint;
   pricePrecision: number;
@@ -106,7 +108,10 @@ export class Keeper {
   private readonly stakerSource: StakerSource | undefined;
   private readonly alerter: Alerter;
   private readonly fetchFn: typeof fetch;
-  private readonly settleRetry = new Map<Address, Retry>();
+  /** Backoffs per job and market, keyed `${kind}:${market}`. */
+  private readonly retries = new Map<string, Retry>();
+  /** The last "nothing proves YES yet" reason per market, so a hunt logs only when it changes. */
+  private readonly lastProveScan = new Map<Address, string>();
   private readonly lastPlan = new Map<string, string>();
   private readonly dryRunSeen = new Map<string, number>();
   private readonly exhausted = new Set<Address>();
@@ -259,12 +264,16 @@ export class Keeper {
       }
       const plan = planMarket({ market: m, now, globals, settler, predictedBook });
       decisions += plan.length;
+      let proved = false;
       for (const d of plan) {
         this.logPlan(m, d);
-        if (!d.action) continue;
+        // A proof that went out settles the market: nothing else for it this cycle.
+        if (!d.action || (proved && (d.job === "settle" || d.job === "snapshot"))) continue;
         due[d.job] = (due[d.job] ?? 0) + 1;
         try {
-          if (await this.execute(m, d.action, now, globals, scan, predictedBook)) sent++;
+          const went = await this.execute(m, d.action, now, globals, scan, predictedBook);
+          if (went) sent++;
+          if (went && d.action === "prove") proved = true;
         } catch (error) {
           this.jobFailed(d.job, m.address, error);
         }
@@ -367,6 +376,10 @@ export class Keeper {
         return this.pushClaims(m, "tokens", scan);
       case "claim-pool":
         return this.pushClaims(m, "pool", scan);
+      case "prove":
+        return this.prove(m, now);
+      case "snapshot":
+        return this.takeSnapshot(m, now);
       case "settle":
         return this.settle(m, now);
       case "void":
@@ -424,34 +437,137 @@ export class Keeper {
 
   // ---- settlement ----------------------------------------------------------------------------
 
-  private backoff(market: Address, reason: string, longest = false): void {
-    const prev = this.settleRetry.get(market);
+  private settleDeps(): SettleDeps {
+    return {
+      client: this.client,
+      deployment: this.deployment,
+      pythApiKey: this.config.pythApiKey,
+      hermesUrl: this.config.hermesUrl,
+      fetchFn: this.fetchFn,
+    };
+  }
+
+  private waiting(kind: RetryKind, market: Address): boolean {
+    const retry = this.retries.get(`${kind}:${market}`);
+    return retry !== undefined && Date.now() < retry.at;
+  }
+
+  /** Waits before the next attempt: KEEPER_SETTLE_RETRY_SECONDS, doubling up to the max. */
+  private backoff(market: Address, reason: string, longest = false, kind: RetryKind = "settle"): void {
+    const key = `${kind}:${market}`;
+    const prev = this.retries.get(key);
     const delaySeconds = longest
       ? this.config.settleRetryMaxSeconds
       : Math.min(
           prev ? prev.delaySeconds * 2 : this.config.settleRetrySeconds,
           this.config.settleRetryMaxSeconds,
         );
-    this.settleRetry.set(market, { at: Date.now() + delaySeconds * 1000, delaySeconds });
-    log("settle-later", { market, reason, retryInSeconds: delaySeconds }, longest ? "warn" : "info");
+    this.retries.set(key, { at: Date.now() + delaySeconds * 1000, delaySeconds });
+    log(`${kind}-later`, { market, reason, retryInSeconds: delaySeconds }, longest ? "warn" : "info");
     if (!longest && delaySeconds >= this.config.settleRetryMaxSeconds) {
-      // Still not settling after the longest wait: worth a person's look (the market voids at its deadline).
-      void this.alerter.send(`settle-stuck:${market}`, "settle-stuck", { market, reason }, "warn");
+      // Still not going through after the longest wait: worth a person's look (the market voids at its
+      // deadline if nothing settles it).
+      void this.alerter.send(`${kind}-stuck:${market}`, `${kind}-stuck`, { market, reason }, "warn");
     }
   }
 
+  /** After a dry-run simulation passed: look again only when it would be logged again. */
+  private quietDryRun(kind: RetryKind, market: Address): void {
+    if (this.verbosePlan) return;
+    this.retries.set(`${kind}:${market}`, {
+      at: Date.now() + DRY_RUN_REPEAT_MS,
+      delaySeconds: DRY_RUN_REPEAT_MS / 1000,
+    });
+  }
+
+  /** Templates with an early YES: hunt for the proof, and send proveYes(proof) as soon as one exists. */
+  private async prove(m: MarketSnapshot, now: ChainNow): Promise<boolean> {
+    if (this.waiting("prove", m.address)) return false;
+    const settler = this.settlers.get(m.templateId);
+    if (!settler?.prover) return false;
+    const found = await settler.prover.findProof(m, now, this.settleDeps());
+    if (found.status !== "found") {
+      const last = this.lastProveScan.get(m.address);
+      if (this.verbosePlan || last !== found.reason) {
+        this.lastProveScan.set(m.address, found.reason);
+        log("prove-scan", { market: m.address, template: m.templateId, result: found.reason });
+      }
+      return false;
+    }
+    const request: TxRequest = {
+      to: m.address,
+      data: encodeFunctionData({ abi: marketAbi, functionName: "proveYes", args: [found.proof] }),
+      abi: marketWithResolverErrorsAbi,
+      action: "proveYes",
+      fields: { market: m.address, template: m.templateId, settler: settler.name, ...found.detail },
+    };
+    const result = await this.sendWithResult("prove", m.address, request);
+    if (result === undefined) return false;
+    if (result.status === "success") {
+      this.retries.delete(`prove:${m.address}`);
+    } else if (result.status === "dry-run") {
+      if (result.simulation.ok) this.quietDryRun("prove", m.address);
+      else this.proofRejected(m, found.detail, result.simulation.reason);
+    } else {
+      this.proofRejected(
+        m,
+        found.detail,
+        result.status === "skipped" ? result.reason : `proveYes ${result.status}`,
+      );
+    }
+    return sent(result);
+  }
+
+  /** A proof the keeper believes in did not go through: retry later, and tell a person. */
+  private proofRejected(m: MarketSnapshot, detail: Record<string, unknown>, reason: string): void {
+    this.backoff(m.address, `proveYes would not go through: ${reason}`, false, "prove");
+    void this.alerter.send(`proof-rejected:${m.address}`, "proof-rejected", {
+      market: m.address,
+      reason,
+      proof: detail,
+      note: "the keeper will not settle NO while it holds a proof of YES; it retries the proof",
+    });
+  }
+
+  /** Snapshot-settled templates: send the call that records the snapshot the resolver settles from. */
+  private async takeSnapshot(m: MarketSnapshot, now: ChainNow): Promise<boolean> {
+    if (this.waiting("snapshot", m.address)) return false;
+    const settler = this.settlers.get(m.templateId);
+    if (!settler?.snapshot) return false;
+    const snap = await settler.snapshot.request(m, now, this.settleDeps());
+    if (snap.status !== "ready") {
+      if (snap.status === "wait") this.backoff(m.address, snap.reason, false, "snapshot");
+      else this.retries.set(`snapshot:${m.address}`, { at: Number.POSITIVE_INFINITY, delaySeconds: 0 });
+      log("snapshot-skip", { market: m.address, status: snap.status, reason: snap.reason });
+      return false;
+    }
+    const result = await this.sendWithResult("snapshot", m.address, {
+      to: snap.to,
+      data: snap.data,
+      abi: [...(snap.abi as readonly unknown[]), ...resolverErrorsAbi],
+      action: "snapshot",
+      fields: { market: m.address, template: m.templateId, settler: settler.name, ...snap.detail },
+    });
+    if (result === undefined) return false;
+    if (result.status === "dry-run") {
+      if (result.simulation.ok) this.quietDryRun("snapshot", m.address);
+      else this.backoff(m.address, `snapshot would revert: ${result.simulation.reason}`, false, "snapshot");
+    } else if (result.status !== "success") {
+      this.backoff(
+        m.address,
+        result.status === "skipped" ? result.reason : `snapshot ${result.status}`,
+        false,
+        "snapshot",
+      );
+    }
+    return sent(result);
+  }
+
   private async settle(m: MarketSnapshot, now: ChainNow): Promise<boolean> {
-    const retry = this.settleRetry.get(m.address);
-    if (retry && Date.now() < retry.at) return false;
+    if (this.waiting("settle", m.address)) return false;
     const settler = this.settlers.get(m.templateId);
     if (!settler) return false;
-    const evidence = await settler.evidence(m, now, {
-      client: this.client,
-      deployment: this.deployment,
-      pythApiKey: this.config.pythApiKey,
-      hermesUrl: this.config.hermesUrl,
-      fetchFn: this.fetchFn,
-    });
+    const evidence = await settler.evidence(m, now, this.settleDeps());
     if (evidence.status !== "ready") {
       const unsettleable = evidence.status === "unsettleable";
       if (unsettleable) {
@@ -480,14 +596,13 @@ export class Keeper {
     const result = await this.sendWithResult("settle", m.address, request);
     if (result === undefined) return false;
     if (result.status === "success") {
-      this.settleRetry.delete(m.address);
+      this.retries.delete(`settle:${m.address}`);
     } else if (result.status === "dry-run") {
       if (!result.simulation.ok) {
         this.backoff(m.address, `settle would revert: ${result.simulation.reason}`);
-      } else if (!this.verbosePlan) {
+      } else {
         // A dry run that keeps running: fetch the evidence again only when it would be logged again.
-        const delaySeconds = DRY_RUN_REPEAT_MS / 1000;
-        this.settleRetry.set(m.address, { at: Date.now() + DRY_RUN_REPEAT_MS, delaySeconds });
+        this.quietDryRun("settle", m.address);
       }
     } else {
       // Skipped (the simulation failed, for example NotResolved), reverted, or unknown.

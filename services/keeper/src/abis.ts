@@ -20,10 +20,22 @@ export const kuruRouterComputeAbi = parseAbi([
 ]);
 
 /**
- * Custom errors of the v0 resolvers (contracts/src/resolvers). `settle` bubbles them up, so a failed
- * simulation can be logged by name ("RoundTooStale") instead of as raw bytes.
+ * Custom errors of the resolvers (contracts/src/resolvers). `settle` and `proveYes` bubble them up, so a
+ * failed simulation can be logged by name ("RoundTooStale", "NotASpike") instead of as raw bytes.
  */
 export const resolverErrorsAbi = parseAbi([
+  // Template 3, touch
+  "error RoundCarriedOver(uint80 roundId, uint80 answeredInRound)",
+  "error RoundOutsideWindow(uint80 roundId, uint256 updatedAt, uint64 startTime, uint64 endTime)",
+  "error NoTouch(uint80 roundId, int256 priceE8, int256 strikeE8)",
+  // Template 4, funding spike
+  "error EventOutsideWindow(uint64 eventBlock, uint64 startBlock, uint64 endBlock)",
+  "error EventNotFinal(uint64 eventBlock, uint256 currentBlock)",
+  "error FundingReadFailed(uint256 blockNumber)",
+  "error NotAFundingEvent(uint64 eventBlock, uint256 reportedEventBlock)",
+  "error NotOneInterval(uint64 eventBlock, uint256 previousEventBlock, uint256 fundingInterval)",
+  "error NotASpike(uint64 eventBlock, int256 increment, int256 threshold)",
+  // Templates 1, 2, 5, 6
   "error MalformedEvidence()",
   "error PhaseBoundary(uint80 roundId)",
   "error RoundNotFound(uint80 roundId)",
