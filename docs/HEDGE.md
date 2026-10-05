@@ -223,6 +223,30 @@ with the same id, cover 100% and the same numbers, then removes the old key. If 
 nothing is counted twice. A payload with a newer version than the page knows is shown as empty and
 never overwritten.
 
+## Links into the page
+
+`/hedge?perp=<BTC|ETH|SOL|MON>&side=<long|short>&size=<units>` opens the page with that position added,
+as if typed in by hand: `perp` is the perp's name in the deployments file (any case), `side` is long
+when left out, `size` is in units of the base asset (`0.5` is half a BTC). The page reads Perpl's lot
+decimals for the perp and then adds it. A link it cannot use (an unknown perp, a size of zero, anything
+malformed) is ignored. Code: `apps/web/src/lib/hedge/prefill.ts` and `usePrefill.ts`.
+
+## The calculator
+
+`/calculator` answers the question before the hedge, with no wallet: what would this position pay in
+funding? Pick a perp, a side, a size in units or in USD notional (turned into units at Perpl's mark
+price), a horizon (24 hours, 7 days, or any number of hours or days up to a year) and the rate (the last
+interval, or the mean over the last 24 hours). It reads the same funding history as this page and uses
+the same math (the projection above), shows the assumption in plain words and the funding chart, and
+lists the open markets on that perp's funding that would hedge it, sized as in "Sizing a hedge". Each
+links to its market page, and the page links here with the position filled in. Its inputs live in the
+address, so a result can be shared: `/calculator?perp=BTC&side=long&size=0.5&unit=units&horizon=7d`.
+
+Code: `apps/web/src/app/calculator/`, `apps/web/src/components/calculator/` and
+`apps/web/src/lib/calculator/` (input parsing and the cost, on top of `lib/hedge/math.ts`). Tests:
+`calculator.test.ts` (inputs, the cost for longs and shorts, both rates, the address, the hedge page's
+prefill) and `calculator-ui.test.tsx` (the page against mocked reads, and the prefill on this page).
+
 ## Limits
 
 - Funding is set by Perpl's own price administrator within Perpl's clamp, and Perpl's contracts can be

@@ -135,7 +135,7 @@ Goal: a perp trader opens Hunch Book every week because it saves them money or t
 
 | ID | Deliverable | Why it matters | Status |
 |---|---|---|---|
-| A-10 | **Hedge assistant v1**: reads your Perpl positions, prices the funding you expect to pay, builds a hedge across one or more markets, tracks it until settlement | The named first user's weekly job | live on testnet ([/hedge](https://book.playhunch.xyz/hedge)), one market per hedge; hedges across several markets are planned |
+| A-10 | **Hedge assistant v1**: reads your Perpl positions, prices the funding you expect to pay, builds a hedge across one or more markets, tracks it until settlement | The named first user's weekly job | live on testnet ([/hedge](https://book.playhunch.xyz/hedge)): baskets across several markets on one perp's funding, a scenario table, and tracking until every leg settles ([HEDGE.md](./HEDGE.md)) |
 | S-5 | **Ladders**: a family of strikes on one question (funding above 0.01%, 0.02%, 0.03% ...) shown as a probability curve | A market-implied forecast of funding, not one yes/no | live on testnet ([/ladder](https://book.playhunch.xyz/ladder)) |
 | A-11 | Limit orders, take-profit and stop-loss on outcome tokens, one-click close | Trading tools traders expect | live on testnet: [ConditionalOrders](https://testnet.monadscan.com/address/0xDf733F2AD02Fcd3eA1a02d319D720c94d67c7eB6), the orders panel and one-click close; the keeper executes triggered orders |
 | A-12 | Portfolio: P&L per market, history export | Bookkeeping | live on testnet (portfolio) |
@@ -176,8 +176,8 @@ Each idea is kept only if it serves a named user. Moved into a phase when it has
 
 | Idea | Serves | Notes |
 |---|---|---|
-| "What does the market think?" widget for Perpl's UI | Perp traders | Shows the implied chance funding flips this week |
-| Funding-cost calculator without a wallet | New users | Entry point to the hedge assistant |
+| "What does the market think?" widget for Perpl's UI | Perp traders | live on testnet: [/embed/funding/MON](https://book.playhunch.xyz/embed/funding/MON) for an iframe and [/api/v1/funding/{asset}](./API.md#get-fundingasset) as JSON; listing it in Perpl's UI is Perpl's call |
+| Funding-cost calculator without a wallet | New users | live on testnet: [/calculator](https://book.playhunch.xyz/calculator), linked into the hedge assistant |
 | Batch actions (redeem all, claim all) | Active users | live on testnet: "Claim and redeem all" in the portfolio, in one confirmation where the wallet can batch atomically (EIP-5792) and one by one otherwise; `collectAll` in the SDK and `redeem_all` in the MCP server |
 | Settlement replay archive | Researchers | live on testnet: [/settlements](https://book.playhunch.xyz/settlements) and [/api/v1/settlements](./API.md#get-settlements), every settlement's read, transaction and check, as JSON or CSV |
 | Market health score | Traders | live on testnet: a 0 to 100 score from liquidity, time and source on every card, market page and API answer ([HEALTH.md](./HEALTH.md)) |

@@ -24,8 +24,9 @@ const config: NextConfig = {
         ],
       },
       {
-        // /embed/m/<address> is a read-only card with no wallet and no script, made to be framed
-        // anywhere; its route sets a strict Content-Security-Policy with frame-ancestors *.
+        // /embed/m/<address> and /embed/funding/<asset> are read-only cards with no wallet and no
+        // script, made to be framed anywhere; their routes set a strict Content-Security-Policy with
+        // frame-ancestors *.
         source: "/embed/:path*",
         headers: common,
       },
