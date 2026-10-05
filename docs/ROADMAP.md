@@ -92,7 +92,7 @@ Graduation rules (v0 values, set per template and visible on every market):
 | O-3 | Contracts on Monad mainnet with native USDC; addresses in `deployments/monad-mainnet.json` and the README | building: rehearsed end to end on a fork of Monad mainnet ([runbook](./DEPLOY.md)); waits for the guardian multisig |
 | O-4 | Beta caps: per-market pool cap, per-wallet stake cap, total collateral cap; guardian can pause creation and graduation only (never redemption, never outcomes) | live on testnet; set by the deploy script for mainnet |
 | V-3 | Graduation to Kuru mainnet. Kuru's mainnet market creation is owner-only, so Kuru creates each YES/USDC book on request and anyone registers it (the Graduator verifies it). Until Kuru does, mainnet markets run as pools and graduation is shown on testnet | building: register flow rehearsed on a mainnet fork; the keeper sends each book request |
-| A-3 | Mainnet app with explorer links on every action | building |
+| A-3 | Mainnet app with explorer links on every action | building: every action in the app lists its transaction with an explorer link for the active network, and mainnet pages show a clear not-deployed state; waits for the mainnet deploy |
 
 ### 0.5 Proof and utility (target 2026-10-09 → 2026-10-10)
 
@@ -111,7 +111,7 @@ Graduation rules (v0 values, set per template and visible on every market):
 |---|---|---|
 | O-5 | Internal security review: reentrancy, rounding, flash-loan paths, griefing on graduation and settlement, front-running at graduation; Slither clean or each finding explained | done ([SECURITY-REVIEW.md](./SECURITY-REVIEW.md)) |
 | O-6 | Liveness checks: last settlement, last graduation, keeper balance, maker balance, alerts to a phone | live ([watchdog](../services/watchdog), every 30 minutes on GitHub Actions) |
-| O-7 | README with live addresses, setup steps a third party can follow, known limitations | planned |
+| O-7 | README with live addresses, setup steps a third party can follow, known limitations | done: [README](../README.md) with every live address and transaction, its known limitations, and setup steps run from a fresh clone of GitHub on 2026-10-06 (the full gate passed) |
 
 ---
 

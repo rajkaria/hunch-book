@@ -2,7 +2,7 @@
 
 > Prediction markets on Monad that start as pools, move to Kuru's onchain order book once people show up, and pay out by reading the chain. No one decides the answer by hand.
 
-**Status (2026-10-04): live on Monad testnet, mainnet planned.** The whole lifecycle runs on Monad testnet: create a market from seven templates, stake, graduate into a real Kuru order book, trade YES and NO, settle from Perpl or Chainlink, verify the read from your browser, and redeem. Nothing is on mainnet yet; the launch is rehearsed end to end on a fork of Monad mainnet. Every claim below links to an address or a transaction.
+**Status (2026-10-06): live on Monad testnet, mainnet planned.** The whole lifecycle runs on Monad testnet: create a market from seven templates, stake, graduate into a real Kuru order book, trade YES and NO, settle from Perpl or Chainlink, verify the read from your browser, and redeem. Nothing is on mainnet yet; the launch is rehearsed end to end on a fork of Monad mainnet. Every claim below links to an address or a transaction.
 
 **Try it:** [book.playhunch.xyz](https://book.playhunch.xyz) (testnet: get test USDC from the wallet menu, MON from [faucet.monad.xyz](https://faucet.monad.xyz)).
 
@@ -63,12 +63,33 @@ All on Monad testnet. Activity by our own wallets (the deployer, the keeper, the
 | Settlement and redemption | live on testnet | market #1 [settled NO](https://testnet.monadscan.com/tx/0x2d53ad4c3cb322c34447839a8beea8cc3dc208c1c8fa1930fc06cab96b20fc72) by the keeper (late: see the [incident log](./docs/INCIDENTS.md)), then our maker bot [redeemed](https://testnet.monadscan.com/tx/0x40b82c5fa558c48297b3bfc635ab952f11052f30034d62b8df1de751b768e518) its NO tokens; a touch market [settled YES from a Chainlink round](https://testnet.monadscan.com/tx/0xd1ec7102a1660a963dd1fa0442394168cf9b9f488ed73bc763c69adae40707f4) |
 | Maker bot ([services/maker](./services/maker)) | live on testnet | quoting market #1 from [0x0f11…232A](https://testnet.monadscan.com/address/0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A) (ours); open source, with a [maker kit](./docs/MAKER-KIT.md) for outside makers |
 | Keeper ([services/keeper](./services/keeper)) | live on testnet | running from [0x1f5A…5569](https://testnet.monadscan.com/address/0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569) (ours): graduates, settles, proves touches and spikes, voids, pays out, auto-redeems, executes orders, pokes the oracle, creates recurring markets |
-| App | live on testnet | [book.playhunch.xyz](https://book.playhunch.xyz): markets, trading, create flow, portfolio with P&L, verifier, proof page, trade tape, status, hedge assistant, feed, ladders, parlays, rewards, passkey accounts |
-| Data API and embed | live on testnet | [/api/v1/stats](https://book.playhunch.xyz/api/v1/stats), [/api/v1/feed](https://book.playhunch.xyz/api/v1/feed), [docs/API.md](./docs/API.md) |
+| App | live on testnet | [book.playhunch.xyz](https://book.playhunch.xyz): markets with a health score, trading, create flow, portfolio with P&L and one-confirmation claim-all, verifier, settlement archive, proof page, trade tape, status, hedge assistant with baskets, funding-cost calculator, feed, ladders, parlays, rewards, passkey accounts |
+| Data API and embed | live on testnet | [/api/v1/stats](https://book.playhunch.xyz/api/v1/stats), [/api/v1/feed](https://book.playhunch.xyz/api/v1/feed), [/api/v1/settlements](https://book.playhunch.xyz/api/v1/settlements), [/embed/funding/MON](https://book.playhunch.xyz/embed/funding/MON), [docs/API.md](./docs/API.md) |
 | Liveness checks | live | the [watchdog](./services/watchdog) runs every 30 minutes on GitHub Actions |
 | Indexer ([indexer](./indexer)) | building | built and tested; hosting waits for an Envio account |
-| SDK and MCP server | building | [docs/SDK.md](./docs/SDK.md), [docs/MCP.md](./docs/MCP.md); not published to npm yet |
+| SDK and MCP server | building | [docs/SDK.md](./docs/SDK.md), [docs/MCP.md](./docs/MCP.md); packed, installed and imported from their tarballs in CI, not on npm yet ([docs/RELEASE.md](./docs/RELEASE.md)) |
 | Contracts on Monad mainnet (Circle USDC) | planned | rehearsed on a mainnet fork ([docs/DEPLOY.md](./docs/DEPLOY.md)); Kuru creates each mainnet book |
+
+## Known limitations
+
+- **Testnet only.** Nothing is on Monad mainnet yet. The deploy waits for a guardian multisig, and
+  graduation on mainnet waits for Kuru to create each book: mainnet book creation is owner-only at Kuru,
+  and Kuru has asked us to use its v2 contracts, which are not on mainnet yet. Until then a mainnet
+  launch would run pools only and say so.
+- **Our wallets made the activity.** Every testnet market so far was created and seeded by our own
+  wallets (the deployer, the keeper's recurring series, the seed wallets), and our maker bot is the only
+  maker. All of it is labelled as ours.
+- **The keeper and maker run on one machine.** If it is off, settlement and graduation wait (anyone can
+  still call `settle` or `graduate`; nothing is lost). See the [incident log](./docs/INCIDENTS.md).
+- **No indexer is hosted yet,** so the app reads the chain directly and trade history is limited to
+  recent blocks.
+- **Testnet Chainlink feeds update about once a day,** so price markets on testnet can void; they are
+  shown working on mainnet forks.
+- **The snapshot template (7) has no challenge period:** the first snapshot taker picks the block
+  inside a short window ([TEMPLATES.md](./docs/TEMPLATES.md)).
+- **Passkey gas and relayed stakes** need a relayer key that is not set, and the Telegram notifier is not
+  running.
+- **No external audit yet:** an internal review and Slither ([SECURITY-REVIEW.md](./docs/SECURITY-REVIEW.md)).
 
 ## What's in this repo
 
