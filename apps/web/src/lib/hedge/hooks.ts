@@ -1,10 +1,19 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import type { Address } from "viem";
 import { getPublicClient } from "../chain/client";
-import { appDeployment, appNetwork } from "../config";
-import { readFundingHistory, readFundingSum, readPerplPositions, readPerpMeta } from "./perpl";
+import { readMarket } from "../chain/reads";
+import { appDeployment, appNetwork, isDeployed } from "../config";
+import { queryKeys } from "../hooks";
+import type { MarketView } from "../market/types";
+import {
+  readFundingHistory,
+  readFundingSum,
+  readFundingSums,
+  readPerplPositions,
+  readPerpMeta,
+} from "./perpl";
 
 // React Query hooks for the hedge assistant. Query keys never hold bigints.
 
@@ -18,6 +27,8 @@ export const hedgeKeys = {
   meta: (perpId: bigint) => ["hedge", "perp", appNetwork, perpId.toString()] as const,
   funding: (perpId: bigint) => ["hedge", "funding", appNetwork, perpId.toString()] as const,
   sumNow: (perpId: bigint) => ["hedge", "sum-now", appNetwork, perpId.toString()] as const,
+  sumsAt: (perpId: bigint, blocks: readonly string[]) =>
+    ["hedge", "sums-at", appNetwork, perpId.toString(), ...blocks] as const,
 };
 
 /** Open Perpl positions of `owner`, or { status: "no-account" }. */
@@ -69,4 +80,37 @@ export function useFundingSumNow(perpId: bigint | undefined) {
     enabled: perpId !== undefined,
     refetchInterval: 60_000,
   });
+}
+
+/**
+ * The perp's funding sum at past blocks, keyed by block: the start of a window that has begun, or the end
+ * of a tracked basket. Sums at past funding events are final, so they are read once in a while.
+ */
+export function useFundingSumsAt(perpId: bigint | undefined, blocks: readonly bigint[]) {
+  const unique = [...new Set(blocks.map((b) => b.toString()))].sort();
+  return useQuery({
+    queryKey: hedgeKeys.sumsAt(perpId ?? -1n, unique),
+    queryFn: () =>
+      readFundingSums(
+        getPublicClient(),
+        exchange(),
+        perpId as bigint,
+        unique.map((b) => BigInt(b)),
+      ),
+    enabled: perpId !== undefined && unique.length > 0,
+    staleTime: 10 * 60_000,
+  });
+}
+
+/** Several markets at once, sharing the market page's cache: the legs of a tracked basket. */
+export function useLegMarkets(addresses: readonly Address[]): (MarketView | null)[] {
+  const results = useQueries({
+    queries: addresses.map((address) => ({
+      queryKey: queryKeys.market(address),
+      queryFn: () => readMarket(getPublicClient(), appDeployment, address),
+      enabled: isDeployed(appDeployment),
+      refetchInterval: 6_000,
+    })),
+  });
+  return results.map((r) => (r.data?.status === "ok" ? r.data.data : null));
 }

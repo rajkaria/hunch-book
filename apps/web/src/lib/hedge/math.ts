@@ -176,6 +176,28 @@ export function ratePercent(rawPerInterval: number, meta: PerpMeta): number | nu
 
 // ---------------------------------------------------------------- sizing
 
+/** USDC and outcome tokens both carry 6 decimals. */
+const MICRO = 1_000_000;
+
+/**
+ * An amount rounded to USDC's 6 decimals: up (what you pay), down (what you get) or to the nearest.
+ * Float noise below a thousandth of a micro-USDC is dropped first, so 0.1 + 0.2 rounds up to 0.3.
+ */
+export function roundUsdc(value: number, mode: "up" | "down" | "nearest" = "nearest"): number {
+  if (!Number.isFinite(value)) return value;
+  const micros = Math.round(value * MICRO * 1_000) / 1_000;
+  const whole = mode === "up" ? Math.ceil(micros) : mode === "down" ? Math.floor(micros) : Math.round(micros);
+  return whole / MICRO + 0;
+}
+
+/** Share of `target` a win of `net` covers, 0 to 1. Rounding to micro-USDC can leave a win a hair under
+ * its target; within two micro-USDC that still counts as covered. */
+export function coveredShare(net: number, target: number): number {
+  if (target <= 0) return 1;
+  if (net >= target - 2 / MICRO) return 1;
+  return Math.max(0, net / target);
+}
+
 export type Sizing =
   | {
       ok: true;
@@ -219,7 +241,7 @@ export function sizePoolHedge(args: {
   minStake: number;
 }): Sizing {
   const { target, sideTotal: w, otherTotal: l, room, minStake } = args;
-  if (target <= 0) return { ok: false, reason: "There is no funding cost to cover." };
+  if (!(target > 0)) return { ok: false, reason: "There is no funding cost to cover." };
   if (l <= 0) {
     return {
       ok: false,
@@ -231,12 +253,14 @@ export function sizePoolHedge(args: {
   const ceiling = (1 - PHI) * l;
   let stake = ceiling > target ? (target * w) / (ceiling - target) : Number.POSITIVE_INFINITY;
   let limitedBy: "pool" | "cap" | null = ceiling > target ? null : "pool";
-  stake = Math.max(stake, minStake);
+  // Round the stake up to whole micro-USDC, so rounding never leaves the target short.
+  stake = roundUsdc(Math.max(stake, minStake), "up");
   if (stake > room) {
-    stake = room;
+    stake = roundUsdc(room, "down");
     limitedBy ??= "cap";
   }
-  const net = poolNetGain(stake, w, l);
+  const payoutIfWin = roundUsdc(stake + poolNetGain(stake, w, l), "down");
+  const net = roundUsdc(payoutIfWin - stake);
   return {
     ok: true,
     mode: "pool",
@@ -244,9 +268,9 @@ export function sizePoolHedge(args: {
     tokens: null,
     price: null,
     fee: null,
-    payoutIfWin: stake + net,
+    payoutIfWin,
     netIfWin: net,
-    covered: Math.min(1, net / target),
+    covered: coveredShare(net, target),
     limitedBy,
   };
 }
@@ -257,25 +281,60 @@ export function sizePoolHedge(args: {
  */
 export function sizeBookHedge(args: { target: number; price: number; feePerToken: number }): Sizing {
   const { target, price, feePerToken } = args;
-  if (target <= 0) return { ok: false, reason: "There is no funding cost to cover." };
+  if (!(target > 0)) return { ok: false, reason: "There is no funding cost to cover." };
   if (!(price > 0 && price < 1)) return { ok: false, reason: "The book has no usable price for this side." };
   const edge = 1 - feePerToken - price;
   if (edge <= 0) {
     return { ok: false, reason: "At this price a winning token pays back no more than it costs." };
   }
-  const tokens = target / edge;
+  // Tokens and cost round up to whole micro-units, the payout down: the figures never flatter the hedge.
+  const tokens = roundUsdc(target / edge, "up");
+  const cost = roundUsdc(tokens * price, "up");
+  const payoutIfWin = roundUsdc(tokens * (1 - feePerToken), "down");
+  const net = roundUsdc(payoutIfWin - cost);
   return {
     ok: true,
     mode: "book",
-    cost: tokens * price,
+    cost,
     tokens,
     price,
     fee: feePerToken,
-    payoutIfWin: tokens * (1 - feePerToken),
-    netIfWin: target,
-    covered: 1,
+    payoutIfWin,
+    netIfWin: net,
+    covered: coveredShare(net, target),
     limitedBy: null,
   };
+}
+
+/** How one market prices a hedge: the pool as it is now, or the book's price and redemption fee. */
+export type LegPricing =
+  | {
+      mode: "pool";
+      /** USDC on the hedge side and on the other side. */
+      sideTotal: number;
+      otherTotal: number;
+      /** USDC this wallet may still stake: min(wallet cap, pool cap − pool). */
+      room: number;
+      minStake: number;
+    }
+  | {
+      mode: "book";
+      /** USDC per token: the best YES ask, or 1 − the best YES bid for NO. NaN when that side is empty. */
+      price: number;
+      feePerToken: number;
+    };
+
+/** Sizes one market so its win adds `target` USDC: a pool stake or tokens on the book. */
+export function sizeLeg(pricing: LegPricing, target: number): Sizing {
+  return pricing.mode === "pool"
+    ? sizePoolHedge({
+        target,
+        sideTotal: pricing.sideTotal,
+        otherTotal: pricing.otherTotal,
+        room: pricing.room,
+        minStake: pricing.minStake,
+      })
+    : sizeBookHedge({ target, price: pricing.price, feePerToken: pricing.feePerToken });
 }
 
 // ---------------------------------------------------------------- markets
@@ -338,6 +397,8 @@ export interface Proposal {
   projectedUsdPerUnit: number;
   /** Market-implied chance that the hedge side wins, 0 to 1, or null. */
   chance: number | null;
+  /** The market's live prices, so a basket can size it again for another target. */
+  pricing: LegPricing;
   sizing: Sizing;
   /** One plain sentence on when this hedge pays. */
   pays: string;
@@ -407,18 +468,15 @@ export function proposeHedges(args: {
     const chance =
       chanceYes === null ? null : buy === "yes" ? Number(chanceYes) / 10_000 : 1 - Number(chanceYes) / 10_000;
     const usdc = (v: bigint) => Number(v) / 1e6;
-    let sizing: Sizing;
+    let pricing: LegPricing;
     if (pool) {
-      const sideTotal = usdc(buy === "yes" ? m.pool.yes : m.pool.no);
-      const otherTotal = usdc(buy === "yes" ? m.pool.no : m.pool.yes);
-      const room = Math.min(usdc(m.caps.walletCap), usdc(m.caps.poolCap - m.pool.total));
-      sizing = sizePoolHedge({
-        target: projection.positionUsd,
-        sideTotal,
-        otherTotal,
-        room,
+      pricing = {
+        mode: "pool",
+        sideTotal: usdc(buy === "yes" ? m.pool.yes : m.pool.no),
+        otherTotal: usdc(buy === "yes" ? m.pool.no : m.pool.yes),
+        room: Math.min(usdc(m.caps.walletCap), usdc(m.caps.poolCap - m.pool.total)),
         minStake: usdc(m.caps.minStake),
-      });
+      };
     } else {
       // Book: YES costs the best ask; NO costs 1 − the best YES bid (the router mints and sells YES).
       const total = m.pool.total;
@@ -434,8 +492,9 @@ export function proposeHedges(args: {
           : bid === null
             ? Number.NaN
             : 1 - Number(bid) / PRICE_SCALE;
-      sizing = sizeBookHedge({ target: projection.positionUsd, price, feePerToken });
+      pricing = { mode: "book", price, feePerToken };
     }
+    const sizing = sizeLeg(pricing, projection.positionUsd);
     const unit = args.meta.symbol;
     const pays =
       fm.kind === "spike"
@@ -451,6 +510,7 @@ export function proposeHedges(args: {
       thresholdUsdPerUnit,
       projectedUsdPerUnit: projection.perUnitUsd,
       chance,
+      pricing,
       sizing,
       pays,
     });
@@ -459,12 +519,21 @@ export function proposeHedges(args: {
   return { proposals, skipped };
 }
 
-/** "$1,234.56", "$0.0042" or "-$3.10": enough digits for small funding amounts. */
+/**
+ * "$1,234.56", "$0.0042", "$0.00000031" or "-$3.10": enough digits for small funding amounts. Under a
+ * cent the amount keeps four significant digits, so a perp priced in fractions of a cent (MON) still
+ * shows its funding per unit.
+ */
 export function formatUsdNumber(value: number): string {
   if (!Number.isFinite(value)) return "n/a";
   const abs = Math.abs(value);
-  const digits = abs === 0 ? 2 : abs < 0.01 ? 6 : abs < 1 ? 4 : 2;
-  const body = abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: digits });
+  const body =
+    abs > 0 && abs < 0.01
+      ? abs.toLocaleString("en-US", { maximumSignificantDigits: 4 })
+      : abs.toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: abs < 1 && abs > 0 ? 4 : 2,
+        });
   return value < 0 ? `-$${body}` : `$${body}`;
 }
 

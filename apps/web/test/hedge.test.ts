@@ -1,13 +1,11 @@
 import {
   encodePerplFundingParams,
   encodePerplFundingSpikeParams,
-  Outcome,
   Phase,
   TemplateId,
 } from "@hunch-book/shared";
 import { BaseError, ContractFunctionRevertedError } from "viem";
 import { describe, expect, it, vi } from "vitest";
-import { hedgeValue } from "../src/components/hedge/TrackedHedges";
 import { perplReadAbi } from "../src/lib/hedge/abi";
 import {
   averageStep,
@@ -25,6 +23,7 @@ import {
   proposeHedges,
   ratePercent,
   rawFromUsdPerUnit,
+  roundUsdc,
   sizeBookHedge,
   sizePoolHedge,
   sizeUnits,
@@ -32,14 +31,12 @@ import {
   thresholdText,
   usdPerUnit,
 } from "../src/lib/hedge/math";
-import { perpIdsFromBanks, readFundingHistory, readPerplPositions } from "../src/lib/hedge/perpl";
 import {
-  HEDGE_STORAGE_KEY,
-  loadHedges,
-  type TrackedHedge,
-  trackHedge,
-  untrackHedge,
-} from "../src/lib/hedge/tracking";
+  perpIdsFromBanks,
+  readFundingHistory,
+  readFundingSums,
+  readPerplPositions,
+} from "../src/lib/hedge/perpl";
 import { makeMarket, USDC } from "./fixtures";
 
 // BTC on Perpl's testnet Exchange, as read on 2026-10-04: one decimal of price, five of size, scaling 0.
@@ -93,6 +90,11 @@ describe("Perpl units", () => {
     expect(formatUsdNumber(0.004213)).toBe("$0.004213");
     expect(formatUsdNumber(-3.1)).toBe("-$3.10");
     expect(formatUsdNumber(Number.NaN)).toBe("n/a");
+    // Funding per MON is a fraction of a cent: four significant digits keep it readable.
+    expect(formatUsdNumber(-0.00000031)).toBe("-$0.00000031");
+    expect(formatUsdNumber(0.00000094123)).toBe("$0.0000009412");
+    expect(formatUsdNumber(0)).toBe("$0.00");
+    expect(formatUsdNumber(0.12345)).toBe("$0.1235");
   });
 });
 
@@ -182,6 +184,28 @@ describe("hedge sizing", () => {
     expect(sizePoolHedge({ target: 5, sideTotal: 1, otherTotal: 9, room: 0.5, minStake: 1 }).ok).toBe(false);
   });
 
+  it("rounds to USDC's 6 decimals: what you pay up, what you get down", () => {
+    expect(roundUsdc(0.1 + 0.2, "up")).toBe(0.3);
+    expect(roundUsdc(1.0000001, "up")).toBe(1.000001);
+    expect(roundUsdc(1.0000019, "down")).toBe(1.000001);
+    expect(roundUsdc(2.5000004)).toBe(2.5);
+    expect(roundUsdc(-0.0000004)).toBe(0);
+    expect(Object.is(roundUsdc(-0.0000004), -0)).toBe(false);
+    expect(roundUsdc(Number.POSITIVE_INFINITY, "up")).toBe(Number.POSITIVE_INFINITY);
+    const onMicro = (n: number) => Math.abs(n * 1e6 - Math.round(n * 1e6)) < 1e-6;
+    const pool = sizePoolHedge({ target: 10, sideTotal: 300, otherTotal: 100, room: 1_000, minStake: 1 });
+    expect(pool.ok && [pool.cost, pool.payoutIfWin, pool.netIfWin].every(onMicro)).toBe(true);
+    // The stake rounds up, so the win never falls short of the target by more than the payout's rounding.
+    expect(pool.ok && pool.cost).toBe(34.09091);
+    expect(pool.ok && pool.netIfWin).toBeGreaterThanOrEqual(10 - 1e-6);
+    expect(pool.ok && pool.covered).toBe(1);
+    const book = sizeBookHedge({ target: 12, price: 0.4, feePerToken: 0.0068 });
+    expect(book.ok && [book.cost, book.tokens ?? 0, book.payoutIfWin, book.netIfWin].every(onMicro)).toBe(
+      true,
+    );
+    expect(book.ok && book.covered).toBe(1);
+  });
+
   it("book: tokens = target / (1 − fee − price)", () => {
     const r = sizeBookHedge({ target: 12, price: 0.4, feePerToken: 0.0068 });
     expect(r.ok).toBe(true);
@@ -253,6 +277,8 @@ describe("hedge proposals", () => {
     expect(net?.target).toBeCloseTo(0.8 * events * 0.5);
     expect(net?.thresholdUsdPerUnit).toBeCloseTo(2);
     expect(net?.sizing.ok && net.sizing.mode).toBe("pool");
+    // The live prices travel with the proposal, so a basket can size the same market for another amount.
+    expect(net?.pricing).toEqual({ mode: "pool", sideTotal: 300, otherTotal: 100, room: 1_000, minStake: 1 });
     expect(net?.chance).toBeCloseTo(0.75);
     expect(net?.pays).toMatch(/YES pays if BTC longs pay more than \$2.00 per BTC/);
   });
@@ -300,6 +326,7 @@ describe("hedge proposals", () => {
     expect(long?.sizing.ok && long.sizing.price).toBeCloseTo(0.4);
     // The YES fee is φ × NO pool / pool.
     expect(long?.sizing.ok && long.sizing.fee).toBeCloseTo((0.02 * 280) / 690);
+    expect(long?.pricing.mode === "book" && long.pricing.price).toBeCloseTo(0.4);
     const short = proposeHedges({ ...base, side: "short", rawPerInterval: -8, markets: [book] }).proposals[0];
     expect(short?.sizing.ok && short.sizing.price).toBeCloseTo(0.65);
   });
@@ -491,88 +518,21 @@ describe("Perpl reads", () => {
   });
 });
 
-function memoryStore() {
-  const map = new Map<string, string>();
-  return {
-    getItem: (k: string) => map.get(k) ?? null,
-    setItem: (k: string, v: string) => void map.set(k, v),
-    map,
-  };
-}
-
-const hedge = (overrides: Partial<TrackedHedge> = {}): TrackedHedge => ({
-  id: "h1",
-  network: "monad-testnet",
-  createdAt: 1,
-  perpId: "16",
-  symbol: "BTC",
-  side: "long",
-  units: 0.5,
-  startBlock: "1000",
-  startSum: "100",
-  market: "0x00000000000000000000000000000000000000a1",
-  buy: "yes",
-  mode: "book",
-  cost: 40,
-  tokens: 100,
-  payoutIfWin: 99,
-  ...overrides,
-});
-
-describe("tracked hedges", () => {
-  it("stores, lists by network and removes", () => {
-    const store = memoryStore();
-    expect(trackHedge(hedge(), store)).toBe(true);
-    expect(trackHedge(hedge({ id: "h2", network: "monad-mainnet", createdAt: 2 }), store)).toBe(true);
-    expect(loadHedges("monad-testnet", store).map((h) => h.id)).toEqual(["h1"]);
-    expect(untrackHedge("h1", store)).toBe(true);
-    expect(loadHedges("monad-testnet", store)).toEqual([]);
-  });
-
-  it("ignores bad entries and survives a store that throws", () => {
-    const store = memoryStore();
-    store.setItem(
-      HEDGE_STORAGE_KEY,
-      JSON.stringify([{ id: "x" }, hedge({ market: "nope" as never }), hedge()]),
+describe("funding sums at several blocks", () => {
+  it("reads them in one multicall, keyed by block", async () => {
+    const multicall = vi.fn(async ({ contracts }: { contracts: { args: [bigint, bigint] }[] }) =>
+      contracts.map((c) => [Number(c.args[1]) * 2, c.args[1]]),
     );
-    expect(loadHedges("monad-testnet", store)).toHaveLength(1);
-    store.setItem(HEDGE_STORAGE_KEY, "{");
-    expect(loadHedges("monad-testnet", store)).toEqual([]);
-    const broken = {
-      getItem: () => {
-        throw new Error("denied");
-      },
-      setItem: () => {
-        throw new Error("denied");
-      },
-    };
-    expect(loadHedges("monad-testnet", broken)).toEqual([]);
-    expect(trackHedge(hedge(), broken)).toBe(false);
-  });
-
-  it("values a hedge: settled, voided, and open at the market's price", () => {
-    const pool = { yes: USDC(410), no: USDC(280), total: USDC(690), stakers: 11 };
-    const won = makeMarket({ phase: Phase.Settled, outcome: Outcome.Yes, graduated: true, pool });
-    expect(hedgeValue(hedge(), won).value).toBeCloseTo(100 * (1 - (0.02 * 280) / 690));
-    const lost = makeMarket({ phase: Phase.Settled, outcome: Outcome.No, graduated: true, pool });
-    expect(hedgeValue(hedge(), lost)).toMatchObject({ value: 0, final: true });
-    const voided = makeMarket({ phase: Phase.Voided, graduated: true, pool });
-    expect(hedgeValue(hedge(), voided).value).toBe(50);
-    expect(hedgeValue(hedge({ mode: "pool", tokens: null }), voided).value).toBe(40);
-    const open = makeMarket({
-      phase: Phase.Graduated,
-      graduated: true,
-      pool,
-      quote: { bid: 600_000_000_000_000_000n, ask: 700_000_000_000_000_000n },
-    });
-    expect(hedgeValue(hedge(), open).value).toBeCloseTo(65);
-    const poolWon = makeMarket({
-      phase: Phase.Settled,
-      outcome: Outcome.Yes,
-      pool: { yes: USDC(300), no: USDC(100), total: USDC(400), stakers: 4 },
-    });
-    expect(hedgeValue(hedge({ mode: "pool", tokens: null, cost: 30 }), poolWon).value).toBeCloseTo(
-      30 + (0.98 * 30 * 100) / 300,
-    );
+    const client = { readContract: vi.fn(), multicall, getBlock: vi.fn() };
+    const sums = await readFundingSums(client as never, "0x1964C32f0bE608E7D29302AFF5E61268E72080cc", 16n, [
+      100n,
+      250n,
+    ]);
+    expect(sums).toEqual({ "100": 200n, "250": 500n });
+    expect(multicall).toHaveBeenCalledTimes(1);
+    expect(
+      await readFundingSums(client as never, "0x1964C32f0bE608E7D29302AFF5E61268E72080cc", 16n, []),
+    ).toEqual({});
+    expect(multicall).toHaveBeenCalledTimes(1);
   });
 });

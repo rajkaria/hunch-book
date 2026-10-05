@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { type Address, getAddress, isAddress } from "viem";
 import { appDeployment, appNetwork, appNetworkLabel } from "@/lib/config";
+import { basketKey } from "@/lib/hedge/basket";
 import { usePerplPositions, usePerpMeta } from "@/lib/hedge/hooks";
 import { lotsFromUnits, type PerpPosition, type PositionSide } from "@/lib/hedge/math";
-import { hedgeId, loadHedges, type TrackedHedge, trackHedge, untrackHedge } from "@/lib/hedge/tracking";
+import { basketId, loadBaskets, type TrackedBasket, trackBasket, untrackBasket } from "@/lib/hedge/tracking";
 import { useChainClock, useMarkets } from "@/lib/hooks";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import ps from "../page.module.css";
@@ -106,7 +107,7 @@ export function HedgeView() {
   const [manual, setManual] = useState<ManualEntry[]>([]);
   const [horizon, setHorizon] = useState<Horizon>("day");
   const [basis, setBasis] = useState<RateBasis>("current");
-  const [tracked, setTracked] = useState<TrackedHedge[]>([]);
+  const [tracked, setTracked] = useState<TrackedBasket[]>([]);
   const [trackNote, setTrackNote] = useState<string | null>(null);
 
   const positions = usePerplPositions(owner);
@@ -122,7 +123,8 @@ export function HedgeView() {
   }, [wallet.address, ownerInput, owner]);
 
   useEffect(() => {
-    setTracked(loadHedges(appNetwork));
+    // The first read also moves hedges tracked before baskets into one-leg baskets.
+    setTracked(loadBaskets(appNetwork));
   }, []);
 
   const readOwner = () => {
@@ -138,14 +140,24 @@ export function HedgeView() {
   const marketList = markets.data?.status === "ok" ? markets.data.data.markets : undefined;
 
   const trackedKeys = useMemo(
-    () => new Set(tracked.map((t) => `${t.perpId}:${t.market.toLowerCase()}`)),
+    () =>
+      new Set(
+        tracked.map((t) =>
+          basketKey(
+            t.perpId,
+            t.side,
+            t.legs.map((l) => l.market),
+          ),
+        ),
+      ),
     [tracked],
   );
 
   const onTrack = useCallback((r: TrackRequest) => {
-    if (!r.proposal.sizing.ok) return;
-    const ok = trackHedge({
-      id: hedgeId(),
+    const basket = r.plan.basket;
+    if (!basket.ok) return;
+    const ok = trackBasket({
+      id: basketId(),
       network: appNetwork,
       createdAt: Date.now(),
       perpId: r.position.perpId.toString(),
@@ -154,24 +166,27 @@ export function HedgeView() {
       units: r.units,
       startBlock: r.startBlock.toString(),
       startSum: r.startSum.toString(),
-      market: r.proposal.fm.market.address,
-      buy: r.proposal.buy,
-      mode: r.proposal.sizing.mode,
-      cost: r.proposal.sizing.cost,
-      tokens: r.proposal.sizing.tokens,
-      payoutIfWin: r.proposal.sizing.payoutIfWin,
+      cover: basket.cover,
+      legs: basket.legs.map(({ candidate, sizing }) => ({
+        market: candidate.market,
+        buy: candidate.buy,
+        mode: sizing.mode,
+        cost: sizing.cost,
+        tokens: sizing.tokens,
+        payoutIfWin: sizing.payoutIfWin,
+      })),
     });
     setTrackNote(
       ok
         ? "Tracking. It is listed under Tracked hedges below."
         : "This browser would not save it (private mode or full storage), so it cannot be tracked here.",
     );
-    setTracked(loadHedges(appNetwork));
+    setTracked(loadBaskets(appNetwork));
   }, []);
 
   const onRemoveTracked = (id: string) => {
-    untrackHedge(id);
-    setTracked(loadHedges(appNetwork));
+    untrackBasket(id);
+    setTracked(loadBaskets(appNetwork));
   };
 
   const loaded = positions.data?.status === "ok" ? positions.data : null;
@@ -284,7 +299,7 @@ export function HedgeView() {
             markets={marketList}
             clock={clock}
             onTrack={onTrack}
-            trackedMarkets={trackedKeys}
+            trackedBaskets={trackedKeys}
           />
         ))}
         {manual.map((entry) => (
@@ -296,7 +311,7 @@ export function HedgeView() {
             markets={marketList}
             clock={clock}
             onTrack={onTrack}
-            trackedMarkets={trackedKeys}
+            trackedBaskets={trackedKeys}
             onRemove={() => setManual((prev) => prev.filter((m) => m.key !== entry.key))}
           />
         ))}
@@ -312,7 +327,7 @@ export function HedgeView() {
 
       {tracked.length > 0 ? (
         <Panel title="Tracked hedges" labelledBy="hedge-tracked-title">
-          <TrackedHedges hedges={tracked} onRemove={onRemoveTracked} />
+          <TrackedHedges baskets={tracked} onRemove={onRemoveTracked} />
         </Panel>
       ) : null}
     </div>
