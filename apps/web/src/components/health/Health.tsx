@@ -8,6 +8,8 @@ import type { ChainClock, MarketView } from "@/lib/market/types";
 import { Badge, Panel, type Tone } from "../ui";
 import s from "./health.module.css";
 
+const HEALTH_DOC = "https://github.com/rajkaria/hunch-book/blob/main/docs/HEALTH.md";
+
 const TONE: Record<HealthGrade, Tone> = { good: "yes", fair: "warn", thin: "no", finished: "muted" };
 const GRADE_WORD: Record<HealthGrade, string> = {
   good: "good",
@@ -81,7 +83,11 @@ export function HealthPanel({
       </ul>
       <p className={s.note}>
         Liquidity, time and source, scored from what anyone can read on chain. 70 and up is good, under 40 is
-        thin. How it is worked out: docs/HEALTH.md.
+        thin.{" "}
+        <a href={HEALTH_DOC} target="_blank" rel="noreferrer">
+          How it is worked out
+        </a>
+        .
       </p>
     </Panel>
   );

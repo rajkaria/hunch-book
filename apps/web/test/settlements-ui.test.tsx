@@ -53,6 +53,7 @@ const body: ArchiveBody = {
       evidence: null,
       reads: null,
       verified: null,
+      complete: false,
       error: "Could not verify this one right now: timeout",
       links: { app: "", verify: "", evidence: "https://example.invalid/e", explorer: "" },
     },
@@ -77,7 +78,8 @@ describe("settlement archive page", () => {
     expect(screen.getByText("Not checked")).toBeTruthy();
     expect(screen.getByText(/68,488,249/)).toBeTruthy();
     expect(screen.getByText(/\(ours\)/)).toBeTruthy();
-    expect(screen.getByText("Transaction not found yet")).toBeTruthy();
+    expect(screen.getByText(/Not found on this load/)).toBeTruthy();
+    expect(screen.getByText(/Some records are still being checked/)).toBeTruthy();
     expect(screen.getByText(/timeout/)).toBeTruthy();
     expect(screen.getAllByRole("link", { name: "Re-run the read" })[0]?.getAttribute("href")).toBe(
       `/verify/${MARKET}`,

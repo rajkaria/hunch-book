@@ -1,5 +1,5 @@
 import { addressUrl, describeError, type MarketInfo, type Verification } from "@hunch-book/sdk";
-import { cached } from "./cache";
+import { cached, peek, remember } from "./cache";
 import type { ApiDeps } from "./deps";
 import { type ChainClock, isOurs, marketTitleText, marketUrl } from "./markets";
 
@@ -44,31 +44,35 @@ export const isFinal = (m: Pick<MarketInfo, "phaseName">): boolean =>
 /**
  * The verification of one market, shared with /markets/{address}/evidence's cache. For a finished
  * market it always names the settling transaction: the SDK looks that up only when a template's check
- * needs it, so it is found here otherwise (a search of `phase()` over past blocks), and kept, since it
- * never changes.
+ * needs it, so it is found here otherwise (a search of `phase()` over past blocks).
+ *
+ * A finished market's answer never changes, so a complete one (checked, with its transaction) is kept
+ * for a day; an incomplete one (the public RPC dropped reads) only for 30 seconds, so it is tried again.
  */
-export function verification(deps: ApiDeps, m: MarketInfo): Promise<Verification> {
-  return cached(
-    `evidence:${deps.network}:${m.address}:${m.phase}`,
-    m.phaseName === "settled" ? 300_000 : 30_000,
+export async function verification(deps: ApiDeps, m: MarketInfo): Promise<Verification> {
+  const key = `evidence:${deps.network}:${m.address}:${m.phase}`;
+  const done = `${key}:complete`;
+  const kept = peek<Verification>(done, deps.now());
+  if (kept) return kept;
+  const v = await cached(
+    key,
+    m.phaseName === "settled" ? 30_000 : 15_000,
     async () => {
-      const v = await deps.sdk.settlement.verify(m);
-      if (v.settlement || !isFinal(m)) return v;
-      // Only a found transaction is kept: a miss (or an RPC hiccup during the search) is tried again.
-      const tx = await cached(
-        `settle-tx:${deps.network}:${m.address}`,
-        86_400_000,
-        async () => {
-          const found = await deps.sdk.settlement.findTransaction(m.address);
-          if (!found) throw new Error("not found");
-          return found;
-        },
-        deps.now(),
-      ).catch(() => null);
-      return tx ? { ...v, settlement: tx } : v;
+      const first = await deps.sdk.settlement.verify(m);
+      if (first.settlement || !isFinal(m)) return first;
+      const tx = await deps.sdk.settlement.findTransaction(m.address).catch(() => null);
+      return tx ? { ...first, settlement: tx } : first;
     },
     deps.now(),
   );
+  if (isComplete(m, v)) remember(done, 86_400_000, v, deps.now());
+  return v;
+}
+
+/** A finished market's verification that needs no second try: its read was checked and its transaction found. */
+export function isComplete(m: Pick<MarketInfo, "phaseName">, v: Verification): boolean {
+  if (!isFinal(m) || !v.settlement) return false;
+  return m.phaseName === "voided" || v.verified !== null;
 }
 
 /** Runs `work` over `items`, at most `limit` at a time, keeping the order. */
@@ -124,6 +128,8 @@ export function settlementRecord(
     verified: v?.verified ?? null,
     matches: v?.matches ?? null,
     notes: v?.notes ?? [],
+    /** False while the check or the transaction is still missing; the API tries again shortly. */
+    complete: v ? isComplete(m, v) : false,
     error,
     links: {
       app: marketUrl(deps, m.address),

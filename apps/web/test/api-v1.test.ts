@@ -571,8 +571,9 @@ describe("GET /api/v1/settlements", () => {
     });
     const res = await getSettlements(req("/api/v1/settlements"), d);
     expect(res.status).toBe(200);
+    // One record could not be checked, so the page is cached briefly and tried again.
     expect(res.headers.get("cache-control")).toBe(
-      "public, max-age=300, s-maxage=300, stale-while-revalidate=3600",
+      "public, max-age=30, s-maxage=30, stale-while-revalidate=120",
     );
     const body = await res.json();
     expect(body.total).toBe(3);
@@ -621,6 +622,29 @@ describe("GET /api/v1/settlements", () => {
     const byId = new Map(body.settlements.map((r: { id: number }) => [r.id, r]));
     expect(byId.get(3)).toMatchObject({ settledAt: { block: "42" }, settlementTx: { hash: TX } });
     expect(byId.get(5)).toMatchObject({ settledAt: null, settlementTx: null });
+  });
+
+  it("keeps a complete record for a day, and checks an incomplete one again", async () => {
+    let now = NOW;
+    const d = deps({ now: () => now });
+    const verify = d.sdk.settlement.verify as ReturnType<typeof vi.fn>;
+    verify.mockImplementation(async (m: MarketInfo) =>
+      m.id === 5 ? { ...verified(m, 1n, addr(1)), verified: null } : verified(m, 9n, addr(1)),
+    );
+    const first = await getSettlements(req("/api/v1/settlements?template=1"), d);
+    expect(first.headers.get("cache-control")).toBe(
+      "public, max-age=300, s-maxage=300, stale-while-revalidate=3600",
+    );
+    expect((await first.json()).settlements.every((r: { complete: boolean }) => r.complete)).toBe(true);
+    now += 10 * 60_000;
+    await getSettlements(req("/api/v1/settlements"), d);
+    const calls = (id: number) => verify.mock.calls.filter(([m]) => (m as MarketInfo).id === id).length;
+    expect(calls(3)).toBe(1);
+    expect(calls(5)).toBe(1);
+    now += 10 * 60_000;
+    await getSettlements(req("/api/v1/settlements"), d);
+    expect(calls(3)).toBe(1);
+    expect(calls(5)).toBe(2);
   });
 
   it("filters by template, pages, and refuses bad queries", async () => {

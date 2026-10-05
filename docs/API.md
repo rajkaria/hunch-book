@@ -303,8 +303,11 @@ which re-runs the read from your browser. The app shows it at
 Markets are taken newest first, then verified (three at a time), then sorted by settlement block. The
 settling transaction is found by searching `phase()` over past blocks and then reading that block's
 `Settled` or `Voided` event, so the answer is never a guess: if the search cannot finish, `settledAt` and
-`settlementTx` are null and `error` (or the record's absence of a transaction) says so. A cold archive
-takes a few seconds; the answer is cached for 5 minutes. Read from Monad testnet on 2026-10-06, trimmed
+`settlementTx` are null and `error` (or the record's absence of a transaction) says so. `complete` is
+true once a record's read is checked and its transaction found; a complete record is kept for a day (a
+finished market's answer never changes), an incomplete one is tried again within 30 seconds. A page of
+complete records is cached for 5 minutes, any other for 30 seconds. A cold archive takes several seconds
+on the public RPC. Read from Monad testnet on 2026-10-06, trimmed
 to one record:
 
 ```json
@@ -348,6 +351,7 @@ to one record:
       "verified": true,
       "matches": { "evidenceHash": true, "outcome": true, "rerun": true },
       "notes": [],
+      "complete": true,
       "error": null,
       "links": {
         "app": "https://book.playhunch.xyz/m/0x2A44B99014cF73065BFb89197a08DE09D18d3982",

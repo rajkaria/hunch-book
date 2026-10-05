@@ -29,6 +29,7 @@ export interface ArchiveRecord {
   evidence: string | null;
   reads: Record<string, unknown> | null;
   verified: boolean | null;
+  complete?: boolean;
   error: string | null;
   links: { app: string; verify: string; evidence: string; explorer: string };
 }
@@ -98,6 +99,8 @@ export function SettlementRow({ r }: { r: ArchiveRecord }) {
                 {new Date(r.settledAt.time).toUTCString().replace(" GMT", " UTC")} · block{" "}
                 <span className="mono">{formatInt(BigInt(r.settledAt.block))}</span>
               </>
+            ) : r.complete === false ? (
+              "Not found on this load: the chain did not answer every read. Reload in a minute."
             ) : (
               "Transaction not found yet"
             )}
@@ -138,7 +141,15 @@ export function SettlementRow({ r }: { r: ArchiveRecord }) {
 
 export function SettlementsView() {
   const q = useQuery({ queryKey: ["settlements", appNetwork], queryFn: fetchArchive, staleTime: 60_000 });
-  if (q.isPending) return <LoadingRows rows={4} />;
+  if (q.isPending)
+    return (
+      <>
+        <p className={s.note}>
+          Checking every settlement against the chain. The first load after a while can take up to a minute.
+        </p>
+        <LoadingRows rows={4} label="Checking settlements" />
+      </>
+    );
   if (q.isError) return <ErrorState title="Could not load the archive" detail={(q.error as Error).message} />;
   const body = q.data;
   return (
@@ -150,6 +161,12 @@ export function SettlementsView() {
         </a>
       }
     >
+      {body.settlements.some((r) => r.complete === false) ? (
+        <p className={s.note}>
+          Some records are still being checked: the public RPC dropped part of the reads. They fill in on a
+          reload in a minute; nothing about the settlement itself is uncertain.
+        </p>
+      ) : null}
       {body.network !== appNetwork ? (
         <p className={s.note}>This archive covers {body.network}, the network the data API serves.</p>
       ) : null}

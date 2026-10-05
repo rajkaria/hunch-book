@@ -30,6 +30,17 @@ export async function cached<T>(
   return value;
 }
 
+/** A value already loaded and not expired, without loading anything. */
+export function peek<T>(key: string, now = Date.now()): Promise<T> | undefined {
+  const hit = store.get(key);
+  return hit && hit.expires > now ? (hit.value as Promise<T>) : undefined;
+}
+
+/** Keeps a value that is already known. */
+export function remember<T>(key: string, ttlMs: number, value: T, now = Date.now()): void {
+  store.set(key, { expires: now + ttlMs, value: Promise.resolve(value) });
+}
+
 /** Empties the cache (tests). */
 export function clearCache(): void {
   store.clear();

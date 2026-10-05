@@ -239,13 +239,11 @@ export async function getSettlements(request: Request, deps: ApiDeps): Promise<R
     // Newest markets first, so the first page holds the latest settlements without verifying them all.
     const page = [...finished].sort((a, b) => b.id - a.id).slice(query.offset, query.offset + query.limit);
     const records = await archive(deps, page, clock);
+    // A page with a record still missing its check or transaction is cached briefly, so the next
+    // request fills it in; a complete page is cached for minutes.
+    const cache = records.every((r) => r.complete) ? CACHE.archive : CACHE.recent;
     if (wantsCsv(request))
-      return csv(
-        records.map(settlementCsvRow),
-        SETTLEMENT_CSV_COLUMNS,
-        "hunch-book-settlements.csv",
-        CACHE.archive,
-      );
+      return csv(records.map(settlementCsvRow), SETTLEMENT_CSV_COLUMNS, "hunch-book-settlements.csv", cache);
     return json(
       {
         network: deps.network,
@@ -256,7 +254,7 @@ export async function getSettlements(request: Request, deps: ApiDeps): Promise<R
         howToCheck:
           "Each record's verify link re-runs the read in your browser; the SDK's verifySettlement does the same with any RPC (docs/SDK.md).",
       },
-      CACHE.archive,
+      cache,
     );
   });
 }
