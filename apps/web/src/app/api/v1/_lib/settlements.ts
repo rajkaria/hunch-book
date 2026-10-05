@@ -8,12 +8,14 @@ import { type ChainClock, isOurs, marketTitleText, marketUrl } from "./markets";
 // today. Built from the SDK's verifySettlement, the same check /verify runs in the browser.
 
 /** Markets verified at once, so a cold archive does not flood the RPC. */
-export const ARCHIVE_CONCURRENCY = 3;
+export const ARCHIVE_CONCURRENCY = 2;
 export const ARCHIVE_DEFAULT_LIMIT = 25;
 export const ARCHIVE_MAX_LIMIT = 100;
 
 export interface ArchiveQuery {
   template: number | null;
+  /** One market only: the app's archive page asks for its records one at a time. */
+  market: string | null;
   limit: number;
   offset: number;
 }
@@ -35,7 +37,16 @@ export function parseArchiveQuery(url: URL): ArchiveQuery | string {
   if (template !== null && template !== "" && !/^[1-9]\d*$/.test(template)) {
     return "template must be a template id such as 1.";
   }
-  return { template: template ? Number(template) : null, limit, offset };
+  const market = url.searchParams.get("market");
+  if (market !== null && market !== "" && !/^0x[0-9a-fA-F]{40}$/.test(market)) {
+    return "market must be a market address.";
+  }
+  return {
+    template: template ? Number(template) : null,
+    market: market ? market.toLowerCase() : null,
+    limit,
+    offset,
+  };
 }
 
 export const isFinal = (m: Pick<MarketInfo, "phaseName">): boolean =>

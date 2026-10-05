@@ -657,7 +657,11 @@ describe("GET /api/v1/settlements", () => {
     const paged = await (await getSettlements(req("/api/v1/settlements?limit=1&offset=1"), d)).json();
     expect(paged).toMatchObject({ total: 3, limit: 1, offset: 1 });
     expect(paged.settlements).toHaveLength(1);
-    for (const bad of ["limit=0", "limit=101", "offset=-1", "template=abc"]) {
+    const single = await (
+      await getSettlements(req(`/api/v1/settlements?market=${addr(0x1005).toLowerCase()}`), d)
+    ).json();
+    expect(single.settlements.map((r: { id: number }) => r.id)).toEqual([5]);
+    for (const bad of ["limit=0", "limit=101", "offset=-1", "template=abc", "market=0x12"]) {
       expect((await getSettlements(req(`/api/v1/settlements?${bad}`), d)).status).toBe(400);
     }
   });

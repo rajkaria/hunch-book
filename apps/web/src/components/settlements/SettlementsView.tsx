@@ -40,16 +40,41 @@ export interface ArchiveBody {
   settlements: ArchiveRecord[];
 }
 
-export const ARCHIVE_URL = "/api/v1/settlements?limit=100";
 export const ARCHIVE_CSV_URL = "/api/v1/settlements?limit=100&format=csv";
 
-async function fetchArchive(): Promise<ArchiveBody> {
-  const res = await fetch(ARCHIVE_URL);
+/** A finished market as the market list has it: enough to show its row before its check is in. */
+export interface FinishedMarket {
+  id: number;
+  address: string;
+  rule: string;
+  template: { id: number; name: string };
+  phase: "settled" | "voided";
+  outcome: string;
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const res = await fetch(url);
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `The archive did not answer (${res.status}).`);
+    throw new Error(body?.error ?? `The data API did not answer (${res.status}).`);
   }
-  return (await res.json()) as ArchiveBody;
+  return (await res.json()) as T;
+}
+
+/** Every settled or voided market, newest first, from one cheap read of the market list. */
+export async function fetchFinished(): Promise<FinishedMarket[]> {
+  const body = await getJson<{ markets: (FinishedMarket & { phase: string })[] }>(
+    "/api/v1/markets?limit=200",
+  );
+  return body.markets
+    .filter((m): m is FinishedMarket => m.phase === "settled" || m.phase === "voided")
+    .sort((a, b) => b.id - a.id);
+}
+
+/** One market's archive record. Each is its own request, so the public RPC is never asked for all at once. */
+export async function fetchRecord(address: string): Promise<ArchiveRecord | null> {
+  const body = await getJson<ArchiveBody>(`/api/v1/settlements?market=${address}`);
+  return body.settlements[0] ?? null;
 }
 
 function resultBadge(r: ArchiveRecord): { tone: Tone; text: string } {
@@ -74,7 +99,7 @@ export function readPairs(reads: Record<string, unknown> | null): [string, strin
     .map(([k, v]) => [k, String(v)]);
 }
 
-export function SettlementRow({ r }: { r: ArchiveRecord }) {
+export function SettlementRow({ r, checking = false }: { r: ArchiveRecord; checking?: boolean }) {
   const result = resultBadge(r);
   const check = verifiedText(r.verified);
   return (
@@ -84,7 +109,9 @@ export function SettlementRow({ r }: { r: ArchiveRecord }) {
         <span>{r.template.name}</span>
         <span className="mono">#{r.id}</span>
         <span className={s.metaRight}>
-          <Badge tone={check.tone}>{check.text}</Badge>
+          <Badge tone={checking ? "muted" : check.tone}>
+            {checking ? "Checking the read..." : check.text}
+          </Badge>
         </span>
       </div>
       <h2 className={s.title}>
@@ -99,8 +126,10 @@ export function SettlementRow({ r }: { r: ArchiveRecord }) {
                 {new Date(r.settledAt.time).toUTCString().replace(" GMT", " UTC")} · block{" "}
                 <span className="mono">{formatInt(BigInt(r.settledAt.block))}</span>
               </>
+            ) : checking ? (
+              "Reading the chain..."
             ) : r.complete === false ? (
-              "Not found on this load: the chain did not answer every read. Reload in a minute."
+              "Not found on this load: the chain did not answer every read. It is asked again shortly."
             ) : (
               "Transaction not found yet"
             )}
@@ -139,47 +168,72 @@ export function SettlementRow({ r }: { r: ArchiveRecord }) {
   );
 }
 
+/** A finished market's row: its outcome at once, then the read and transaction once its check is in. */
+export function ArchiveItem({ m }: { m: FinishedMarket }) {
+  const q = useQuery({
+    queryKey: ["settlement", appNetwork, m.address.toLowerCase()],
+    queryFn: () => fetchRecord(m.address),
+    staleTime: 5 * 60_000,
+    retry: 3,
+    retryDelay: (n) => 2_000 * 2 ** n,
+    // An incomplete record (the RPC dropped reads) is asked for again until it fills in.
+    refetchInterval: (query) => (query.state.data && query.state.data.complete === false ? 30_000 : false),
+  });
+  if (q.data) return <SettlementRow r={q.data} />;
+  const pending: ArchiveRecord = {
+    id: m.id,
+    market: m.address,
+    title: m.rule,
+    template: m.template,
+    status: m.phase,
+    outcome: m.outcome,
+    settledAt: null,
+    settlementTx: null,
+    evidence: null,
+    reads: null,
+    verified: null,
+    complete: false,
+    error: q.isError ? `Could not check this one right now: ${(q.error as Error).message}` : null,
+    links: { app: "", verify: "", evidence: `/api/v1/markets/${m.address}/evidence`, explorer: "" },
+  };
+  return <SettlementRow r={pending} checking={!q.isError} />;
+}
+
 export function SettlementsView() {
-  const q = useQuery({ queryKey: ["settlements", appNetwork], queryFn: fetchArchive, staleTime: 60_000 });
-  if (q.isPending)
-    return (
-      <>
-        <p className={s.note}>
-          Checking every settlement against the chain. The first load after a while can take up to a minute.
-        </p>
-        <LoadingRows rows={4} label="Checking settlements" />
-      </>
-    );
-  if (q.isError) return <ErrorState title="Could not load the archive" detail={(q.error as Error).message} />;
-  const body = q.data;
+  const list = useQuery({
+    queryKey: ["settlements-list", appNetwork],
+    queryFn: fetchFinished,
+    staleTime: 60_000,
+  });
+  if (list.isPending) return <LoadingRows rows={4} label="Loading finished markets" />;
+  if (list.isError)
+    return <ErrorState title="Could not load the archive" detail={(list.error as Error).message} />;
+  const markets = list.data;
   return (
     <Panel
-      title={`${formatInt(body.total)} finished ${body.total === 1 ? "market" : "markets"}`}
+      title={`${formatInt(markets.length)} finished ${markets.length === 1 ? "market" : "markets"}`}
       aside={
         <a className={s.download} href={ARCHIVE_CSV_URL} download>
           Download CSV
         </a>
       }
     >
-      {body.settlements.some((r) => r.complete === false) ? (
-        <p className={s.note}>
-          Some records are still being checked: the public RPC dropped part of the reads. They fill in on a
-          reload in a minute; nothing about the settlement itself is uncertain.
-        </p>
-      ) : null}
-      {body.network !== appNetwork ? (
-        <p className={s.note}>This archive covers {body.network}, the network the data API serves.</p>
-      ) : null}
-      {body.settlements.length === 0 ? (
+      {markets.length === 0 ? (
         <EmptyState title="Nothing has settled yet">
           <p>Markets appear here once they settle or void.</p>
         </EmptyState>
       ) : (
-        <ul className={s.list}>
-          {body.settlements.map((r) => (
-            <SettlementRow key={r.market} r={r} />
-          ))}
-        </ul>
+        <>
+          <p className={s.note}>
+            Each record is checked against the chain as it loads: the read that settled it, done again, and
+            the transaction that did it.
+          </p>
+          <ul className={s.list}>
+            {markets.map((m) => (
+              <ArchiveItem key={m.address} m={m} />
+            ))}
+          </ul>
+        </>
       )}
     </Panel>
   );

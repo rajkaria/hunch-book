@@ -234,7 +234,10 @@ export async function getSettlements(request: Request, deps: ApiDeps): Promise<R
   return guard(async () => {
     const [all, clock] = await Promise.all([allMarkets(deps), clockOrNull(deps)]);
     const finished = all.filter(
-      (m) => isFinal(m) && (query.template === null || m.templateId === query.template),
+      (m) =>
+        isFinal(m) &&
+        (query.template === null || m.templateId === query.template) &&
+        (query.market === null || m.address.toLowerCase() === query.market),
     );
     // Newest markets first, so the first page holds the latest settlements without verifying them all.
     const page = [...finished].sort((a, b) => b.id - a.id).slice(query.offset, query.offset + query.limit);

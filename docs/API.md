@@ -296,11 +296,12 @@ which re-runs the read from your browser. The app shows it at
 | Query | Default | Meaning |
 |---|---|---|
 | `template` | all | a template id, 1 to 7 |
+| `market` | all | one market's address: its record alone (the app's archive page asks one market at a time) |
 | `limit` | 25 | 1 to 100 |
 | `offset` | 0 | |
 | `format` | json | `csv` for a spreadsheet, `reads` as JSON in one column |
 
-Markets are taken newest first, then verified (three at a time), then sorted by settlement block. The
+Markets are taken newest first, then verified (two at a time), then sorted by settlement block. The
 settling transaction is found by searching `phase()` over past blocks and then reading that block's
 `Settled` or `Voided` event, so the answer is never a guess: if the search cannot finish, `settledAt` and
 `settlementTx` are null and `error` (or the record's absence of a transaction) says so. `complete` is
