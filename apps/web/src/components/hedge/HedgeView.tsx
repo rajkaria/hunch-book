@@ -6,6 +6,7 @@ import { appDeployment, appNetwork, appNetworkLabel } from "@/lib/config";
 import { usePerplPositions, usePerpMeta } from "@/lib/hedge/hooks";
 import { lotsFromUnits, type PerpPosition, type PositionSide } from "@/lib/hedge/math";
 import { hedgeId, loadHedges, type TrackedHedge, trackHedge, untrackHedge } from "@/lib/hedge/tracking";
+import { useHedgePrefill } from "@/lib/hedge/usePrefill";
 import { useChainClock, useMarkets } from "@/lib/hooks";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import ps from "../page.module.css";
@@ -112,6 +113,14 @@ export function HedgeView() {
   const positions = usePerplPositions(owner);
   const markets = useMarkets();
   const clock = useChainClock();
+
+  const addManual = useCallback(
+    (position: PerpPosition) =>
+      setManual((prev) => [...prev, { key: `${Date.now()}-${prev.length}`, position }]),
+    [],
+  );
+  // A link such as /hedge?perp=BTC&side=long&size=0.5 (from the calculator) adds that position.
+  useHedgePrefill(addManual);
 
   // Start from the connected wallet, once, if the person has not typed another address.
   useEffect(() => {
@@ -240,11 +249,7 @@ export function HedgeView() {
               Or enter a position by hand
             </summary>
             <div style={{ marginTop: 12 }}>
-              <ManualForm
-                onAdd={(position) =>
-                  setManual((prev) => [...prev, { key: `${Date.now()}-${prev.length}`, position }])
-                }
-              />
+              <ManualForm onAdd={addManual} />
             </div>
           </details>
         </div>

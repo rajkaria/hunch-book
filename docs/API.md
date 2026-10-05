@@ -3,7 +3,7 @@
 Status: **building**. The API is served by the app ([`apps/web/src/app/api/v1`](../apps/web/src/app/api/v1))
 and reads Monad testnet. It is built on the [TypeScript SDK](./SDK.md); every value comes from the chain
 or, where noted, from the [indexer](./INDEXER.md). The examples below are real responses, read from
-Monad testnet on 2026-10-04 (trimmed where marked).
+Monad testnet on 2026-10-04 (the funding examples on 2026-10-05; trimmed where marked).
 
 Base URL: `https://book.playhunch.xyz/api/v1` (the app's own origin; the network is the app's,
 `NEXT_PUBLIC_HUNCH_NETWORK`).
@@ -16,7 +16,9 @@ Base URL: `https://book.playhunch.xyz/api/v1` (the app's own origin; the network
 | [`GET /markets/{address}/evidence`](#get-marketsaddressevidence) | settlement evidence and its verification |
 | [`GET /stats`](#get-stats) | protocol totals and the vault's solvency |
 | [`GET /feed`](#get-feed) | open markets as cards, for the main Hunch app and anyone else |
+| [`GET /funding/{asset}`](#get-fundingasset) | what the market thinks about a Perpl perp's funding this period |
 | [`GET /embed/m/{address}`](#embed) (outside `/api`) | a market card for an iframe |
+| [`GET /embed/funding/{asset}`](#funding-card) (outside `/api`) | the funding answer as a card for an iframe, such as on Perpl |
 | `GET /` | this list of endpoints |
 
 ## Conventions
@@ -361,6 +363,141 @@ small cards. The schema is versioned (`version`); fields are only ever added.
 | `endsAt` | when staking stops (pool) or the market closes (trading); `endsAtEstimated` for block-clock markets |
 | `url`, `embedUrl` | the market page, and its card for an iframe |
 
+## GET /funding/{asset}
+
+"What does the market think?" for one Perpl perp: the open market that asks whether that perp's longs pay
+funding this period (template 1, Perpl net funding), its chance, the question in plain words, its window
+and links. Made for perp traders and for Perpl's own pages; the [funding card](#funding-card) shows the
+same answer in an iframe.
+
+`asset` is a perp named in `external.perpl.perps` of the deployments file: `BTC`, `ETH`, `SOL` or `MON`,
+in any case.
+
+**Which market answers.** Among the open template 1 markets on that perp (a pool taking stakes before its
+window starts, or a book trading before its window ends, checked against the chain head), the newest one
+whose funding window is running now; if none is running, the newest one still to start. Newest is the
+highest market number. So while this week's market trades, next week's new pool does not replace it.
+`pick` carries this rule, whether it matched a `running` or an `upcoming` market, and how many were open;
+`alsoOpen` lists the others.
+
+**The chance** is the market's own, as `/markets` computes it: the Kuru book's mid once the market has
+graduated, the pool's split before. `headline` puts it in one sentence, with the percent rounded to a
+whole number (never to 0% or 100% unless it is exactly that). The clause comes from the resolver's own
+rule: "BTC longs pay more than $12.04 per BTC", "BTC longs pay shorts on net", or, for a negative
+threshold, "BTC shorts pay longs less than $5 per BTC on net". The period is "this week" for a running
+window of about seven days, "in the coming week" before it starts, and the window's length otherwise.
+
+```js
+const res = await fetch("https://book.playhunch.xyz/api/v1/funding/BTC");
+const view = await res.json();
+if (view.market) {
+  // for example "Market's chance BTC longs pay more than $12.04 per BTC this week: 62%"
+  console.log(view.market.headline, view.market.links.app);
+} else {
+  console.log(view.reason);
+}
+```
+
+A real answer, at block 68,495,713 (market #7 is a pool, so the chance is its split):
+
+```json
+{
+  "network": "monad-testnet",
+  "asset": "MON",
+  "perp": { "id": "64", "exchange": "0x1964C32f0bE608E7D29302AFF5E61268E72080cc" },
+  "pick": {
+    "rule": "running-window-first-then-newest",
+    "text": "Among the open template 1 (Perpl net funding) markets on this perp (a pool taking stakes before its window starts, or a book trading before its window ends), the newest one whose funding window is running now; if none is running, the newest one still to start. Newest is the highest market number.",
+    "matched": "upcoming",
+    "candidates": 1
+  },
+  "market": {
+    "id": 7,
+    "address": "0x6FFC70F919e9B6e20aD76df870854818C310cD9e",
+    "phase": "pool",
+    "phaseLabel": "Pool",
+    "headline": "Market's chance MON shorts pay longs less than $0.00000031 per MON on net in the next 85-minute window: 50%",
+    "clause": "MON shorts pay longs less than $0.00000031 per MON on net",
+    "period": "in the next 85-minute window",
+    "question": "Will MON longs pay more than -$0.00000031 per MON in funding on Perpl between about Oct 6, 14:40 and Oct 6, 16:05 UTC?",
+    "rule": "Will MON longs pay more than -$0.00000031 per MON in funding on Perpl (MON Perp, perp 64) between block 68713707 and block 68730849?",
+    "chance": { "yes": 0.5, "bps": 5000, "percent": "50%", "source": "pool", "words": "the pool's split" },
+    "window": {
+      "startBlock": "68713707",
+      "endBlock": "68730849",
+      "startAt": "2026-10-06T14:40:43.000Z",
+      "endAt": "2026-10-06T16:07:00.000Z",
+      "estimated": true,
+      "running": false,
+      "words": "between about Oct 6, 14:40 and Oct 6, 16:05 UTC"
+    },
+    "threshold": { "raw": "-31", "expectedScalingExp": 3 },
+    "pool": { "totalUsdc": "480", "stakers": 8 },
+    "book": null,
+    "createdByHunch": true,
+    "links": {
+      "app": "https://book.playhunch.xyz/m/0x6FFC70F919e9B6e20aD76df870854818C310cD9e",
+      "verify": "https://book.playhunch.xyz/verify/0x6FFC70F919e9B6e20aD76df870854818C310cD9e",
+      "api": "https://book.playhunch.xyz/api/v1/markets/0x6FFC70F919e9B6e20aD76df870854818C310cD9e",
+      "evidence": "https://book.playhunch.xyz/api/v1/markets/0x6FFC70F919e9B6e20aD76df870854818C310cD9e/evidence",
+      "embed": "https://book.playhunch.xyz/embed/m/0x6FFC70F919e9B6e20aD76df870854818C310cD9e",
+      "explorer": "https://testnet.monadscan.com/address/0x6FFC70F919e9B6e20aD76df870854818C310cD9e"
+    }
+  },
+  "reason": null,
+  "alsoOpen": [],
+  "asOf": { "block": "68495713", "time": "2026-10-05T20:23:29.000Z" },
+  "links": {
+    "embed": "https://book.playhunch.xyz/embed/funding/MON",
+    "calculator": "https://book.playhunch.xyz/calculator?perp=MON",
+    "markets": "https://book.playhunch.xyz/api/v1/markets?template=1&asset=MON&phase=open",
+    "create": "https://book.playhunch.xyz/create?template=1&asset=MON"
+  }
+}
+```
+
+With no open market, `market` is null and `reason` says why; the links stay, including one that opens
+the create page on template 1 for that perp. The same read for BTC:
+
+```json
+{
+  "network": "monad-testnet",
+  "asset": "BTC",
+  "perp": { "id": "16", "exchange": "0x1964C32f0bE608E7D29302AFF5E61268E72080cc" },
+  "pick": { "rule": "running-window-first-then-newest", "text": "(as above)", "matched": null, "candidates": 0 },
+  "market": null,
+  "reason": "No template 1 (Perpl net funding) market on BTC is open right now: none is taking stakes before its window starts or trading before its window ends.",
+  "alsoOpen": [],
+  "asOf": { "block": "68495713", "time": "2026-10-05T20:23:29.000Z" },
+  "links": {
+    "embed": "https://book.playhunch.xyz/embed/funding/BTC",
+    "calculator": "https://book.playhunch.xyz/calculator?perp=BTC",
+    "markets": "https://book.playhunch.xyz/api/v1/markets?template=1&asset=BTC&phase=open",
+    "create": "https://book.playhunch.xyz/create?template=1&asset=BTC"
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `perp` | Perpl's id for the perp on this network, and Perpl's Exchange address |
+| `pick` | the rule that chose the market, `matched` (`running`, `upcoming` or null) and `candidates` (open template 1 markets on the perp) |
+| `market.headline` | the answer in one sentence, ending in the chance |
+| `market.clause`, `market.period` | the two halves of the headline: what YES means, and when |
+| `market.question` | the rule with its blocks as estimated times; `rule` is the resolver's exact sentence |
+| `market.chance` | `yes` from 0 to 1, `bps`, `percent`, `source` as in `/markets`, and `words` for people |
+| `market.window` | the funding window A to B as blocks, their estimated times, `running` (A is at or before the head) and `words`. B is the market's close; for a pool, staking closes at A |
+| `market.threshold` | the market's raw threshold in Perpl's units, and the scaling exponent it was made with |
+| `market.book` | best YES bid, ask and mid while trading; null for pools |
+| `market.createdByHunch` | true when one of Hunch Book's own wallets (such as the keeper's weekly series) created it |
+| `market.links` | the market page, its settlement page (`verify`), its API entries, its card, and the explorer |
+| `alsoOpen` | the other open template 1 markets on the perp, newest first |
+| `asOf` | the chain head the answer was computed at |
+
+Errors: `400` for an asset that is not letters and digits, `404` for an asset the deployments file does
+not list (the message names the ones it does), `502` when the chain does not answer. `?format=csv` gives
+`field,value` rows. Cached like the feed: 15 seconds.
+
 ## Embed
 
 `https://book.playhunch.xyz/embed/m/{address}` is a market card for an iframe: the rule, the phase, the
@@ -379,9 +516,37 @@ refreshes itself every minute. Every value from the chain is HTML-escaped.
 ></iframe>
 ```
 
-Framing is allowed only here: the embed answers with `Content-Security-Policy: frame-ancestors *` (and
-`default-src 'none'`), while every other page of the app keeps `X-Frame-Options: DENY` and
+Framing is allowed only under `/embed`: the cards answer with `Content-Security-Policy: frame-ancestors *`
+(and `default-src 'none'`), while every other page of the app keeps `X-Frame-Options: DENY` and
 `frame-ancestors 'none'`. An address that is not a market gets a short card saying so, with a `404`.
+
+## Funding card
+
+`https://book.playhunch.xyz/embed/funding/{asset}` is the [funding answer](#get-fundingasset) as a card
+for an iframe, sized for a perp's page on an exchange such as Perpl: one line such as "Market's chance
+BTC longs pay more than $12.04 per BTC this week", the chance in large type with a YES/NO bar, the
+book's prices or the pool, the funding window, and a link to stake or trade on the market page. With no
+open market it says so and links to the create page for that perp. Same approach as the market card:
+one HTML page, no script, no wallet, every value HTML-escaped, refreshed every minute, cached for 30
+seconds.
+
+```html
+<iframe
+  src="https://book.playhunch.xyz/embed/funding/BTC"
+  title="What the market thinks about BTC funding"
+  width="420"
+  height="300"
+  style="border:0;border-radius:14px"
+  loading="lazy"
+></iframe>
+```
+
+An asset the deployments file does not list gets a short card naming the ones it does, with a `404`.
+
+The [funding-cost calculator](../apps/web/src/app/calculator) at `/calculator` is the same idea for a
+person: what a position pays in funding over a day, a week or any horizon, from Perpl's live funding
+history, with the markets that would hedge it ([HEDGE.md](./HEDGE.md#the-calculator)). It takes its
+inputs from the address: `/calculator?perp=BTC&side=long&size=0.5&unit=units&horizon=7d&rate=last`.
 
 ## Configuration
 
@@ -395,11 +560,15 @@ Framing is allowed only here: the embed answers with `Content-Security-Policy: f
 ## Tests
 
 ```sh
-pnpm --filter @hunch-book/web exec vitest run test/api-v1.test.ts
+pnpm --filter @hunch-book/web exec vitest run test/api-v1.test.ts test/funding-api.test.ts
 ```
 
 The handlers are tested with a fake SDK and a fake RPC: filters, paging and CSV for markets; detail with
 book levels; trades from logs in 100-block windows (with our maker and trader labelled), from the
 indexer, the fallback when the indexer fails, and explicit ranges; evidence; stats with the vault's
 solvency and indexed activity; the feed's cards; the embed's headers, escaping and messages; CORS,
-cache headers and errors; and that only `/embed` may be framed.
+cache headers and errors; and that only `/embed` may be framed. `funding-api.test.ts` covers the funding
+answer: the picking rule (a running window over a newer pool, the newest upcoming one otherwise, other
+perps, spike markets, finished windows and passed locks left out), the clause and period wording, the
+rounding of the chance, the no-market answer, unknown and malformed assets, CSV, and the funding card's
+text, links and escaping.

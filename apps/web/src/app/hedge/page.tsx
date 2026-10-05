@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { HedgeView } from "@/components/hedge/HedgeView";
 import { ActiveNetworkLabel } from "@/components/layout/NetworkSwitch";
 import { PageHeader } from "@/components/PageHeader";
@@ -21,7 +22,9 @@ export default function HedgePage() {
       >
         <p>
           A long on Perpl pays funding while longs pay shorts. Read your positions, see what each one pays now
-          and what it would pay if the rate holds, and size a market that pays out if funding stays high.
+          and what it would pay if the rate holds, and size a market that pays out if funding stays high. No
+          position yet? The <Link href="/calculator">funding-cost calculator</Link> prices any size, with no
+          wallet.
         </p>
       </PageHeader>
       <div style={{ marginBottom: 24 }}>

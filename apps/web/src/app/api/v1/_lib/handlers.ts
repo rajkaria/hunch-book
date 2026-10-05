@@ -1,8 +1,9 @@
 import { describeError, formatUsdc, levelsE6, type MarketInfo } from "@hunch-book/sdk";
 import { cached } from "./cache";
 import type { ApiDeps } from "./deps";
-import { EMBED_CSP, renderMarketCard, renderMessage } from "./embed";
+import { EMBED_CSP, renderFundingCard, renderMarketCard, renderMessage } from "./embed";
 import { feed } from "./feed";
+import { fundingView, knownAssets, perpParam } from "./funding";
 import { CACHE, csv, flatten, json, problem, wantsCsv } from "./http";
 import {
   addressParam,
@@ -63,7 +64,9 @@ export function getIndex(_request: Request, deps: ApiDeps): Response {
         evidence: `${base}/markets/{address}/evidence`,
         stats: `${base}/stats`,
         feed: `${base}/feed`,
+        funding: `${base}/funding/{asset}`,
         embed: `${deps.siteUrl}/embed/m/{address}`,
+        fundingEmbed: `${deps.siteUrl}/embed/funding/{asset}`,
       },
     },
     CACHE.slow,
@@ -258,6 +261,25 @@ export async function getFeed(request: Request, deps: ApiDeps): Promise<Response
   });
 }
 
+/** GET /api/v1/funding/{asset}: the market's view of a Perpl perp's funding this period. */
+export async function getFunding(request: Request, raw: string, deps: ApiDeps): Promise<Response> {
+  const perp = perpParam(raw, deps.deployment);
+  if (perp === "bad") return problem(400, `${raw.slice(0, 32)} is not an asset name such as BTC.`);
+  if (perp === "unknown") {
+    return problem(
+      404,
+      `${raw.toUpperCase()} is not a Perpl perp on ${deps.network}. Known: ${knownAssets(deps.deployment)}.`,
+    );
+  }
+  return guard(async () => {
+    const [all, clock] = await Promise.all([allMarkets(deps), clockOrNull(deps)]);
+    const body = fundingView(all, perp, deps, clock);
+    if (wantsCsv(request))
+      return csv(flatten(body), ["field", "value"], `hunch-book-funding-${perp.asset}.csv`, CACHE.live);
+    return json(body, CACHE.live);
+  });
+}
+
 function html(body: string, status: number, maxAge: number): Response {
   return new Response(body, {
     status,
@@ -295,6 +317,35 @@ export async function getEmbed(_request: Request, raw: string, deps: ApiDeps): P
     }
     const clock = await clockOrNull(deps);
     return html(renderMarketCard(m, deps, clock), 200, 30);
+  } catch (e) {
+    return html(renderMessage("Could not load this market", describeError(e), deps), 502, 0);
+  }
+}
+
+/** GET /embed/funding/{asset}: the funding card for an iframe, such as on Perpl's own pages. */
+export async function getFundingEmbed(_request: Request, raw: string, deps: ApiDeps): Promise<Response> {
+  const perp = perpParam(raw, deps.deployment);
+  if (perp === "bad") {
+    return html(
+      renderMessage("Not an asset", "This link does not name a Perpl perp, such as BTC.", deps),
+      400,
+      0,
+    );
+  }
+  if (perp === "unknown") {
+    return html(
+      renderMessage(
+        "Not a Perpl perp",
+        `${raw.toUpperCase()} is not a Perpl perp on ${deps.network}. Known: ${knownAssets(deps.deployment)}.`,
+        deps,
+      ),
+      404,
+      0,
+    );
+  }
+  try {
+    const [all, clock] = await Promise.all([allMarkets(deps), clockOrNull(deps)]);
+    return html(renderFundingCard(fundingView(all, perp, deps, clock), deps), 200, 30);
   } catch (e) {
     return html(renderMessage("Could not load this market", describeError(e), deps), 502, 0);
   }

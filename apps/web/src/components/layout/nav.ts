@@ -29,9 +29,13 @@ export const FEED_LINK: NavLink = { href: "/feed", label: "Feed", match: ["/feed
 /** The mobile menu: the bar's links with the feed after Markets. */
 export const SHEET_LINKS: readonly NavLink[] = [NAV_LINKS[0] as NavLink, FEED_LINK, ...NAV_LINKS.slice(1)];
 
-/** Further product pages, listed in the footer. */
+/**
+ * Further product pages, listed in the footer. The funding calculator sits with the other tools here,
+ * so the bar and the mobile menu keep their length; /hedge links to it as well.
+ */
 export const MORE_LINKS: readonly NavLink[] = [
   FEED_LINK,
+  { href: "/calculator", label: "Funding calculator", match: ["/calculator"] },
   { href: "/ladder", label: "Ladders", match: ["/ladder"] },
   { href: "/parlay", label: "Parlays", match: ["/parlay"] },
   { href: "/rewards", label: "Rewards", match: ["/rewards"] },

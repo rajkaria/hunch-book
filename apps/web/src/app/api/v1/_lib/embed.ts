@@ -1,10 +1,12 @@
 import { formatBps, formatUsdc, type MarketInfo } from "@hunch-book/sdk";
 import type { ApiDeps } from "./deps";
+import { type FundingView, wholePercent } from "./funding";
 import { type ChainClock, marketTitleText, marketUrl, pointTime, priceString } from "./markets";
 
-// The embeddable market card (/embed/m/<address>): one self-contained HTML page with no script, in the
-// main Hunch app's style (ink, paper and lime, Archivo), sized for an iframe. Every value that comes
-// from the chain is HTML-escaped. It refreshes itself every minute.
+// The embeddable cards: one market (/embed/m/<address>) and a Perpl perp's funding market
+// (/embed/funding/<asset>). Each is one self-contained HTML page with no script, in the main Hunch app's
+// style (ink, paper and lime, Archivo), sized for an iframe. Every value that comes from the chain or
+// from the address is HTML-escaped. They refresh themselves every minute.
 
 export const EMBED_CSP = [
   "default-src 'none'",
@@ -111,17 +113,24 @@ function whenText(m: MarketInfo, clock: ChainClock | null): string | null {
   return null;
 }
 
+/** The YES/NO split bar: lime for YES, coral for NO, empty when there is no chance to show. */
+function chanceBar(bps: number | null): string {
+  if (bps === null) return `<div class="bar" role="img" aria-label="No chance to show yet"></div>`;
+  return `<div class="bar" role="img" aria-label="YES ${escapeHtml(formatBps(bps) ?? "")}">${bps > 0 ? `<span class="yes" style="flex:${bps} 1 0"></span>` : ""}${bps < 10_000 ? `<span class="no" style="flex:${10_000 - bps} 1 0"></span>` : ""}</div>`;
+}
+
+const networkName = (deps: Pick<ApiDeps, "network">): string =>
+  deps.network === "monad-testnet" ? "Monad testnet" : "Monad";
+
+const BRAND = `<span class="brand"><i aria-hidden="true"></i>Hunch Book</span>`;
+
 export function renderMarketCard(
   m: MarketInfo,
   deps: Pick<ApiDeps, "siteUrl" | "network">,
   clock: ChainClock | null,
 ): string {
   const chance = chanceText(m);
-  const bps = m.chance.bps;
-  const bar =
-    bps === null
-      ? `<div class="bar" role="img" aria-label="No chance to show yet"></div>`
-      : `<div class="bar" role="img" aria-label="YES ${escapeHtml(formatBps(bps) ?? "")}">${bps > 0 ? `<span class="yes" style="flex:${bps} 1 0"></span>` : ""}${bps < 10_000 ? `<span class="no" style="flex:${10_000 - bps} 1 0"></span>` : ""}</div>`;
+  const bar = chanceBar(m.chance.bps);
   const line =
     m.phaseName === "trading" && m.book
       ? `Bid ${priceString(m.prices?.bidE6) ?? "none"} · Ask ${priceString(m.prices?.askE6) ?? "none"} · Pool was ${formatUsdc(m.pool.total)} USDC`
@@ -131,17 +140,64 @@ export function renderMarketCard(
   const title = marketTitleText(m, clock);
   const cta = m.phaseName === "pool" ? "Stake" : m.phaseName === "trading" ? "Trade" : "View";
   const body = `<main class="card">
-<div class="meta"><span class="brand"><i aria-hidden="true"></i>Hunch Book</span><span class="badge ${TONE[m.phaseName] ?? ""}">${escapeHtml(m.phaseLabel)}</span><span>${escapeHtml(m.template)}</span><span class="right">#${m.id}</span></div>
+<div class="meta">${BRAND}<span class="badge ${TONE[m.phaseName] ?? ""}">${escapeHtml(m.phaseLabel)}</span><span>${escapeHtml(m.template)}</span><span class="right">#${m.id}</span></div>
 <h1>${escapeHtml(title)}</h1>
 <div class="figures"><div class="chance"><span class="value">${escapeHtml(chance.value)}</span><span class="label">${escapeHtml(chance.label)}</span></div><div>${bar}<div class="line">${escapeHtml(line)}</div></div></div>
-<div class="foot">${when ? `<span>${escapeHtml(when)}</span>` : ""}<span>${deps.network === "monad-testnet" ? "Monad testnet" : "Monad"}</span><a class="cta" href="${escapeHtml(url)}" target="_blank" rel="noopener">${cta} on Hunch Book</a></div>
+<div class="foot">${when ? `<span>${escapeHtml(when)}</span>` : ""}<span>${networkName(deps)}</span><a class="cta" href="${escapeHtml(url)}" target="_blank" rel="noopener">${cta} on Hunch Book</a></div>
 </main>`;
   return page(`${title} | Hunch Book`, body);
+}
+
+/**
+ * "about Oct 6, 14:40 to 16:05 UTC" from "between about Oct 6, 14:40 and Oct 6, 16:05 UTC", so the
+ * window fits one line of a small card. Anything else (block numbers, without a clock) is kept as is.
+ */
+export function shortWindow(words: string): string {
+  const w = /^between about (.+?), (\d\d:\d\d) and (.+?), (\d\d:\d\d) UTC$/.exec(words);
+  if (!w) return words;
+  const [, fromDay, fromTime, toDay, toTime] = w;
+  return fromDay === toDay
+    ? `about ${fromDay}, ${fromTime} to ${toTime} UTC`
+    : `about ${fromDay}, ${fromTime} to ${toDay}, ${toTime} UTC`;
+}
+
+/**
+ * The funding card (/embed/funding/<asset>): what the market thinks about a Perpl perp's funding this
+ * period, in one line ("Market's chance BTC longs pay more than $12.04 per BTC this week") and one
+ * number, with a link to the market. With no open market it says so and links to creating one.
+ */
+export function renderFundingCard(view: FundingView, deps: Pick<ApiDeps, "network">): string {
+  const asset = escapeHtml(view.asset);
+  const m = view.market;
+  if (!m) {
+    const body = `<main class="card">
+<div class="meta">${BRAND}<span>Perpl funding</span><span class="right">${asset}</span></div>
+<h1>No open market on ${asset} funding right now</h1>
+<p class="line">No Hunch Book market on whether ${asset} longs pay funding is taking stakes or trading at the moment. Anyone can start one.</p>
+<div class="foot"><span>${networkName(deps)}</span><a class="cta" href="${escapeHtml(view.links.create)}" target="_blank" rel="noopener">Start one on Hunch Book</a></div>
+</main>`;
+    return page(`${view.asset} funding | Hunch Book`, body);
+  }
+  const value = wholePercent(m.chance.bps) ?? "n/a";
+  const line =
+    m.book !== null
+      ? `Bid ${m.book.bid ?? "none"} · Ask ${m.book.ask ?? "none"} · Pool was ${m.pool.totalUsdc} USDC`
+      : `Pool ${m.pool.totalUsdc} USDC · ${m.pool.stakers} ${m.pool.stakers === 1 ? "staker" : "stakers"}`;
+  const cta = m.phase === "pool" ? "Stake" : "Trade";
+  const label = m.chance.bps === null ? m.chance.words : `from ${m.chance.words}`;
+  const body = `<main class="card">
+<div class="meta">${BRAND}<span class="badge ${TONE[m.phase] ?? ""}">${escapeHtml(m.phaseLabel)}</span><span>Perpl funding</span><span class="right">${asset}</span></div>
+<h1>Market's chance ${escapeHtml(m.clause)} ${escapeHtml(m.period)}</h1>
+<div class="figures"><div class="chance"><span class="value">${escapeHtml(value)}</span><span class="label">${escapeHtml(label)}</span></div><div>${chanceBar(m.chance.bps)}<div class="line">${escapeHtml(line)}</div></div></div>
+<p class="label">Funding window ${escapeHtml(shortWindow(m.window.words))}</p>
+<div class="foot"><span>${networkName(deps)}</span><a class="cta" href="${escapeHtml(m.links.app)}" target="_blank" rel="noopener">${cta} on Hunch Book</a></div>
+</main>`;
+  return page(`${m.headline} | Hunch Book`, body);
 }
 
 export function renderMessage(title: string, message: string, deps: Pick<ApiDeps, "siteUrl">): string {
   return page(
     `${title} | Hunch Book`,
-    `<main class="card"><div class="meta"><span class="brand"><i aria-hidden="true"></i>Hunch Book</span></div><h1>${escapeHtml(title)}</h1><p class="line">${escapeHtml(message)}</p><div class="foot"><a class="cta" href="${escapeHtml(deps.siteUrl)}/markets" target="_blank" rel="noopener">See markets</a></div></main>`,
+    `<main class="card"><div class="meta">${BRAND}</div><h1>${escapeHtml(title)}</h1><p class="line">${escapeHtml(message)}</p><div class="foot"><a class="cta" href="${escapeHtml(deps.siteUrl)}/markets" target="_blank" rel="noopener">See markets</a></div></main>`,
   );
 }
