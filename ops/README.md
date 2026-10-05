@@ -28,6 +28,8 @@ Node 22 and pnpm, from the repository root:
 
 ```sh
 pnpm install
+cp ops/services.env.example .run/services.env      # once: live settings (not keys); edit the series path
+bash scripts/run-local-services.sh config          # what a start would use, live or dry run
 bash scripts/run-local-services.sh start           # both; or: start keeper / start maker
 bash scripts/run-local-services.sh status          # running or not, plus the health snapshot
 bash scripts/run-local-services.sh logs keeper     # follow one log (Ctrl-C leaves)
@@ -35,20 +37,29 @@ bash scripts/run-local-services.sh stop            # SIGTERM, then waits up to 9
 bash scripts/run-local-services.sh restart maker
 ```
 
-The script runs each service in the background with `nohup`, keeps pid and log files in `.run/`
-(gitignored), and builds `packages/shared` first. Each service loads the repository's `.env` (or the
-file in `ENV_FILE`) itself and takes only its own variables, so neither process holds the other's key.
-To send transactions, set `KEEPER_ENABLED=1` or `MAKER_ENABLED=1` in `.env` and restart that service.
+The script runs each service in the background, in a session of its own (so closing the terminal that
+started it does not stop it), keeps pid and log files in `.run/` (gitignored), and builds
+`packages/shared` first. Each service loads the repository's `.env` (or the file in `ENV_FILE`) itself
+and takes only its own variables, so neither process holds the other's key.
 
-The services stop when the machine sleeps. For a machine that should keep them running, use launchd
-(below) and keep it awake, for example with `caffeinate -s` or Energy settings.
+Settings that are not secrets live in `.run/services.env` (or the file in `SERVICES_ENV_FILE`);
+[`services.env.example`](./services.env.example) is the testnet setup. A variable set in your shell wins
+over that file, and that file wins over `.env`. The script refuses keys and tokens there. To send
+transactions, `KEEPER_ENABLED=1` or `MAKER_ENABLED=1` must be set in one of those places; otherwise
+`start` prints a warning that the service runs as a dry run, and `status` shows `enabled: false`.
+
+On macOS, `start` also keeps the Mac awake while a service runs (`caffeinate -is`, tied to the
+service's pid; `KEEP_AWAKE=0` skips it). A closed laptop lid still sleeps, and a sleeping Mac stops
+both services. For a machine that should keep them running, use launchd (below) or a host.
 
 ## macOS launchd
 
 Two agent templates: [`launchd/xyz.playhunch.book.keeper.plist`](./launchd/xyz.playhunch.book.keeper.plist)
 and [`launchd/xyz.playhunch.book.maker.plist`](./launchd/xyz.playhunch.book.maker.plist). They start at
 login, restart after a crash, write to `.run/<service>.log`, and serve health on ports 8781 (keeper) and
-8782 (maker). Install, from the repository root:
+8782 (maker). Each runs `scripts/run-local-services.sh exec <service>`, so it takes the same settings as
+a manual start: create `.run/services.env` first (above), or both run as a dry run. Install, from the
+repository root:
 
 ```sh
 pnpm install && pnpm --filter @hunch-book/shared build

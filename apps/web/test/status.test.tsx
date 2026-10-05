@@ -323,10 +323,14 @@ describe("incident log", () => {
     ]);
   });
 
-  it("reads docs/INCIDENTS.md, which starts with no incidents", () => {
+  it("reads docs/INCIDENTS.md, with the 2026-10-05 outage as an entry", () => {
     const blocks = readIncidentLog();
-    expect(blocks[0]).toEqual({ kind: "paragraph", parts: [{ kind: "text", text: "No incidents so far." }] });
-    expect(hasIncidents(blocks)).toBe(false);
+    expect(blocks[0]?.kind).toBe("paragraph");
+    expect(blocks).toContainEqual({
+      kind: "heading",
+      text: "2026-10-05: keeper and maker stopped for 22 hours, market #1 settled late",
+    });
+    expect(hasIncidents(blocks)).toBe(true);
   });
 });
 
@@ -444,7 +448,11 @@ describe("status page", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Status" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "All checks pass" })).toBeTruthy();
     expect(screen.getByText(/a surplus of 5.00 USDC/)).toBeTruthy();
-    expect(screen.getByText("No incidents so far.")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", {
+        name: "2026-10-05: keeper and maker stopped for 22 hours, market #1 settled late",
+      }),
+    ).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Every contract" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Keeper (ours)" })).toBeTruthy();
     expect(screen.getAllByText(/No health URL is set for the keeper/).length).toBeGreaterThan(0);

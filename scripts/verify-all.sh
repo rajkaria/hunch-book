@@ -19,6 +19,9 @@ pnpm lint
 pnpm test
 pnpm build
 
+step "shell scripts"
+bash scripts/test/run-local-services.test.sh
+
 step "public boundary"
 bash scripts/check-public-boundary.sh
 

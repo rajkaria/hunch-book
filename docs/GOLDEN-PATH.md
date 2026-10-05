@@ -47,6 +47,24 @@ If you would rather start from nothing, the create flow at <https://book.playhun
 market from any template, and the rest of this walk-through is the same. You then need ten stakers
 yourself.
 
+## The market prepared for this run
+
+Created on 2026-10-06 with `LOCK_AT_UNIX=1791289800 MARGIN_MINUTES=120`
+([creation tx](https://testnet.monadscan.com/tx/0x001f11a404576309bbe7953f20fd1df942bbdeb2779e6baf34b8255315f6417b)):
+
+| | |
+|---|---|
+| Market | [0x6FFC70F919e9B6e20aD76df870854818C310cD9e](https://book.playhunch.xyz/m/0x6FFC70F919e9B6e20aD76df870854818C310cD9e) ([explorer](https://testnet.monadscan.com/address/0x6FFC70F919e9B6e20aD76df870854818C310cD9e)) |
+| Question | Will MON longs pay more than -$0.00000031 per MON in funding on Perpl (MON Perp, perp 64) between block 68,713,707 and block 68,730,849? Past windows of the same length beat that in 24 of the last 47, so YES starts near a coin flip |
+| Lock (end of staking) | block 68,713,707, about 14:40 UTC (20:10 IST) on 2026-10-06 |
+| Close (end of the window) | block 68,730,849, about 16:07 UTC (21:37 IST) on 2026-10-06 |
+| Pool before you | 240 USDC YES and 240 USDC NO from 8 stakers, all ours |
+| What you add | wallet A: at least 10 USDC on YES; wallet B: at least 10 USDC on NO, both before the lock block |
+
+Times are estimates from 302 ms blocks; the blocks are the rule. Our stakers: the deployer
+[0xD183…10A8](https://testnet.monadscan.com/address/0xD183a7daECF3d539683f37e1111558E3dFC210A8) and seven
+"hunch-book testnet seed" wallets, as the script printed.
+
 ## You need
 
 - Two wallets, called A and B below. Two accounts in one browser wallet (MetaMask, Rabby or any wallet

@@ -68,3 +68,5 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+      - name: Shell script tests
+        run: bash scripts/test/run-local-services.test.sh

@@ -3,7 +3,9 @@
 <!--
   Hunch Book keeper as a macOS launchd agent. A template: replace __REPO__ with the repository's absolute
   path and __NODE__ with the absolute path of Node 22 (`command -v node`). Install steps: ops/README.md.
-  The keeper loads __REPO__/.env itself and takes only KEEPER_*, MONAD_*, INDEXER_URL and PYTH_API_KEY.
+  It runs scripts/run-local-services.sh exec keeper, so it gets the same settings as a manual start:
+  __REPO__/.run/services.env (ops/services.env.example), then __REPO__/.env, which the keeper loads itself
+  (only KEEPER_*, MONAD_*, INDEXER_URL and PYTH_API_KEY).
 -->
 <plist version="1.0">
 <dict>
@@ -12,19 +14,20 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>__NODE__</string>
-    <string>--import</string>
-    <string>tsx</string>
-    <string>src/main.ts</string>
-    <string>run</string>
+    <string>/bin/bash</string>
+    <string>__REPO__/scripts/run-local-services.sh</string>
+    <string>exec</string>
+    <string>keeper</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>__REPO__/services/keeper</string>
+  <string>__REPO__</string>
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>KEEPER_ENV_FILE</key>
     <string>__REPO__/.env</string>
+    <key>NODE_BIN</key>
+    <string>__NODE__</string>
     <key>KEEPER_HEALTH_PORT</key>
     <string>8781</string>
   </dict>

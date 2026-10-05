@@ -1,6 +1,6 @@
 # Hunch Book roadmap
 
-Last updated: 2026-10-04. Status words used below:
+Last updated: 2026-10-06. Status words used below:
 
 - **planned**: designed, not started
 - **building**: in progress
@@ -83,7 +83,7 @@ Graduation rules (v0 values, set per template and visible on every market):
 | A-1 | App: market list, market page (chance, book depth, rules, source), stake and trade ticket, portfolio with claim and redeem | live on testnet ([book.playhunch.xyz](https://book.playhunch.xyz)) |
 | A-2 | Create flow: pick a template, fill parameters, see the exact settlement rule in plain words, make the first stake | live on testnet ([/create](https://book.playhunch.xyz/create), templates 1 to 6) |
 | K-1 | Keeper v0: graduates eligible pools, pushes token claims, settles markets at window end, voids after the deadline, pays out pools ([services/keeper](../services/keeper)) | live on testnet ([keeper address](https://testnet.monadscan.com/address/0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569)) |
-| O-2 | Golden path run by a person on testnet, including a hard refresh and two different wallets | planned |
+| O-2 | Golden path run by a person on testnet, including a hard refresh and two different wallets | building: the market is prepared ([GOLDEN-PATH.md](./GOLDEN-PATH.md), [0x6FFC…D9e](https://testnet.monadscan.com/address/0x6FFC70F919e9B6e20aD76df870854818C310cD9e)); waits for a person with two wallets |
 
 ### 0.4 Mainnet beta (target 2026-10-07 → 2026-10-08)
 
