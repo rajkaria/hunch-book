@@ -5,7 +5,7 @@ stake, create markets, settle them with evidence found automatically, collect wi
 settlement, with their own wallet. Stdio transport, Monad testnet by default, read-only without a key.
 
 Status: **building**. The full guide, with Claude Desktop and Claude Code config, is
-[docs/MCP.md](../../docs/MCP.md).
+[docs/MCP.md](https://github.com/rajkaria/hunch-book/blob/main/docs/MCP.md).
 
 ```sh
 pnpm --filter "@hunch-book/mcp..." build
@@ -16,7 +16,7 @@ HUNCH_MCP_PRIVATE_KEY=... node packages/mcp/dist/main.js   # with a wallet (use 
 | Tool | Kind |
 |---|---|
 | `status`, `list_markets`, `get_market`, `quote`, `get_portfolio`, `verify_settlement` | read |
-| `create_market`, `stake`, `trade`, `settle`, `redeem`, `get_test_usdc` | write, only with `HUNCH_MCP_PRIVATE_KEY` |
+| `create_market`, `stake`, `trade`, `settle`, `redeem`, `redeem_all`, `get_test_usdc` | write, only with `HUNCH_MCP_PRIVATE_KEY` |
 
 Per-call limits (`HUNCH_MCP_MAX_USDC_PER_CALL`, `HUNCH_MCP_MAX_TOKENS_PER_CALL`,
 `HUNCH_MCP_MAX_SLIPPAGE_BPS`) are checked before anything is signed, every write is simulated first, and

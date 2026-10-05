@@ -19,6 +19,10 @@ pnpm lint
 pnpm test
 pnpm build
 
+step "npm packages: the tarballs as they would be published"
+node --test scripts/test/check-packages.test.mjs
+node scripts/check-packages.mjs
+
 step "shell scripts"
 bash scripts/test/run-local-services.test.sh
 

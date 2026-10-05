@@ -1,9 +1,27 @@
 {
   "name": "@hunch-book/mcp",
   "version": "0.1.0",
-  "private": true,
   "description": "MCP server for Hunch Book: agents list markets, quote, trade, settle and verify settlements, with their own wallet.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rajkaria/hunch-book.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://book.playhunch.xyz",
+  "bugs": {
+    "url": "https://github.com/rajkaria/hunch-book/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agents",
+    "monad",
+    "prediction-markets"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "bin": {
     "hunch-book-mcp": "./dist/main.js"
@@ -17,9 +35,14 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
+    "prepack": "node scripts/copy-docs.mjs",
     "start": "tsx src/main.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -37,5 +60,15 @@
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "vitest": "5.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "types": "./dist/server.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
+      }
+    }
   }
 }

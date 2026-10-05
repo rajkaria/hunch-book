@@ -1,9 +1,27 @@
 {
   "name": "@hunch-book/sdk",
   "version": "0.1.0",
-  "private": true,
   "description": "TypeScript SDK for Hunch Book: read markets, quote trades, send every lifecycle action, find and verify settlement evidence.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rajkaria/hunch-book.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://book.playhunch.xyz",
+  "bugs": {
+    "url": "https://github.com/rajkaria/hunch-book/issues"
+  },
+  "keywords": [
+    "monad",
+    "prediction-markets",
+    "sdk",
+    "viem",
+    "kuru"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -15,7 +33,10 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -31,5 +52,15 @@
     "@types/node": "26.6.4",
     "typescript": "6.0.3",
     "vitest": "5.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
   }
 }

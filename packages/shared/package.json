@@ -1,9 +1,27 @@
 {
   "name": "@hunch-book/shared",
   "version": "0.1.0",
-  "private": true,
   "description": "ABIs, deployment addresses, chain configs and shared types for Hunch Book.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rajkaria/hunch-book.git",
+    "directory": "packages/shared"
+  },
+  "homepage": "https://book.playhunch.xyz",
+  "bugs": {
+    "url": "https://github.com/rajkaria/hunch-book/issues"
+  },
+  "keywords": [
+    "monad",
+    "prediction-markets",
+    "abi",
+    "kuru",
+    "perpl"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./src/index.ts",
@@ -14,7 +32,10 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -29,5 +50,15 @@
     "@types/node": "26.6.4",
     "typescript": "6.0.3",
     "vitest": "5.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
   }
 }

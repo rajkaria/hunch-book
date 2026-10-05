@@ -13,7 +13,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { Address, Hex } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import { type McpConfig, parseConfig, writesEnabled } from "../src/config.js";
-import { createServer, offeredTools, runTool } from "../src/server.js";
+import { createServer, offeredTools, readDoc, runTool } from "../src/server.js";
 import { type HunchPort, parseTemplateParams, TOOLS, type ToolDef } from "../src/tools.js";
 
 const testnet = deployments["monad-testnet"];
@@ -517,5 +517,24 @@ describe("tool handlers", () => {
     (sdk as { network: string }).network = "monad-mainnet";
     const mint = await run("get_test_usdc", { amount: "10" }, sdk);
     expect(mint.result.content[0]?.text).toMatch(/only on Monad testnet/);
+  });
+});
+
+describe("documents", () => {
+  it("serves the package's own copy first, then the repository's, then says it is missing", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const own = `${mkdtempSync(join(tmpdir(), "mcp-own-"))}/`;
+    const repo = `${mkdtempSync(join(tmpdir(), "mcp-repo-"))}/`;
+    writeFileSync(`${repo}A.md`, "from the repository");
+    expect(readDoc("A.md", [own, repo])).toBe("from the repository");
+    writeFileSync(`${own}A.md`, "from the package");
+    expect(readDoc("A.md", [own, repo])).toBe("from the package");
+    expect(readDoc("B.md", [own, repo])).toBe("B.md is not available in this installation.");
+  });
+
+  it("finds the repository's documents in a checkout", () => {
+    expect(readDoc("PROTOCOL.md")).toContain("Hunch Book");
   });
 });

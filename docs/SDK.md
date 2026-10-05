@@ -2,7 +2,8 @@
 
 Status: **building**. The SDK is in [`packages/sdk`](../packages/sdk) (`@hunch-book/sdk`). It reads the
 contracts live on Monad testnet and is tested end to end against the real contracts on a local chain.
-It is used from this repository's pnpm workspace and is not published to npm yet.
+It is used from this repository's pnpm workspace. It is ready to publish (packed, installed and
+imported from its tarball in CI, [RELEASE.md](./RELEASE.md)) and not on npm yet.
 
 It is a thin, typed layer over [viem](https://viem.sh) and the shared package
 ([`packages/shared`](../packages/shared)): the same ABIs (generated from the contracts), the same

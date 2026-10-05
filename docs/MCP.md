@@ -73,6 +73,9 @@ node packages/mcp/dist/main.js             # prints one line on stderr, then wai
 
 Use the absolute path to `packages/mcp/dist/main.js` in the snippets below.
 
+Once the package is on npm ([RELEASE.md](./RELEASE.md); it is not yet), `npx -y @hunch-book/mcp` runs the
+same server with no checkout, serving the same documents.
+
 ## Claude Desktop
 
 In `claude_desktop_config.json` (Settings, Developer, Edit config):

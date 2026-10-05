@@ -1,0 +1,53 @@
+name: release
+
+# Publishes @hunch-book/deployments, @hunch-book/shared, @hunch-book/sdk and @hunch-book/mcp to npm, in
+# that order (each depends on the ones before it). Run it by hand from the Actions tab. It needs the
+# repository secret NPM_TOKEN (an npm automation token for the @hunch-book scope). With dry_run on (the
+# default) it builds, tests, packs, installs the tarballs into an empty project and stops there.
+# A version already on npm is skipped, so bump "version" in each package.json (and its CHANGELOG.md)
+# before a new release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Check only: build, test, pack and install, but publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # npm provenance: each package links back to this run and commit
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: Build the four packages
+        run: pnpm --filter "@hunch-book/mcp..." build
+      - name: Test them
+        run: pnpm --filter "@hunch-book/mcp..." test
+      - name: Pack, check and install the tarballs
+        run: |
+          node --test scripts/test/check-packages.test.mjs
+          node scripts/check-packages.mjs --install
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        run: >-
+          pnpm --filter @hunch-book/deployments --filter @hunch-book/shared --filter @hunch-book/sdk
+          --filter @hunch-book/mcp publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"

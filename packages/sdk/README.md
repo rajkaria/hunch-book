@@ -5,8 +5,8 @@ live Kuru book, send every lifecycle action, find settlement evidence for templa
 settlement from the chain alone, use the periphery contracts, and build reward trees.
 
 Status: **building**. It runs against the contracts live on Monad testnet and is tested end to end
-against the real contracts on a local chain. It is used from this repository's pnpm workspace and is
-not published to npm yet. The full guide is [docs/SDK.md](../../docs/SDK.md).
+against the real contracts on a local chain. It is ready to publish to npm and not on npm yet
+([RELEASE.md](https://github.com/rajkaria/hunch-book/blob/main/docs/RELEASE.md)). The full guide is [docs/SDK.md](https://github.com/rajkaria/hunch-book/blob/main/docs/SDK.md).
 
 ## Quick start
 

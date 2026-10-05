@@ -45,11 +45,21 @@ export const DOCS = [
   },
 ] as const;
 
-const DOCS_DIR = fileURLToPath(new URL("../../../docs/", import.meta.url));
+/**
+ * Where the documents are: the package's own docs/ in an installed copy (copied there when it is packed),
+ * then the repository's docs/ in a checkout.
+ */
+const DOC_DIRS = [
+  fileURLToPath(new URL("../docs/", import.meta.url)),
+  fileURLToPath(new URL("../../../docs/", import.meta.url)),
+];
 
-export function readDoc(file: string): string {
-  const path = `${DOCS_DIR}${file}`;
-  return existsSync(path) ? readFileSync(path, "utf8") : `${file} is not available in this installation.`;
+export function readDoc(file: string, dirs: readonly string[] = DOC_DIRS): string {
+  for (const dir of dirs) {
+    const path = `${dir}${file}`;
+    if (existsSync(path)) return readFileSync(path, "utf8");
+  }
+  return `${file} is not available in this installation.`;
 }
 
 export const INSTRUCTIONS = [

@@ -111,3 +111,6 @@ apps/web/next-env.d.ts
 
 # Local service runs (scripts/run-local-services.sh): pid and log files
 /.run/
+
+# The MCP server package copies docs/ into itself when packed (packages/mcp/scripts/copy-docs.mjs)
+/packages/mcp/docs/

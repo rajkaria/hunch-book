@@ -70,3 +70,7 @@ jobs:
       - run: pnpm build
       - name: Shell script tests
         run: bash scripts/test/run-local-services.test.sh
+      - name: npm packages, packed and installed from the tarballs
+        run: |
+          node --test scripts/test/check-packages.test.mjs
+          node scripts/check-packages.mjs --install

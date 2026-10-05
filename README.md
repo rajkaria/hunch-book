@@ -98,10 +98,10 @@ All on Monad testnet. Activity by our own wallets (the deployer, the keeper, the
 | [TEMPLATES.md](./docs/TEMPLATES.md) | Every template's exact rule, source, timing and evidence |
 | [PERIPHERY.md](./docs/PERIPHERY.md) | Auto-redeem, orders, referrals, payouts, the oracle, the price adapter, the timelock |
 | [GOLDEN-PATH.md](./docs/GOLDEN-PATH.md) | Walk the whole lifecycle on testnet with two browser wallets |
-| [ACCOUNTS.md](./docs/ACCOUNTS.md), [HEDGE.md](./docs/HEDGE.md), [NOTIFICATIONS.md](./docs/NOTIFICATIONS.md) | Passkey accounts and gas, the hedge assistant, alerts |
-| [SDK.md](./docs/SDK.md), [MCP.md](./docs/MCP.md), [API.md](./docs/API.md) | Building on Hunch Book |
+| [ACCOUNTS.md](./docs/ACCOUNTS.md), [HEDGE.md](./docs/HEDGE.md), [HEALTH.md](./docs/HEALTH.md), [NOTIFICATIONS.md](./docs/NOTIFICATIONS.md) | Passkey accounts and gas, the hedge assistant and calculator, market health, alerts |
+| [SDK.md](./docs/SDK.md), [MCP.md](./docs/MCP.md), [API.md](./docs/API.md), [RELEASE.md](./docs/RELEASE.md) | Building on Hunch Book, and how the npm packages are released |
 | [MAKER-KIT.md](./docs/MAKER-KIT.md), [REWARDS.md](./docs/REWARDS.md), [SERIES.md](./docs/SERIES.md) | Running a maker, rewards, recurring markets |
-| [INDEXER.md](./docs/INDEXER.md), [DEPLOY.md](./docs/DEPLOY.md), [ops/README.md](./ops/README.md) | Operating it |
+| [INDEXER.md](./docs/INDEXER.md), [DEPLOY.md](./docs/DEPLOY.md), [ops/README.md](./ops/README.md), [INCIDENTS.md](./docs/INCIDENTS.md) | Operating it, and what went wrong |
 | [SECURITY-REVIEW.md](./docs/SECURITY-REVIEW.md), [AUDIT.md](./docs/AUDIT.md), [BUG-BOUNTY.md](./docs/BUG-BOUNTY.md), [SECURITY.md](./SECURITY.md) | Security |
 | [ROADMAP.md](./docs/ROADMAP.md), [FACTS.md](./docs/FACTS.md) | What ships when, and where every number comes from |
 
