@@ -8,7 +8,7 @@ import { REPO_URL } from "@/lib/config";
 export const metadata: Metadata = {
   title: "Hedge funding",
   description:
-    "Read a Perpl position, see the funding it pays and what it is projected to pay, and size a Hunch Book market that pays out if funding stays high.",
+    "Read a Perpl position, see the funding it pays and what it is projected to pay, and size a hedge across one or more Hunch Book markets that pays out if funding stays high.",
 };
 
 export default function HedgePage() {
@@ -21,7 +21,8 @@ export default function HedgePage() {
       >
         <p>
           A long on Perpl pays funding while longs pay shorts. Read your positions, see what each one pays now
-          and what it would pay if the rate holds, and size a market that pays out if funding stays high.
+          and what it would pay if the rate holds, and size a hedge across one or more markets that pays out
+          if funding stays high.
         </p>
       </PageHeader>
       <div style={{ marginBottom: 24 }}>

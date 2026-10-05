@@ -1,10 +1,11 @@
-import { encodePerplFundingParams, TemplateId } from "@hunch-book/shared";
+import { encodePerplFundingParams, Outcome, Phase, TemplateId } from "@hunch-book/shared";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HedgePage from "../src/app/hedge/page";
 import { HedgeView } from "../src/components/hedge/HedgeView";
 import type { FundingSample, PerpMeta, PerpPosition } from "../src/lib/hedge/math";
-import { HEDGE_STORAGE_KEY } from "../src/lib/hedge/tracking";
+import { BASKET_STORAGE_KEY, LEGACY_HEDGE_STORAGE_KEY } from "../src/lib/hedge/tracking";
+import type { MarketView } from "../src/lib/market/types";
 import { makeMarket } from "./fixtures";
 import { renderWithProviders } from "./render";
 
@@ -47,6 +48,8 @@ const state = vi.hoisted(() => ({
   positions: {} as Q,
   markets: {} as Q,
   rate: 8n,
+  /** Markets the tracked baskets read, by lower-case address. */
+  legMarkets: {} as Record<string, unknown>,
 }));
 
 vi.mock("@/lib/hedge/hooks", async (importOriginal) => {
@@ -77,6 +80,9 @@ vi.mock("@/lib/hedge/hooks", async (importOriginal) => {
       };
     },
     useFundingSumNow: () => ({ data: { head: LAST + 100n, sum: 100_400n, eventBlock: LAST } }),
+    useFundingSumsAt: () => ({ data: undefined }),
+    useLegMarkets: (addresses: readonly string[]) =>
+      addresses.map((a) => state.legMarkets[a.toLowerCase()] ?? null),
   };
 });
 
@@ -108,12 +114,35 @@ const fundingPool = makeMarket({
   description: "Will BTC longs pay more than $5.00 per BTC in funding on Perpl?",
 });
 
+// A second market on the same perp: a later, longer window with a higher threshold.
+const laterPool = makeMarket({
+  address: "0x00000000000000000000000000000000000000a2",
+  templateId: TemplateId.PerplFunding,
+  params: encodePerplFundingParams({
+    perpId: 16n,
+    startBlock: LAST + 8_571n * 10n,
+    endBlock: LAST + 8_571n * 40n,
+    threshold: 200n,
+    expectedScalingExp: 0,
+  }),
+  description: "Will BTC longs pay more than $20.00 per BTC in funding on Perpl?",
+});
+
 beforeEach(() => {
   window.localStorage.clear();
   state.positions = { data: { status: "ok", accountId: 13n, positions: [LONG], metas: [BTC] } };
   state.markets = { data: { status: "ok", data: { markets: [fundingPool], total: 1 } } };
   state.rate = 8n;
+  state.legMarkets = {};
 });
+
+const basketSection = () => screen.getByRole("region", { name: "Your basket" });
+/** The proposal card of a market: its question also shows in the basket, so find the article. */
+const cardOf = (m: MarketView) =>
+  screen
+    .getAllByText(m.description as string)
+    .map((e) => e.closest("article"))
+    .find((e): e is HTMLElement => e !== null) as HTMLElement;
 
 async function readFor(address: string) {
   await renderWithProviders(<HedgeView />);
@@ -140,17 +169,111 @@ describe("hedge page", () => {
     expect(screen.getByText("paid $681.58")).toBeTruthy();
     expect(screen.getByText(/If the rate holds, this long/).textContent).toMatch(/pays \$/);
     expect(screen.getByRole("img", { name: /Funding per interval for the last 48 intervals/ })).toBeTruthy();
-    const card = screen.getByText(fundingPool.description as string).closest("article") as HTMLElement;
+    const card = cardOf(fundingPool);
     expect(within(card).getByText(/YES pays if BTC longs pay more than \$5.00 per BTC/)).toBeTruthy();
     expect(
       within(card)
         .getByRole("link", { name: /Stake YES on the market page/ })
         .getAttribute("href"),
     ).toBe(`/m/${fundingPool.address}`);
-    fireEvent.click(within(card).getByRole("button", { name: "Track this hedge" }));
+    // The first market that can be sized starts in the basket.
+    expect(within(card).getByText("In the basket")).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "Remove from basket" })).toBeTruthy();
+    const basket = basketSection();
+    expect(within(basket).getByText(/each leg's share = .* ÷ 1 leg =/)).toBeTruthy();
+    expect(
+      within(basket)
+        .getByRole("link", { name: fundingPool.description as string })
+        .getAttribute("href"),
+    ).toBe(`/m/${fundingPool.address}`);
+    fireEvent.click(within(basket).getByRole("button", { name: "Track this basket" }));
     expect(screen.getByText(/Tracking. It is listed under Tracked hedges below./)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Tracked hedges" })).toBeTruthy();
-    expect(JSON.parse(window.localStorage.getItem(HEDGE_STORAGE_KEY) ?? "[]")).toHaveLength(1);
+    expect(within(basket).getByRole("button", { name: "Tracking this basket" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    const stored = JSON.parse(window.localStorage.getItem(BASKET_STORAGE_KEY) ?? "{}");
+    expect(stored.version).toBe(1);
+    expect(stored.baskets).toHaveLength(1);
+    expect(stored.baskets[0].legs).toHaveLength(1);
+    expect(stored.baskets[0].cover).toBe(1);
+  });
+
+  it("builds a basket across two markets, with the split, the scenarios and per-leg links", async () => {
+    state.markets = { data: { status: "ok", data: { markets: [fundingPool, laterPool], total: 2 } } };
+    await readFor("0x58369AAED363a59022c98CD457Ea5e320Df395EB");
+    const later = cardOf(laterPool);
+    fireEvent.click(within(later).getByRole("button", { name: "Add to basket" }));
+    expect(within(later).getByText("In the basket")).toBeTruthy();
+    expect(within(later).queryByRole("button", { name: "Add to basket" })).toBeNull();
+    const basket = basketSection();
+    expect(within(basket).getByText(/each leg's share = .* ÷ 2 legs =/)).toBeTruthy();
+    for (const m of [fundingPool, laterPool]) {
+      expect(
+        within(basket)
+          .getByRole("link", { name: m.description as string })
+          .getAttribute("href"),
+      ).toBe(`/m/${m.address}`);
+    }
+    const scenarios = within(basket).getByRole("table", {
+      name: /What the position pays in funding and what the basket pays out/,
+    });
+    const rows = within(scenarios).getAllByRole("row").slice(1);
+    expect(rows.map((r) => within(r).getByRole("rowheader").textContent)).toEqual([
+      "Funding flips sign",
+      "Half the rate",
+      "The rate holds",
+      "Twice the rate",
+    ]);
+    // Flipped, the long is paid and no leg wins.
+    expect(rows[0]?.textContent).toMatch(/receives \$/);
+    expect(rows[0]?.textContent).toMatch(/0 of 2/);
+    // At twice the rate both thresholds are passed.
+    expect(rows[3]?.textContent).toMatch(/2 of 2/);
+    // Half the cover halves the target.
+    fireEvent.click(within(basket).getByRole("radio", { name: "50%" }));
+    expect(within(basket).getByText(/to cover = 50% ×/)).toBeTruthy();
+    // Remove a leg from the basket itself.
+    const legs = within(basket).getByRole("table", { name: /The legs of the basket/ });
+    fireEvent.click(within(legs).getAllByRole("button", { name: "Remove" })[0] as HTMLElement);
+    expect(within(basket).getByText(/÷ 1 leg =/)).toBeTruthy();
+  });
+
+  it("moves a hedge tracked before baskets into a one-leg basket and shows each leg's status", async () => {
+    window.localStorage.setItem(
+      LEGACY_HEDGE_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "old",
+          network: "monad-testnet",
+          createdAt: 1,
+          perpId: "16",
+          symbol: "BTC",
+          side: "long",
+          units: 0.5,
+          startBlock: String(LAST - 8_571n),
+          startSum: "100000",
+          market: fundingPool.address,
+          buy: "yes",
+          mode: "pool",
+          cost: 10,
+          tokens: null,
+          payoutIfWin: 13,
+        },
+      ]),
+    );
+    const settled: MarketView = { ...fundingPool, phase: Phase.Settled, outcome: Outcome.Yes };
+    state.legMarkets = { [fundingPool.address.toLowerCase()]: settled };
+    await renderWithProviders(<HedgeView />);
+    const tracked = screen.getByRole("region", { name: "Tracked hedges" });
+    expect(within(tracked).getByText(/BTC long, 0.5 BTC: a basket of 1 leg/)).toBeTruthy();
+    expect(within(tracked).getByText("every leg settled")).toBeTruthy();
+    expect(within(tracked).getByText("Settled YES")).toBeTruthy();
+    expect(within(tracked).getByText("won")).toBeTruthy();
+    expect(within(tracked).getByText("Basket paid")).toBeTruthy();
+    expect(window.localStorage.getItem(LEGACY_HEDGE_STORAGE_KEY)).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(BASKET_STORAGE_KEY) ?? "{}").baskets[0].id).toBe("old");
   });
 
   it("offers a new market, prefilled, when no market fits", async () => {

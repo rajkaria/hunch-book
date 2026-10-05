@@ -204,3 +204,32 @@ export async function readFundingSum(
   });
   return { sum: BigInt(sum), eventBlock };
 }
+
+/**
+ * The funding sum at several blocks, in one multicall, keyed by block: a window's start (what a started
+ * window has counted so far) or a basket's end (funding after it is not hedged).
+ */
+export async function readFundingSums(
+  client: ReadClient,
+  exchange: Address,
+  perpId: bigint,
+  blocks: readonly bigint[],
+): Promise<Record<string, bigint>> {
+  if (blocks.length === 0) return {};
+  const sums = await client.multicall({
+    allowFailure: false,
+    multicallAddress: MULTICALL3,
+    contracts: blocks.map((block) => ({
+      address: exchange,
+      abi: perplReadAbi,
+      functionName: "getFundingSumAtBlock" as const,
+      args: [perpId, block] as const,
+    })),
+  });
+  const out: Record<string, bigint> = {};
+  blocks.forEach((block, i) => {
+    const [sum] = sums[i] as readonly [number, bigint];
+    out[block.toString()] = BigInt(sum);
+  });
+  return out;
+}

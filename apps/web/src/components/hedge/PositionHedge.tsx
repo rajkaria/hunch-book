@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import type { Address } from "viem";
 import { appDeployment } from "@/lib/config";
 import { formatChance, formatInt, formatUtc } from "@/lib/format";
+import { type BasketPlan, basketKey, COVER_DEFAULT, clampCover } from "@/lib/hedge/basket";
 import { useFundingHistory, usePerpMeta } from "@/lib/hedge/hooks";
 import {
   averageStep,
@@ -29,7 +31,9 @@ import type { ChainClock, MarketView } from "@/lib/market/types";
 import { marketHeadline } from "../markets/MarketCard";
 import { ErrorState, LoadingRows } from "../states";
 import { Badge, Button, ButtonLink, Card, Notice, Panel, PhasePill, SegmentedControl, Stat } from "../ui";
+import { BasketBuilder } from "./Basket";
 import { FundingChart } from "./FundingChart";
+import { fmtCount, fmtPct, fmtTokens, fmtUnits, PaidWords, usdc } from "./fmt";
 import s from "./hedge.module.css";
 
 export type Horizon = "day" | "week";
@@ -38,38 +42,28 @@ export type RateBasis = "current" | "average";
 export const HORIZON_SECONDS: Record<Horizon, number> = { day: 86_400, week: 7 * 86_400 };
 const HORIZON_WORDS: Record<Horizon, string> = { day: "the next 24 hours", week: "the next 7 days" };
 
-/** What "Track this hedge" records. */
+/** What "Track this basket" records: the position, the funding sum to measure from, and the sized legs. */
 export interface TrackRequest {
-  proposal: Proposal;
   position: PerpPosition;
   meta: PerpMeta;
   units: number;
   startBlock: bigint;
   startSum: bigint;
-}
-
-const fmtUnits = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 6 });
-const fmtCount = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 1 });
-const fmtPct = (n: number | null) =>
-  n === null ? "n/a" : `${n.toLocaleString("en-US", { maximumSignificantDigits: 3 })}%`;
-const usdc = (n: number) => `${formatUsdNumber(n).replace("$", "")} USDC`;
-
-function PaidWords({ usd }: { usd: number }) {
-  return usd >= 0 ? <>pays {formatUsdNumber(usd)}</> : <>receives {formatUsdNumber(-usd)}</>;
+  plan: BasketPlan;
 }
 
 function ProposalCard({
   p,
   meta,
   clock,
-  onTrack,
-  tracked,
+  inBasket,
+  onToggle,
 }: {
   p: Proposal;
   meta: PerpMeta;
   clock: ChainClock | null;
-  onTrack: () => void;
-  tracked: boolean;
+  inBasket: boolean;
+  onToggle: () => void;
 }) {
   const m: MarketView = p.fm.market;
   const side = p.buy.toUpperCase();
@@ -87,7 +81,12 @@ function ProposalCard({
         {ends ? `, ending about ${formatUtc(ends)}` : ""}.
       </p>
       <div className={s.figures}>
-        <Stat size="sm" label="To cover" value={formatUsdNumber(p.target)} hint="projected funding cost" />
+        <Stat
+          size="sm"
+          label="To cover"
+          value={formatUsdNumber(p.target)}
+          hint="projected funding over this window"
+        />
         <Stat
           size="sm"
           label={`Chance ${side} wins`}
@@ -99,15 +98,11 @@ function ProposalCard({
             <Stat
               size="sm"
               label={sizing.mode === "pool" ? `Stake on ${side}` : `Buy ${side}`}
-              value={
-                sizing.mode === "pool"
-                  ? usdc(sizing.cost)
-                  : `${fmtUnits(Math.ceil((sizing.tokens ?? 0) * 100) / 100)} tokens`
-              }
+              value={sizing.mode === "pool" ? usdc(sizing.cost) : fmtTokens(sizing.tokens ?? 0)}
               hint={
                 sizing.mode === "pool"
-                  ? "at the pool as it is now"
-                  : `at ${formatUsdNumber(sizing.price ?? 0)} each`
+                  ? "on its own, at the pool as it is now"
+                  : `on its own, at ${formatUsdNumber(sizing.price ?? 0)} each`
               }
             />
             <Stat
@@ -151,9 +146,18 @@ function ProposalCard({
             ? `Buy ${side} on the market page`
             : `Stake ${side} on the market page`}
         </ButtonLink>
-        {sizing.ok ? (
-          <Button size="sm" onClick={onTrack} disabled={tracked}>
-            {tracked ? "Tracking" : "Track this hedge"}
+        {inBasket ? (
+          <span className={s.inBasket}>
+            <Badge tone="accent" dot>
+              In the basket
+            </Badge>
+            <Button size="sm" variant="ghost" onClick={onToggle}>
+              Remove from basket
+            </Button>
+          </span>
+        ) : sizing.ok ? (
+          <Button size="sm" onClick={onToggle}>
+            Add to basket
           </Button>
         ) : null}
       </div>
@@ -264,7 +268,7 @@ export function PositionHedge({
   markets,
   clock,
   onTrack,
-  trackedMarkets,
+  trackedBaskets,
   onRemove,
 }: {
   position: PerpPosition;
@@ -274,12 +278,16 @@ export function PositionHedge({
   markets: MarketView[] | undefined;
   clock: ChainClock | null;
   onTrack: (request: TrackRequest) => void;
-  trackedMarkets: ReadonlySet<string>;
+  /** basketKey of every tracked basket, to mark this one as tracked. */
+  trackedBaskets: ReadonlySet<string>;
   onRemove?: () => void;
 }) {
   const metaQuery = usePerpMeta(position.perpId);
   const history = useFundingHistory(position.perpId);
   const meta = metaQuery.data ?? metaHint;
+  // The basket: null until the person picks, which means "the first market that can be sized".
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const [cover, setCover] = useState<number>(COVER_DEFAULT);
 
   if (!meta || history.isPending) {
     if (metaQuery.isError || history.isError) {
@@ -341,6 +349,17 @@ export function PositionHedge({
           interval: h.interval,
         });
 
+  const proposals = hedges?.proposals ?? [];
+  const firstUsable = proposals.find((p) => p.sizing.ok);
+  const chosenList =
+    picked ?? (firstUsable ? [firstUsable.fm.market.address.toLowerCase()] : ([] as string[]));
+  const chosenSet = new Set(chosenList);
+  const chosen = proposals.filter((p) => chosenSet.has(p.fm.market.address.toLowerCase()));
+  const toggle = (market: Address) => {
+    const key = market.toLowerCase();
+    setPicked(chosenList.includes(key) ? chosenList.filter((m) => m !== key) : [...chosenList, key]);
+  };
+
   return (
     <Panel
       title={
@@ -349,7 +368,7 @@ export function PositionHedge({
         </span>
       }
       aside={
-        <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+        <span className={s.positionAside}>
           <Badge tone={position.source === "chain" ? "accent" : "neutral"} dot>
             {position.source === "chain" ? "read from Perpl" : "entered by hand"}
           </Badge>
@@ -413,7 +432,7 @@ export function PositionHedge({
             interval
           </span>
           <span className={s.mathLine}>
-            {formatUsdNumber(projection.perIntervalUsdPerUnit)} × {fmtCount(horizonIntervals)} ×{" "}
+            {formatUsdNumber(Math.abs(projection.perIntervalUsdPerUnit))} × {fmtCount(horizonIntervals)} ×{" "}
             {fmtUnits(units)} {meta.symbol} = {formatUsdNumber(Math.abs(projection.positionUsd))}
           </span>
           <span className={s.mathResult}>
@@ -433,25 +452,22 @@ export function PositionHedge({
               At this rate the position is paid funding, so there is no funding cost to hedge.
             </p>
           ) : hedges.proposals.length > 0 ? (
-            hedges.proposals.map((p) => (
-              <ProposalCard
-                key={p.fm.market.address}
-                p={p}
-                meta={meta}
-                clock={clock}
-                tracked={trackedMarkets.has(`${position.perpId}:${p.fm.market.address.toLowerCase()}`)}
-                onTrack={() =>
-                  onTrack({
-                    proposal: p,
-                    position,
-                    meta,
-                    units,
-                    startBlock: h.lastEvent,
-                    startSum: h.lastSum,
-                  })
-                }
-              />
-            ))
+            <>
+              <p className="muted" style={{ fontSize: 14 }}>
+                Each card sizes one market on its own. Add one or more to the basket below to spread the hedge
+                across windows, thresholds or both funding templates.
+              </p>
+              {hedges.proposals.map((p) => (
+                <ProposalCard
+                  key={p.fm.market.address}
+                  p={p}
+                  meta={meta}
+                  clock={clock}
+                  inBasket={chosenSet.has(p.fm.market.address.toLowerCase())}
+                  onToggle={() => toggle(p.fm.market.address)}
+                />
+              ))}
+            </>
           ) : (
             <NewMarket
               position={position}
@@ -472,6 +488,30 @@ export function PositionHedge({
                 </li>
               ))}
             </ul>
+          ) : null}
+          {projection.positionUsd > 0 && hedges.proposals.length > 0 && raw !== null ? (
+            <BasketBuilder
+              chosen={chosen}
+              side={position.side}
+              units={units}
+              meta={meta}
+              rawPerInterval={raw}
+              history={h}
+              cover={cover}
+              onCover={(c) => setCover(clampCover(c))}
+              onRemove={(market) => toggle(market)}
+              tracked={trackedBaskets.has(
+                basketKey(
+                  position.perpId,
+                  position.side,
+                  chosen.map((p) => p.fm.market.address),
+                ),
+              )}
+              onTrack={(plan) =>
+                onTrack({ position, meta, units, startBlock: h.lastEvent, startSum: h.lastSum, plan })
+              }
+              clock={clock}
+            />
           ) : null}
         </div>
       ) : null}
