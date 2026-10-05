@@ -105,6 +105,37 @@ check "exec passes the settings" "$out" "enabled=1"
 check "exec passes the .env path" "$out" "envfile=$TMP/.env"
 check "exec passes no other service's settings" "$out" "maker=unset"
 
+# start and stop: the pid file names the service itself (not a wrapper), in a session of its own, and
+# stop ends it. The fake service only sleeps; its command line looks like a real one.
+cat >"$TMP/fake-service" <<'NODE'
+#!/usr/bin/env bash
+trap 'exit 0' TERM
+while :; do sleep 1; done
+NODE
+chmod +x "$TMP/fake-service"
+svc_env=(env -i PATH="$PATH" HOME="$HOME" NODE_BIN="$TMP/fake-service" SKIP_SHARED_BUILD=1 KEEP_AWAKE=0 STOP_WAIT=10)
+out="$("${svc_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" start keeper 2>&1)"
+check "start reports the mode" "$out" "keeper: started, live"
+pid="$(cat "$TMP/.run/keeper.pid" 2>/dev/null || true)"
+cmd="$(ps -p "${pid:-0}" -o command= 2>/dev/null || true)"
+check "the pid file names the service process" "$cmd" "src/main.ts run"
+pgid="$(ps -p "${pid:-0}" -o pgid= 2>/dev/null | tr -d ' ' || true)"
+check "the service leads its own process group" "pgid=$pgid" "pgid=$pid"
+out="$("${svc_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" status keeper 2>&1)"
+check "status sees it running" "$out" "keeper: running (pid $pid"
+out="$("${svc_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" stop keeper 2>&1)"
+check "stop stops it" "$out" "stopped"
+if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+  echo "FAIL the service is still running after stop"
+  kill -KILL "$pid" 2>/dev/null || true
+  failures=$((failures + 1))
+else
+  echo "ok   the service is gone after stop"
+fi
+out="$("${svc_env[@]}" KEEPER_ENABLED=0 "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" start keeper 2>&1)"
+check "a dry-run start warns" "$out" "WARNING: starting as a DRY RUN"
+"${svc_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" stop keeper >/dev/null 2>&1 || true
+
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"
   exit 1

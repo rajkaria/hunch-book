@@ -150,12 +150,12 @@ start_one() {
     echo "$svc: WARNING: starting as a DRY RUN: it will send no transaction."
     echo "$svc:   For live, set $(upper "$svc")_ENABLED=1 in $SETTINGS_FILE (see ops/services.env.example)."
   fi
-  # The services import @hunch-book/shared's build output.
-  (cd "$ROOT" && pnpm --filter @hunch-book/shared build >/dev/null)
+  # The services import @hunch-book/shared's build output. (SKIP_SHARED_BUILD=1 is for the script's tests.)
+  [ "${SKIP_SHARED_BUILD:-0}" = "1" ] || (cd "$ROOT" && pnpm --filter @hunch-book/shared build >/dev/null)
   echo "--- start $(date -u +%Y-%m-%dT%H:%M:%SZ) ($mode)" >>"$log"
   (
     cd "$ROOT/services/$svc"
-    detached env "$(upper "$svc")_ENV_FILE=$ENV_FILE" ${settings[@]+"${settings[@]}"} \
+    "${DETACH[@]}" env "$(upper "$svc")_ENV_FILE=$ENV_FILE" ${settings[@]+"${settings[@]}"} \
       nohup "$node" --import tsx src/main.ts run >>"$log" 2>&1 </dev/null &
     echo $! >"$RUN/$svc.pid"
   )
@@ -171,22 +171,21 @@ start_one() {
   fi
 }
 
-# Runs a command in a new session (no controlling terminal, its own process group), so signals sent to
-# the caller's group never reach it. The pid stays the same: setsid and perl exec the command.
-detached() {
-  if command -v setsid >/dev/null 2>&1; then
-    setsid "$@"
-  else
-    perl -MPOSIX -e 'POSIX::setsid(); exec { $ARGV[0] } @ARGV or die "exec $ARGV[0]: $!"' "$@"
-  fi
-}
+# The prefix that runs a command in a new session (no controlling terminal, its own process group), so
+# signals sent to the caller's group never reach it. It is a command, not a function, so `$!` after
+# `"${DETACH[@]}" cmd &` is the service's own pid: setsid and perl exec the command in place.
+if command -v setsid >/dev/null 2>&1; then
+  DETACH=(setsid)
+else
+  DETACH=(perl -MPOSIX -e 'POSIX::setsid(); exec { $ARGV[0] } @ARGV or die "exec $ARGV[0]: $!"')
+fi
 
 # macOS only: hold off idle and system sleep for as long as the service's process lives.
 keep_awake() {
   local svc="$1"
   [ "$KEEP_AWAKE" = "1" ] || return 0
   command -v caffeinate >/dev/null 2>&1 || return 0
-  detached caffeinate -is -w "$(pid_of "$svc")" >/dev/null 2>&1 </dev/null &
+  "${DETACH[@]}" caffeinate -is -w "$(pid_of "$svc")" >/dev/null 2>&1 </dev/null &
   echo "$svc: keeping this Mac awake while it runs (KEEP_AWAKE=0 to skip)"
 }
 
