@@ -11,7 +11,7 @@ import {
 
 export type ApiSdk = Pick<HunchClient, "network" | "deployment" | "context"> & {
   markets: Pick<HunchClient["markets"], "all" | "get" | "book">;
-  settlement: Pick<HunchClient["settlement"], "plan" | "verify">;
+  settlement: Pick<HunchClient["settlement"], "plan" | "verify" | "findTransaction">;
 };
 
 export interface ApiDeps {

@@ -8,6 +8,7 @@ import {
   type Window,
 } from "@hunch-book/sdk";
 import { type Address, getAddress, isAddress, isAddressEqual } from "viem";
+import { challengeSecondsFor, type Health, marketHealth } from "../../../../lib/health/score";
 import { friendlyQuestion } from "../../../../lib/market/title";
 import { cached } from "./cache";
 import type { ApiDeps } from "./deps";
@@ -81,6 +82,39 @@ export function pointTime(window: Window, value: bigint, clock: ChainClock | nul
   if (!window.blockClock) return isoSeconds(Number(value));
   if (!clock) return null;
   return isoSeconds(Math.round(clock.timestamp + (Number(value - clock.block) * clock.msPerBlock) / 1000));
+}
+
+const e6ToNumber = (v: bigint | null | undefined): number | null =>
+  v === null || v === undefined ? null : Number(v) / 1e6;
+
+/** The market's health score (lib/health/score.ts), from what the API already read. */
+export function healthOf(
+  m: MarketInfo,
+  deps: Pick<ApiDeps, "network" | "now">,
+  clock: ChainClock | null,
+): Health {
+  const now = clock?.timestamp ?? Math.floor(deps.now() / 1000);
+  const at = (point: bigint): number =>
+    !m.window.blockClock
+      ? Number(point)
+      : clock
+        ? clock.timestamp + (Number(point - clock.block) * clock.msPerBlock) / 1000
+        : Number.NaN;
+  const closeAt = at(m.window.close);
+  return marketHealth({
+    phase: m.phase,
+    graduated: m.graduated,
+    templateId: m.templateId,
+    network: deps.network,
+    bid: e6ToNumber(m.prices?.bidE6),
+    ask: e6ToNumber(m.prices?.askE6),
+    pool: { yesUsdc: Number(m.pool.yes) / 1e6, noUsdc: Number(m.pool.no) / 1e6, stakers: m.pool.stakers },
+    rule: { minPoolUsdc: Number(m.graduationRule.minPool) / 1e6, minStakers: m.graduationRule.minStakers },
+    now,
+    closeAt,
+    lockAt: at(m.window.lock),
+    settleFrom: closeAt + challengeSecondsFor(m.templateId),
+  });
 }
 
 export function priceString(e6: bigint | null | undefined): string | null {
@@ -165,6 +199,7 @@ export function marketJson(m: MarketInfo, deps: ApiDeps, clock: ChainClock | nul
     creator: m.creator,
     createdByHunch: isOurs(deps, m.creator),
     evidenceHash: /^0x0+$/.test(m.evidenceHash) ? null : m.evidenceHash,
+    health: healthOf(m, deps, clock),
   };
 }
 
@@ -242,6 +277,7 @@ export const MARKET_CSV_COLUMNS = [
   "close_at",
   "settle_deadline",
   "created_by_hunch",
+  "health_score",
   "rule",
   "url",
 ] as const;
@@ -269,6 +305,7 @@ export function marketCsvRow(j: MarketJson): Record<string, unknown> {
     close_at: j.window.closeAt,
     settle_deadline: j.window.settleDeadline,
     created_by_hunch: j.createdByHunch,
+    health_score: j.health.score,
     rule: j.rule,
     url: j.url,
   };

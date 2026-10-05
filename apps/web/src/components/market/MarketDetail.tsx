@@ -12,6 +12,7 @@ import { phaseLabel, phaseTone } from "@/lib/market/logic";
 import { templateLabel } from "@/lib/market/params";
 import { titleDiffersFromRule } from "@/lib/market/title";
 import type { ChainClock, MarketView } from "@/lib/market/types";
+import { HealthPanel } from "../health/Health";
 import { Countdown, marketHeadline } from "../markets/MarketCard";
 import { OrdersPanel } from "../orders/OrdersPanel";
 import { ReferralBindPrompt } from "../referral/ReferralBindPrompt";
@@ -97,6 +98,7 @@ export function MarketBody({
           {m.graduated && m.book ? <BookPanel m={m} /> : null}
           {m.graduated && m.book ? <MarketTape m={m} /> : null}
           <GraduationPanel m={m} />
+          <HealthPanel m={m} clock={clock} now={now} />
           <TimelinePanel m={m} clock={clock} now={now} />
           <SourcePanel m={m} />
           {m.decoded.kind === "snapshot" ? <SnapshotPanel m={m} now={now} /> : null}

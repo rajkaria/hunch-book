@@ -20,6 +20,7 @@ import {
   getIndex,
   getMarket,
   getMarkets,
+  getSettlements,
   getStats,
   getTrades,
 } from "@/app/api/v1/_lib/handlers";
@@ -143,7 +144,7 @@ function deps(overrides: Partial<ApiDeps> = {}): ApiDeps {
           depth: { bidSize: 20_000_000n, bidValue: 7_360_000n, askSize: 20_000_000n, askCost: 7_980_000n },
         })),
       },
-      settlement: { plan: vi.fn(), verify: vi.fn() },
+      settlement: { plan: vi.fn(), verify: vi.fn(), findTransaction: vi.fn(async () => null) },
     } as unknown as ApiDeps["sdk"],
     network: "monad-testnet",
     deployment: testnet,
@@ -239,6 +240,18 @@ describe("GET /api/v1/markets", () => {
       window: { clock: "block", estimated: true, close: "68264005" },
       createdByHunch: true,
       evidenceHash: null,
+    });
+    // Health: a 3.1 cent spread, a close long past, a Perpl source (lib/health/score.ts).
+    expect(trading.health.score).toBeGreaterThan(0);
+    expect(trading.health.parts.map((p: { name: string }) => p.name)).toEqual([
+      "liquidity",
+      "time",
+      "source",
+    ]);
+    expect(body.markets.find((m: { id: number }) => m.id === 3).health).toEqual({
+      score: null,
+      grade: "finished",
+      parts: [],
     });
     // Block-clock close estimated from the measured block time (400 ms here).
     expect(trading.window.closeAt).toBe(new Date(NOW + Number(68_264_005n - HEAD) * 400).toISOString());
@@ -507,6 +520,136 @@ describe("GET /api/v1/markets/{address}/evidence", () => {
     expect(res.headers.get("cache-control")).toBe(
       "public, max-age=60, s-maxage=60, stale-while-revalidate=600",
     );
+  });
+});
+
+describe("GET /api/v1/settlements", () => {
+  const verified = (m: MarketInfo, block: bigint, by: Address): Verification => ({
+    market: m.address,
+    marketId: m.id,
+    templateId: 1,
+    template: "Perpl net funding",
+    status: m.phaseName === "voided" ? "voided" : "settled",
+    stored: { outcome: "no", evidenceHash: TX },
+    recomputed: { outcome: "no", evidenceHash: TX, evidence: "0x", reads: { delta: -31n } },
+    rerun: { outcome: "no", evidenceHash: TX },
+    rerunError: null,
+    matches: { evidenceHash: true, outcome: true, rerun: true },
+    verified: true,
+    notes: [],
+    settlement: {
+      block,
+      time: 1_791_000_000n,
+      hash: TX,
+      by,
+      kind: "settled",
+      method: "settle",
+      evidence: "0x",
+    },
+    plan: null,
+    checkedAt: { block: HEAD, timestamp: 1_791_100_000n },
+    rpc: testnet.rpc,
+  });
+
+  beforeEach(() => {
+    markets.push(
+      market(4, "voided"),
+      market(5, "settled", { outcome: Outcome.No, outcomeLabel: "no", templateId: 7, template: "Snapshot" }),
+    );
+  });
+
+  it("lists every finished market with the read that settled it, newest settlement first", async () => {
+    const d = deps();
+    const verify = d.sdk.settlement.verify as ReturnType<typeof vi.fn>;
+    verify.mockImplementation(async (m: MarketInfo) => {
+      if (m.id === 4) throw new Error("rpc down");
+      return verified(
+        m,
+        m.id === 3 ? 900n : 700n,
+        m.id === 3 ? (testnet.wallets.keeper as Address) : addr(0xbeef),
+      );
+    });
+    const res = await getSettlements(req("/api/v1/settlements"), d);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe(
+      "public, max-age=300, s-maxage=300, stale-while-revalidate=3600",
+    );
+    const body = await res.json();
+    expect(body.total).toBe(3);
+    expect(body.settlements.map((r: { id: number }) => r.id)).toEqual([3, 5, 4]);
+    const [first, second, failed] = body.settlements;
+    expect(first).toMatchObject({
+      status: "settled",
+      outcome: "yes",
+      settledAt: { block: "900" },
+      settlementTx: {
+        hash: TX,
+        byHunch: true,
+        method: "settle",
+        explorer: `https://testnet.monadscan.com/tx/${TX}`,
+      },
+      reads: { delta: "-31" },
+      verified: true,
+      links: { verify: `https://book.playhunch.xyz/verify/${addr(0x1003)}` },
+    });
+    expect(second.settlementTx.byHunch).toBe(false);
+    expect(failed).toMatchObject({ status: "voided", settledAt: null, verified: null });
+    expect(failed.error).toContain("rpc down");
+  });
+
+  it("finds the settling transaction when the template's check did not need it", async () => {
+    const d = deps();
+    (d.sdk.settlement.verify as ReturnType<typeof vi.fn>).mockImplementation(async (m: MarketInfo) => ({
+      ...verified(m, 1n, addr(1)),
+      settlement: null,
+    }));
+    const find = d.sdk.settlement.findTransaction as ReturnType<typeof vi.fn>;
+    find.mockImplementation(async (a: Address) =>
+      a === addr(0x1003)
+        ? {
+            block: 42n,
+            time: 1_791_000_000n,
+            hash: TX,
+            by: addr(7),
+            kind: "settled",
+            method: "settle",
+            evidence: "0x",
+          }
+        : null,
+    );
+    const body = await (await getSettlements(req("/api/v1/settlements"), d)).json();
+    const byId = new Map(body.settlements.map((r: { id: number }) => [r.id, r]));
+    expect(byId.get(3)).toMatchObject({ settledAt: { block: "42" }, settlementTx: { hash: TX } });
+    expect(byId.get(5)).toMatchObject({ settledAt: null, settlementTx: null });
+  });
+
+  it("filters by template, pages, and refuses bad queries", async () => {
+    const d = deps();
+    (d.sdk.settlement.verify as ReturnType<typeof vi.fn>).mockImplementation(async (m: MarketInfo) =>
+      verified(m, 1n, addr(1)),
+    );
+    const snap = await (await getSettlements(req("/api/v1/settlements?template=7"), d)).json();
+    expect(snap.settlements.map((r: { id: number }) => r.id)).toEqual([5]);
+    const paged = await (await getSettlements(req("/api/v1/settlements?limit=1&offset=1"), d)).json();
+    expect(paged).toMatchObject({ total: 3, limit: 1, offset: 1 });
+    expect(paged.settlements).toHaveLength(1);
+    for (const bad of ["limit=0", "limit=101", "offset=-1", "template=abc"]) {
+      expect((await getSettlements(req(`/api/v1/settlements?${bad}`), d)).status).toBe(400);
+    }
+  });
+
+  it("downloads as CSV with the reads as JSON", async () => {
+    const d = deps();
+    (d.sdk.settlement.verify as ReturnType<typeof vi.fn>).mockImplementation(async (m: MarketInfo) =>
+      verified(m, 5n, addr(1)),
+    );
+    const res = await getSettlements(req("/api/v1/settlements?format=csv"), d);
+    const lines = (await res.text()).trim().split("\r\n");
+    expect(lines[0]).toBe(
+      "id,market,template_id,template,asset,status,outcome,settled_block,settled_at,settle_tx,settled_by,settled_by_hunch,method,evidence,evidence_hash,reads,verified,rule,verify_url",
+    );
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toContain('"{""delta"":""-31""}"');
   });
 });
 

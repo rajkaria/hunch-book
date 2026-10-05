@@ -35,6 +35,7 @@ export const MORE_LINKS: readonly NavLink[] = [
   { href: "/ladder", label: "Ladders", match: ["/ladder"] },
   { href: "/parlay", label: "Parlays", match: ["/parlay"] },
   { href: "/rewards", label: "Rewards", match: ["/rewards"] },
+  { href: "/settlements", label: "Settlements", match: ["/settlements"] },
 ];
 
 /** The protocol docs on GitHub. */

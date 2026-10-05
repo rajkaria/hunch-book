@@ -24,6 +24,8 @@ export const CACHE = {
   recent: { maxAge: 30, staleWhileRevalidate: 120 },
   /** Settlement evidence: final once settled. */
   slow: { maxAge: 60, staleWhileRevalidate: 600 },
+  /** The settlement archive: grows only when a market settles. */
+  archive: { maxAge: 300, staleWhileRevalidate: 3_600 },
 } as const satisfies Record<string, CacheTime>;
 
 const cacheControl = (c: CacheTime): string =>

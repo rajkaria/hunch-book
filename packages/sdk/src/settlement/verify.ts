@@ -16,6 +16,8 @@ import {
 } from "@hunch-book/shared";
 import {
   type Address,
+  BaseError,
+  ContractFunctionZeroDataError,
   decodeAbiParameters,
   decodeEventLog,
   decodeFunctionData,
@@ -82,32 +84,59 @@ export interface Verification {
   rpc: string;
 }
 
-const SEARCH_PROBES = 8n;
+const SEARCH_PROBES = 4n;
+/** Tries per historical read before the search gives up (public RPCs drop bursts of these). */
+const READ_TRIES = 4;
+const RETRY_BASE_MS = 250;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** True when the call returned no data: the market had no code yet at that block. */
+function isNoCode(e: unknown): boolean {
+  return e instanceof BaseError && e.walk((x) => x instanceof ContractFunctionZeroDataError) !== null;
+}
+
+/** True when the node does not have that block's state at all (not a hiccup worth retrying). */
+function isStateUnavailable(e: unknown): boolean {
+  return /resource not found|header not found|unknown block|missing trie node|state (is )?not available|pruned/i.test(
+    String((e as { details?: string })?.details ?? "") + String((e as Error)?.message ?? ""),
+  );
+}
 
 /**
  * Finds the transaction that settled or voided a market: searches `phase()` at past blocks for the
  * block where it became final, then reads that block's event and transaction. Needs an RPC that
  * serves past state. Pass `block` when it is already known (for example from the indexer).
+ *
+ * A block before the market existed, or one whose state the node does not keep, reads as "not final";
+ * the event check at the end then makes sure the block found really settled the market. Any other
+ * failed read (a public RPC dropping a burst of calls) is retried, and if it keeps failing the search
+ * throws rather than guess.
  */
 export async function findSettlementTx(
   ctx: HunchContext,
   market: Pick<MarketInfo, "address">,
-  options: { block?: bigint; fromBlock?: bigint; head?: bigint } = {},
+  options: { block?: bigint; fromBlock?: bigint; head?: bigint; retryBaseMs?: number } = {},
 ): Promise<SettlementTx | null> {
   let block = options.block;
   if (block === undefined) {
     const head = options.head ?? (await ctx.publicClient.getBlockNumber());
+    const retryBase = options.retryBaseMs ?? RETRY_BASE_MS;
     const finalAt = async (b: bigint): Promise<boolean> => {
-      try {
-        const phase = await ctx.publicClient.readContract({
-          address: market.address,
-          abi: marketAbi,
-          functionName: "phase",
-          blockNumber: b,
-        });
-        return phase === Phase.Settled || phase === Phase.Voided;
-      } catch {
-        return false;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const phase = await ctx.publicClient.readContract({
+            address: market.address,
+            abi: marketAbi,
+            functionName: "phase",
+            blockNumber: b,
+          });
+          return phase === Phase.Settled || phase === Phase.Voided;
+        } catch (e) {
+          if (isNoCode(e) || isStateUnavailable(e)) return false;
+          if (attempt >= READ_TRIES) throw e;
+          await sleep(retryBase * 2 ** (attempt - 1));
+        }
       }
     };
     if (!(await finalAt(head))) return null;

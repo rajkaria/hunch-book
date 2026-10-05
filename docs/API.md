@@ -14,6 +14,7 @@ Base URL: `https://book.playhunch.xyz/api/v1` (the app's own origin; the network
 | [`GET /markets/{address}`](#get-marketsaddress) | one market in full, with the top of its book |
 | [`GET /markets/{address}/trades`](#get-marketsaddresstrades) | fills on the market's Kuru book |
 | [`GET /markets/{address}/evidence`](#get-marketsaddressevidence) | settlement evidence and its verification |
+| [`GET /settlements`](#get-settlements) | the settlement archive: every finished market with the read that settled it |
 | [`GET /stats`](#get-stats) | protocol totals and the vault's solvency |
 | [`GET /feed`](#get-feed) | open markets as cards, for the main Hunch app and anyone else |
 | [`GET /embed/m/{address}`](#embed) (outside `/api`) | a market card for an iframe |
@@ -102,11 +103,24 @@ Newest first. `total` counts every market, `matching` those that pass the filter
       "resolver": "0x4ec0077e30EA8B626C5AA087C586E60542150951",
       "creator": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
       "createdByHunch": true,
-      "evidenceHash": null
+      "evidenceHash": null,
+      "health": {
+        "score": 93,
+        "grade": "good",
+        "parts": [
+          { "name": "liquidity", "points": 46, "max": 50, "why": "Pool of 480 of 500 USDC and 8 of 10 stakers to graduate." },
+          { "name": "time", "points": 17, "max": 20, "why": "Staking ends in 18 hours." },
+          { "name": "source", "points": 30, "max": 30, "why": "Perpl's funding history is stored onchain at every block, so the answer is always readable." }
+        ]
+      }
     }
   ]
 }
 ```
+
+`health` is the market's health score ([HEALTH.md](./HEALTH.md)); the example's `health` is the golden
+path pool (market #7), read on 2026-10-05 at 20:54 UTC, under an older market's fields. A settled or voided market has
+`{ "score": null, "grade": "finished", "parts": [] }`.
 
 `chance.source` is `pool` (the pool's split, `Y / T`), `book` (the mid of the Kuru book's best bid and
 ask), `book-one-sided` (the one side with orders, as the onchain oracle reads it), `book-empty`,
@@ -116,8 +130,8 @@ ask), `book-one-sided` (the one side with orders, as the onchain oracle reads it
 `?format=csv`:
 
 ```csv
-id,address,template_id,template,asset,phase,outcome,chance_bps,chance_source,pool_yes_usdc,pool_no_usdc,pool_total_usdc,stakers,best_bid,best_ask,clock,lock,close,close_at,settle_deadline,created_by_hunch,rule,url
-1,0x2A44B99014cF73065BFb89197a08DE09D18d3982,1,Perpl net funding,MON,trading,unresolved,8525,book,410,280,690,11,0.837,0.868,block,68058301,68264005,2026-10-05T00:56:44.000Z,2026-10-15T07:35:04.000Z,true,"Will MON longs pay more than $0.000015 per MON in funding on Perpl (MON Perp, perp 64) between block 68058301 and block 68264005?",https://book.playhunch.xyz/m/0x2A44B99014cF73065BFb89197a08DE09D18d3982
+id,address,template_id,template,asset,phase,outcome,chance_bps,chance_source,pool_yes_usdc,pool_no_usdc,pool_total_usdc,stakers,best_bid,best_ask,clock,lock,close,close_at,settle_deadline,created_by_hunch,health_score,rule,url
+1,0x2A44B99014cF73065BFb89197a08DE09D18d3982,1,Perpl net funding,MON,trading,unresolved,8525,book,410,280,690,11,0.837,0.868,block,68058301,68264005,2026-10-05T00:56:44.000Z,2026-10-15T07:35:04.000Z,true,,"Will MON longs pay more than $0.000015 per MON in funding on Perpl (MON Perp, perp 64) between block 68058301 and block 68264005?",https://book.playhunch.xyz/m/0x2A44B99014cF73065BFb89197a08DE09D18d3982
 ```
 
 (The two examples were read a few hours apart; the maker bot had moved its quotes.)
@@ -267,6 +281,86 @@ For a settled market, `recomputed.reads` holds what was read (Perpl's funding su
 the Chainlink rounds, the touching round, the spiking event, the legs, or the snapshot and the source
 re-read at its block), `rerun` the resolver's answer, and `settlementTx` the transaction with its
 explorer link. Anyone can repeat the check with any RPC through the SDK.
+
+## GET /settlements
+
+The settlement archive: every settled or voided market, newest settlement first, each with the exact
+read that settled it (`reads`, `evidence`), the transaction that did it and who sent it (ours labelled),
+and whether that read still reproduces today (`verified`, `matches`, the same check as
+[`/markets/{address}/evidence`](#get-marketsaddressevidence)). Each record links to the app's verifier,
+which re-runs the read from your browser. The app shows it at
+[/settlements](https://book.playhunch.xyz/settlements).
+
+| Query | Default | Meaning |
+|---|---|---|
+| `template` | all | a template id, 1 to 7 |
+| `limit` | 25 | 1 to 100 |
+| `offset` | 0 | |
+| `format` | json | `csv` for a spreadsheet, `reads` as JSON in one column |
+
+Markets are taken newest first, then verified (three at a time), then sorted by settlement block. The
+settling transaction is found by searching `phase()` over past blocks and then reading that block's
+`Settled` or `Voided` event, so the answer is never a guess: if the search cannot finish, `settledAt` and
+`settlementTx` are null and `error` (or the record's absence of a transaction) says so. A cold archive
+takes a few seconds; the answer is cached for 5 minutes. Read from Monad testnet on 2026-10-06, trimmed
+to one record:
+
+```json
+{
+  "network": "monad-testnet",
+  "total": 4,
+  "offset": 0,
+  "limit": 25,
+  "settlements": [
+    {
+      "id": 1,
+      "market": "0x2A44B99014cF73065BFb89197a08DE09D18d3982",
+      "title": "Will MON longs pay more than $0.000015 per MON in funding on Perpl between about Oct 4, 07:40 and Oct 5, 00:55 UTC?",
+      "rule": "Will MON longs pay more than $0.000015 per MON in funding on Perpl (MON Perp, perp 64) between block 68058301 and block 68264005?",
+      "template": { "id": 1, "name": "Perpl net funding" },
+      "asset": "MON",
+      "status": "settled",
+      "outcome": "no",
+      "settledAt": { "block": "68488249", "time": "2026-10-05T19:45:55.000Z" },
+      "settlementTx": {
+        "hash": "0x2d53ad4c3cb322c34447839a8beea8cc3dc208c1c8fa1930fc06cab96b20fc72",
+        "explorer": "https://testnet.monadscan.com/tx/0x2d53ad4c3cb322c34447839a8beea8cc3dc208c1c8fa1930fc06cab96b20fc72",
+        "by": "0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569",
+        "byHunch": true,
+        "method": "settle"
+      },
+      "evidence": "0x",
+      "evidenceHash": "0x87da69cba433469e3382279788685ebb0e11c8d2132b9eda5fad45c4c33a845a",
+      "reads": {
+        "exchange": "0x1964C32f0bE608E7D29302AFF5E61268E72080cc",
+        "perpId": "64",
+        "startBlock": "68058301",
+        "endBlock": "68264005",
+        "sumStart": "-21121",
+        "sumEnd": "-20390",
+        "eventStart": "68053740",
+        "eventEnd": "68259444",
+        "delta": "731",
+        "threshold": "1500"
+      },
+      "verified": true,
+      "matches": { "evidenceHash": true, "outcome": true, "rerun": true },
+      "notes": [],
+      "error": null,
+      "links": {
+        "app": "https://book.playhunch.xyz/m/0x2A44B99014cF73065BFb89197a08DE09D18d3982",
+        "verify": "https://book.playhunch.xyz/verify/0x2A44B99014cF73065BFb89197a08DE09D18d3982",
+        "evidence": "https://book.playhunch.xyz/api/v1/markets/0x2A44B99014cF73065BFb89197a08DE09D18d3982/evidence",
+        "explorer": "https://testnet.monadscan.com/address/0x2A44B99014cF73065BFb89197a08DE09D18d3982"
+      }
+    }
+  ],
+  "howToCheck": "Each record's verify link re-runs the read in your browser; the SDK's verifySettlement does the same with any RPC (docs/SDK.md)."
+}
+```
+
+Here the read is Perpl's funding sum at the window's two edges: it moved by 731 raw units, under the
+threshold of 1,500, so NO. The keeper settled it, late (see the [incident log](./INCIDENTS.md)).
 
 ## GET /stats
 

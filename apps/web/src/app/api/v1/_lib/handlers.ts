@@ -15,6 +15,14 @@ import {
   matches,
   parseFilters,
 } from "./markets";
+import {
+  archive,
+  isFinal,
+  parseArchiveQuery,
+  SETTLEMENT_CSV_COLUMNS,
+  settlementCsvRow,
+  verification,
+} from "./settlements";
 import { protocolStats } from "./stats";
 import { DEFAULT_LOOKBACK, MAX_LOOKBACK, marketTrades, TRADE_CSV_COLUMNS } from "./trades";
 
@@ -61,6 +69,7 @@ export function getIndex(_request: Request, deps: ApiDeps): Response {
         market: `${base}/markets/{address}`,
         trades: `${base}/markets/{address}/trades?limit=&blocks=&fromBlock=&format=csv`,
         evidence: `${base}/markets/{address}/evidence`,
+        settlements: `${base}/settlements?template=&limit=&offset=&format=csv`,
         stats: `${base}/stats`,
         feed: `${base}/feed`,
         embed: `${deps.siteUrl}/embed/m/{address}`,
@@ -176,12 +185,7 @@ export async function getEvidence(request: Request, raw: string, deps: ApiDeps):
   return guard(async () => {
     const m = await oneMarket(deps, raw);
     if (m instanceof Response) return m;
-    const v = await cached(
-      `evidence:${deps.network}:${m.address}:${m.phase}`,
-      m.phaseName === "settled" ? 300_000 : 30_000,
-      () => deps.sdk.settlement.verify(m),
-      deps.now(),
-    );
+    const v = await verification(deps, m);
     const body = {
       market: m.address,
       id: m.id,
@@ -217,6 +221,40 @@ export async function getEvidence(request: Request, raw: string, deps: ApiDeps):
     if (wantsCsv(request))
       return csv(flatten(body), ["field", "value"], `hunch-book-evidence-${m.id}.csv`, cache);
     return json(body, cache);
+  });
+}
+
+/** GET /api/v1/settlements: the settlement archive, newest first (docs/API.md). */
+export async function getSettlements(request: Request, deps: ApiDeps): Promise<Response> {
+  const query = parseArchiveQuery(new URL(request.url));
+  if (typeof query === "string") return problem(400, query);
+  return guard(async () => {
+    const [all, clock] = await Promise.all([allMarkets(deps), clockOrNull(deps)]);
+    const finished = all.filter(
+      (m) => isFinal(m) && (query.template === null || m.templateId === query.template),
+    );
+    // Newest markets first, so the first page holds the latest settlements without verifying them all.
+    const page = [...finished].sort((a, b) => b.id - a.id).slice(query.offset, query.offset + query.limit);
+    const records = await archive(deps, page, clock);
+    if (wantsCsv(request))
+      return csv(
+        records.map(settlementCsvRow),
+        SETTLEMENT_CSV_COLUMNS,
+        "hunch-book-settlements.csv",
+        CACHE.archive,
+      );
+    return json(
+      {
+        network: deps.network,
+        total: finished.length,
+        offset: query.offset,
+        limit: query.limit,
+        settlements: records,
+        howToCheck:
+          "Each record's verify link re-runs the read in your browser; the SDK's verifySettlement does the same with any RPC (docs/SDK.md).",
+      },
+      CACHE.archive,
+    );
   });
 }
 
