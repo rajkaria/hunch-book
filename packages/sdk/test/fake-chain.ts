@@ -70,6 +70,10 @@ export class FakeChain {
   private readonly contracts = new Map<string, FakeContract>();
   private readonly receipts = new Map<Hex, { to: Address; block: bigint }>();
   logs: Record<string, unknown>[] = [];
+  /** What `wallet_getCapabilities` answers, by hex chain id; null makes the wallet reject the method. */
+  capabilities: Record<string, unknown> | null = null;
+  /** Batches sent with `wallet_sendCalls`, by id. */
+  readonly batches = new Map<string, { hashes: Hex[]; block: bigint; ok: boolean }>();
 
   register(address: Address, abi: Abi | readonly unknown[], handlers: Record<string, Handler>): this {
     const key = address.toLowerCase();
@@ -212,6 +216,58 @@ export class FakeChain {
       }
       case "eth_getLogs":
         return this.logs;
+      case "wallet_getCapabilities": {
+        if (!this.capabilities) throw Object.assign(new Error("method not supported"), { code: 4200 });
+        return this.capabilities;
+      }
+      case "wallet_sendCalls": {
+        if (!this.capabilities) throw Object.assign(new Error("method not supported"), { code: 4200 });
+        const req = p[0] as { from: Address; calls: { to: Address; data: Hex; value?: Hex }[] };
+        const id = keccak256(toHex(`batch-${this.batches.size}`));
+        const hash = keccak256(toHex(`batch-tx-${this.batches.size}`));
+        let ok = true;
+        for (const c of req.calls) {
+          const to = getAddress(c.to);
+          const contract = this.contracts.get(to.toLowerCase());
+          if (!contract) throw new Error(`no fake contract at ${to}`);
+          const { functionName, args } = decodeFunctionData({ abi: contract.abi, data: c.data });
+          try {
+            this.call(to, c.data, getAddress(req.from), c.value ? BigInt(c.value) : 0n);
+          } catch {
+            ok = false;
+            break;
+          }
+          this.sent.push({
+            hash,
+            to,
+            functionName,
+            args: (args ?? []) as readonly unknown[],
+            value: c.value ? BigInt(c.value) : 0n,
+          });
+        }
+        this.block = { number: this.block.number + 1n, timestamp: this.block.timestamp + 1n };
+        this.batches.set(id, { hashes: [hash], block: this.block.number, ok });
+        return { id };
+      }
+      case "wallet_getCallsStatus": {
+        const batch = this.batches.get(p[0] as string);
+        if (!batch) throw new Error("unknown batch");
+        return {
+          version: "2.0.0",
+          id: p[0],
+          chainId: numberToHex(monadTestnet.id),
+          atomic: true,
+          status: batch.ok ? 200 : 500,
+          receipts: batch.hashes.map((h) => ({
+            logs: [],
+            status: batch.ok ? "0x1" : "0x0",
+            blockHash: keccak256(toHex(batch.block)),
+            blockNumber: numberToHex(batch.block),
+            gasUsed: "0x1",
+            transactionHash: h,
+          })),
+        };
+      }
       default:
         throw new Error(`fake chain: unsupported method ${method}`);
     }

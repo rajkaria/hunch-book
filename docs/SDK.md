@@ -132,6 +132,9 @@ sentence before anything is signed. It then sends, waits for the receipt and ret
 | `actions.redeem(market, side, { amount, to })` | redeems the winning side (or either side after a void) |
 | `actions.claimPool(market)` | a pool-only market's payout or refund |
 | `actions.collect(market)` | everything to get a finished market's USDC out: claims tokens, claims the pool payout, redeems |
+| `actions.collectAll(markets, { mode })` | `collect` across many markets. With `mode: "auto"` (the default) it sends one atomic batch when the wallet supports EIP-5792 `wallet_sendCalls` on this chain (one confirmation; all land or none do), and one transaction at a time otherwise; `"atomic"` requires the batch, `"sequential"` never batches. Returns `{ mode, calls, transactions }` |
+| `actions.planCollect(markets, owner?)` | the calls `collectAll` would send, with a label each, without sending anything |
+| `actions.sendCalls(calls, { mode })`, `actions.canBatchAtomically()` | any list of calls, batched the same way, and whether this wallet can batch |
 | `actions.withdrawCreatorFees()` | the creator's 25% share of fees |
 | `actions.mintTestUsdc(amount)` | testnet only: the test USDC faucet, at most 10,000 per call |
 

@@ -6,6 +6,7 @@ import {
   type HunchClient,
   type MarketInfo,
   type MarketParamsInput,
+  Phase,
   parseUsdc,
   type Quote,
   type SettlementPlan,
@@ -32,7 +33,7 @@ export type HunchPort = {
   quotes: Pick<HunchClient["quotes"], "quote">;
   actions: Pick<
     HunchClient["actions"],
-    "createMarket" | "stake" | "trade" | "settle" | "collect" | "mintTestUsdc"
+    "createMarket" | "stake" | "trade" | "settle" | "collect" | "collectAll" | "mintTestUsdc"
   >;
   settlement: Pick<HunchClient["settlement"], "plan" | "verify">;
 };
@@ -636,6 +637,32 @@ export const TOOLS = [
       return {
         transactions: txs.map((t) => ({ tx: t.hash, explorer: t.url })),
         note: txs.length === 0 ? "Nothing to collect for this wallet." : null,
+      };
+    },
+  }),
+
+  tool({
+    name: "redeem_all",
+    title: "Collect every finished market",
+    description:
+      "Gets this wallet's USDC out of every settled or voided market it holds a position in: claims tokens, claims pool payouts and redeems, in one batch when the wallet can send one atomically (EIP-5792) and one transaction at a time otherwise. Markets still open are left alone.",
+    inputSchema: {},
+    write: true,
+    handler: async (_input, { sdk }) => {
+      const wallet = sdk.account;
+      if (!wallet) throw new ToolInputError("This server has no wallet (read-only mode).");
+      const entries = await sdk.markets.portfolio(wallet);
+      const finished = entries
+        .map((e) => e.info)
+        .filter((m) => m.phase === Phase.Settled || m.phase === Phase.Voided);
+      if (finished.length === 0)
+        return { mode: null, calls: [], transactions: [], note: "Nothing to collect." };
+      const result = await sdk.actions.collectAll(finished);
+      return {
+        mode: result.mode,
+        calls: result.calls.map((c) => c.label),
+        transactions: result.transactions.map((t) => ({ tx: t.hash, explorer: t.url })),
+        note: result.calls.length === 0 ? "Nothing to collect for this wallet." : null,
       };
     },
   }),

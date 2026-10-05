@@ -1,6 +1,7 @@
 import { addressUrl, type TradeKind, txUrl } from "@hunch-book/shared";
 import type { Address, Hex } from "viem";
 import * as actions from "./actions.js";
+import * as batch from "./batch.js";
 import { getOrderBook } from "./book.js";
 import { accountAddress, type ContextOptions, createContext, type HunchContext } from "./context.js";
 import * as markets from "./markets.js";
@@ -8,7 +9,7 @@ import * as periphery from "./periphery.js";
 import { maxAmount, quote } from "./quotes.js";
 import { planSettlement } from "./settlement/evidence.js";
 import { findSettlementTx, verifySettlement } from "./settlement/verify.js";
-import { approve, type SendOptions } from "./tx.js";
+import { approve, type ContractCall, type SendOptions } from "./tx.js";
 
 // One object with every SDK function bound to one context. The same functions are exported on their
 // own (taking the context first) for callers that want only a few of them in their bundle.
@@ -107,6 +108,13 @@ export function createHunchClient(options: HunchClientOptions = {}) {
       ) => actions.redeem(ctx, market, side, o),
       claimPool: (market: Address, o?: SendOptions) => actions.claimPool(ctx, market, o),
       collect: (market: Address | markets.MarketInfo, o?: SendOptions) => actions.collect(ctx, market, o),
+      collectAll: (list: readonly (Address | markets.MarketInfo)[], o?: batch.SendCallsOptions) =>
+        batch.collectAll(ctx, list, o),
+      planCollect: (list: readonly (Address | markets.MarketInfo)[], owner?: Address) =>
+        batch.planCollect(ctx, list, owner),
+      sendCalls: (calls: readonly ContractCall[], o?: batch.SendCallsOptions) =>
+        batch.sendCalls(ctx, calls, o),
+      canBatchAtomically: () => batch.canBatchAtomically(ctx),
       withdrawCreatorFees: (o?: Parameters<typeof actions.withdrawCreatorFees>[1]) =>
         actions.withdrawCreatorFees(ctx, o),
       mintTestUsdc: (amount: bigint, o?: Parameters<typeof actions.mintTestUsdc>[2]) =>

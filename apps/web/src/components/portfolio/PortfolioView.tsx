@@ -17,6 +17,7 @@ import {
   portfolioTotals,
 } from "@/lib/market/portfolio";
 import type { PortfolioEntry } from "@/lib/market/types";
+import { useAtomicBatch } from "@/lib/wallet/batch";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, type TxStep, useTxRunner } from "@/lib/wallet/useTxRunner";
 import { PortfolioPeriphery } from "../autoredeem/PortfolioPeriphery";
@@ -79,12 +80,17 @@ export function PortfolioRows({ entries }: { entries: PortfolioEntry[] }) {
   const user = wallet.address;
   const vault = protocol.data?.vault;
   const ready = Boolean(user && vault && wallet.onAppChain) && !tx.busy;
-  const sendPlan = (actions: PlannedAction[]) => {
+  const atomic = useAtomicBatch(user);
+  // One confirmation for the whole plan when the wallet can batch atomically and there is more than one call.
+  const batched = atomic && plan.length > 1;
+  const sendPlan = (actions: PlannedAction[], asBatch = false) => {
     if (!user || !vault || actions.length === 0) return;
-    void tx.runAll(
-      actions.map((a) => toTxStep(a, vault, user)),
-      user,
-    );
+    const steps = actions.map((a) => toTxStep(a, vault, user));
+    if (asBatch) {
+      void tx.runBatch(steps, user, `Claim and redeem all: ${steps.length} calls in one batch`);
+    } else {
+      void tx.runAll(steps, user);
+    }
   };
 
   return (
@@ -104,14 +110,31 @@ export function PortfolioRows({ entries }: { entries: PortfolioEntry[] }) {
             <p className={s.note}>
               {plan.length === 0
                 ? "Nothing to claim or redeem right now."
-                : `${plan.length} ${plan.length === 1 ? "transaction" : "transactions"}, sent one by one, paying ${formatUsdc(totals.payable)} USDC in total. Each is checked against the chain before your wallet opens.`}
+                : batched
+                  ? `${plan.length} calls in one confirmation, paying ${formatUsdc(totals.payable)} USDC in total. Your wallet sends them as one batch, so either all of them go through or none does.`
+                  : `${plan.length} ${plan.length === 1 ? "transaction" : "transactions"}, sent one by one, paying ${formatUsdc(totals.payable)} USDC in total. Each is checked against the chain before your wallet opens.`}
             </p>
           </div>
-          <Button variant="primary" disabled={!ready || plan.length === 0} onClick={() => sendPlan(plan)}>
-            {tx.busy && tx.progress
-              ? `${stageText(tx.stage)} ${Math.min(tx.progress.done + 1, tx.progress.total)} of ${tx.progress.total}`
-              : "Claim and redeem all"}
-          </Button>
+          <div className={s.claimAllButtons}>
+            <Button
+              variant="primary"
+              disabled={!ready || plan.length === 0}
+              onClick={() => sendPlan(plan, batched)}
+            >
+              {tx.busy && tx.progress
+                ? batched
+                  ? stageText(tx.stage)
+                  : `${stageText(tx.stage)} ${Math.min(tx.progress.done + 1, tx.progress.total)} of ${tx.progress.total}`
+                : batched
+                  ? "Claim and redeem all, one confirmation"
+                  : "Claim and redeem all"}
+            </Button>
+            {batched ? (
+              <Button variant="ghost" disabled={!ready} onClick={() => sendPlan(plan, false)}>
+                One by one instead
+              </Button>
+            ) : null}
+          </div>
         </div>
         {wallet.wrongNetwork ? (
           <p className={s.note}>

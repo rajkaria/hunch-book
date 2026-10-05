@@ -40,6 +40,7 @@ Amounts go in and come out as decimal strings: `"12.5"` is 12.5 USDC (or 12.5 to
 | `trade` | write | `buyYes` (amount = USDC), `sellYes` (YES), `buyNo` (NO to receive), `sellNo` (NO) through the router, with a slippage limit |
 | `settle` | write | settles with the evidence the SDK finds; a touch proved before close goes through `proveYes` |
 | `redeem` | write | collects a finished market: claims tokens, claims the pool payout, redeems winners |
+| `redeem_all` | write | collects every settled or voided market in the wallet's portfolio, in one atomic batch where the wallet supports EIP-5792 and one transaction at a time otherwise |
 | `get_test_usdc` | write | testnet only: mints test USDC to the server's wallet |
 
 Resources (Markdown): `docs://hunch-book/protocol`, `docs://hunch-book/templates`,

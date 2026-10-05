@@ -45,6 +45,7 @@ export {
   type Window,
 } from "@hunch-book/shared";
 export * from "./actions.js";
+export * from "./batch.js";
 export * from "./book.js";
 export * from "./client.js";
 export {

@@ -3,9 +3,11 @@
 import { type QueryKey, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import type { Abi, Address, Hex } from "viem";
-import { useWriteContract } from "wagmi";
+import { useConfig, useSendCalls, useWriteContract } from "wagmi";
+import { waitForCallsStatus } from "wagmi/actions";
 import { getPublicClient } from "../chain/client";
 import { appChain, appNetwork, parseNetwork } from "../config";
+import { encodeCalls } from "./batch";
 import { describeTxError, withKnownErrors } from "./errors";
 import { RECEIPT_POLL_MS, recordTxTiming, setTxBlockTime } from "./txTiming";
 
@@ -49,6 +51,8 @@ export type TxStage = "idle" | "simulate" | "wallet" | "block";
  */
 export function useTxRunner(refresh: QueryKey[]) {
   const write = useWriteContract();
+  const sendCalls = useSendCalls();
+  const config = useConfig();
   const queryClient = useQueryClient();
   const [txs, setTxs] = useState<TxRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +148,56 @@ export function useTxRunner(refresh: QueryKey[]) {
     [send, refreshAll],
   );
 
-  return { run, runAll, txs, error, stage, progress, busy: stage !== "idle" };
+  /**
+   * Several writes as one atomic batch (EIP-5792): one confirmation, and either every call lands or none
+   * does. Only for wallets that report atomic support (`useAtomicBatch`). The calls can depend on each
+   * other (a claim, then a redeem of what was claimed), so they are not simulated one by one: the wallet
+   * runs the batch, and a revert anywhere moves nothing. Resolves true once the batch is confirmed.
+   */
+  const runBatch = useCallback(
+    async (steps: TxStep[], account: Address, label: string): Promise<boolean> => {
+      setError(null);
+      setProgress({ done: 0, total: steps.length });
+      try {
+        setStage("wallet");
+        const { id } = await sendCalls.mutateAsync({
+          account,
+          chainId: appChain.id,
+          forceAtomic: true,
+          calls: encodeCalls(steps),
+        } as never);
+        const signedAt = Date.now();
+        setStage("block");
+        const status = await waitForCallsStatus(config, { id, pollingInterval: RECEIPT_POLL_MS });
+        const seenAt = Date.now();
+        const ok = status.status === "success";
+        const records: TxRecord[] = (status.receipts ?? []).map((r) => ({
+          hash: r.transactionHash,
+          label,
+          status: ok && r.status === "success" ? "confirmed" : "failed",
+          includedMs: seenAt - signedAt,
+          block: r.blockNumber,
+        }));
+        setTxs((prev) => [...records, ...prev]);
+        if (!ok) {
+          setError("The batch reverted on chain, so none of its calls went through. Nothing was moved.");
+          return false;
+        }
+        setProgress({ done: steps.length, total: steps.length });
+        return true;
+      } catch (e) {
+        setError(describeTxError(e));
+        return false;
+      } finally {
+        setStage("idle");
+        setProgress(null);
+        await refreshAll();
+      }
+    },
+    [sendCalls, config, refreshAll],
+  );
+
+  return { run, runAll, runBatch, txs, error, stage, progress, busy: stage !== "idle" };
 }
 
 /** Button text while a write is in flight. */

@@ -142,6 +142,11 @@ function fakeSdk(wallet: Address | null = ME) {
       })),
       settle: vi.fn(async () => ({ ...tx, outcome: Outcome.Yes, method: "settle" as const })),
       collect: vi.fn(async () => [tx, tx]),
+      collectAll: vi.fn(async (list: readonly unknown[]) => ({
+        mode: "sequential" as const,
+        calls: list.map((_m, i) => ({ label: `Redeem leg ${i + 1}` })),
+        transactions: list.map(() => ({ hash: tx.hash, url: tx.url, status: "success" as const })),
+      })),
       mintTestUsdc: vi.fn(async () => tx),
     },
     settlement: {
@@ -215,6 +220,7 @@ describe("tool schemas", () => {
       "trade",
       "settle",
       "redeem",
+      "redeem_all",
       "verify_settlement",
     ]) {
       expect(names).toContain(name);
@@ -371,6 +377,33 @@ describe("tool handlers", () => {
 
   it("collects every transaction of a finished market", async () => {
     const { json } = await run("redeem", { market: MARKET });
+    expect(json.transactions).toHaveLength(2);
+  });
+
+  it("collects every finished market in the portfolio, and nothing still open", async () => {
+    const empty = await run("redeem_all", {});
+    expect(empty.json.note).toBe("Nothing to collect.");
+    expect(empty.sdk.actions.collectAll).not.toHaveBeenCalled();
+
+    const sdk = fakeSdk();
+    const entry = (phase: Phase, id: number) => ({
+      info: market({ id, phase }),
+      stake: { yes: 0n, no: 0n },
+      claimableTokens: { yes: 0n, no: 0n },
+      claimablePool: { paid: 0n, fee: 0n },
+      balances: { yes: 1_000_000n, no: 0n },
+      market: MARKET,
+    });
+    sdk.markets.portfolio.mockResolvedValueOnce([
+      entry(Phase.Settled, 1),
+      entry(Phase.Graduated, 2),
+      entry(Phase.Voided, 3),
+    ] as never);
+    const { json } = await run("redeem_all", {}, sdk);
+    const sent = sdk.actions.collectAll.mock.calls[0]?.[0] as { id: number }[];
+    expect(sent.map((m) => m.id)).toEqual([1, 3]);
+    expect(json.mode).toBe("sequential");
+    expect(json.calls).toEqual(["Redeem leg 1", "Redeem leg 2"]);
     expect(json.transactions).toHaveLength(2);
   });
 

@@ -178,7 +178,7 @@ Each idea is kept only if it serves a named user. Moved into a phase when it has
 |---|---|---|
 | "What does the market think?" widget for Perpl's UI | Perp traders | Shows the implied chance funding flips this week |
 | Funding-cost calculator without a wallet | New users | Entry point to the hedge assistant |
-| Batch actions (redeem all, claim all) | Active users | One transaction for many markets |
+| Batch actions (redeem all, claim all) | Active users | live on testnet: "Claim and redeem all" in the portfolio, in one confirmation where the wallet can batch atomically (EIP-5792) and one by one otherwise; `collectAll` in the SDK and `redeem_all` in the MCP server |
 | Settlement replay archive | Researchers | Every settlement's inputs, downloadable |
 | Market health score | Traders | Depth, spread, time to settlement, source reliability |
 | Gas-free first trade for new accounts | New users | Sponsored through the account layer, capped per account |
