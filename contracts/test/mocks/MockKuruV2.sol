@@ -103,12 +103,24 @@ contract MockKuruAccountCoreV2 {
         spotOrderBookToQuoteToken[book] = quote;
     }
 
+    /// Test helper (on Kuru only books may call it): the user's account, created if needed.
     function ensureRootAccount(address user) external returns (uint40) {
         uint40 id = rootAccountIdOf[user];
         return id != 0 ? id : _create(user);
     }
 
+    /// Deposit by owner: creates the owner's root account on first use, as Kuru does.
+    function deposit(address rootOwner, address token, uint256 amount) external payable {
+        uint40 id = rootAccountIdOf[rootOwner];
+        if (id == 0) id = _create(rootOwner);
+        _deposit(id, token, amount);
+    }
+
     function deposit(uint40 id, address token, uint256 amount) external payable {
+        _deposit(id, token, amount);
+    }
+
+    function _deposit(uint40 id, address token, uint256 amount) internal {
         if (protocolPaused) revert ProtocolPaused();
         if (!enabled[token]) revert TokenNotEnabled();
         if (ownerOf[id] == address(0)) revert NotOwner();
@@ -274,6 +286,11 @@ contract MockKuruSpotOrderBookV2 {
 
     function estimateSwap(uint40 userId, bool isBuy, uint128 amountIn) external view returns (KuruSwapResult memory r) {
         (r,) = _match(userId, isBuy, amountIn);
+    }
+
+    /// At the book's own fees (no account).
+    function estimateSwap(bool isBuy, uint128 amountIn) external view returns (KuruSwapResult memory r) {
+        (r,) = _match(0, isBuy, amountIn);
     }
 
     function swap(uint40 userId, bool isBuy, uint128 amountIn, uint128 minAmountOut, uint64 deadline)

@@ -15,15 +15,38 @@ import {HunchRouterV2Base} from "./HunchRouterV2Base.sol";
 contract HunchRouterV2YesTest is HunchRouterV2Base {
     // ---------------------------------------------------------------- constructor
 
-    function test_constructor_readsFactoryAndOpensAccount() public view {
+    function test_constructor_readsFactory() public view {
         assertEq(address(router.factory()), address(factory));
         assertEq(address(router.vault()), address(vault));
         assertEq(router.usdc(), address(usdc));
         assertEq(address(router.accountCore()), address(core));
-        uint40 id = router.accountId();
+    }
+
+    /// A new router has no Kuru account; its first deposit opens one (as on Kuru, where only books may
+    /// call ensureRootAccount) and the router caches the id.
+    function test_firstTradeOpensTheKuruAccount() public {
+        HunchRouterV2 fresh = new HunchRouterV2(IHunchBookFactory(address(factory)), IKuruAccountCore(address(core)));
+        assertEq(fresh.accountId(), 0);
+        assertEq(core.rootAccountIdOf(address(fresh)), 0);
+        _ask(500_000, 100e6);
+        usdc.mint(alice, 10e6);
+        vm.startPrank(alice);
+        usdc.approve(address(fresh), 10e6);
+        assertEq(fresh.buyYes(address(market), 10e6, 0, deadline), 20e6);
+        vm.stopPrank();
+        uint40 id = fresh.accountId();
         assertTrue(id != 0);
-        assertEq(core.ownerOf(id), address(router));
-        assertEq(core.rootAccountIdOf(address(router)), id);
+        assertEq(core.rootAccountIdOf(address(fresh)), id);
+        assertEq(core.ownerOf(id), address(fresh));
+        assertEq(core.getBalance(id, address(usdc)), 0);
+        assertEq(core.getBalance(id, address(yes)), 0);
+    }
+
+    /// Before its account exists, the router quotes at the book's own fees.
+    function test_quoteBeforeTheAccountExists() public {
+        HunchRouterV2 fresh = new HunchRouterV2(IHunchBookFactory(address(factory)), IKuruAccountCore(address(core)));
+        _ask(400_000, 1000e6);
+        assertEq(fresh.quoteSellNo(address(market), 100e6), 40e6);
     }
 
     /// External so `vm.expectRevert` covers exactly this deployment and the test carries on after it.
@@ -196,7 +219,7 @@ contract HunchRouterV2YesTest is HunchRouterV2Base {
     /// The router's own fee tier applies (AccountCore can override a book's fee per account).
     function test_buyYes_usesTheRoutersFeeTier() public {
         _useBook(7000);
-        core.setTakerFeeOverride(router.accountId(), 1);
+        core.setTakerFeeOverride(_routerAccount(), 1);
         _ask(400_000, 1000e6);
         _give(usdc, alice, 100e6);
         vm.prank(alice);
@@ -252,7 +275,7 @@ contract HunchRouterV2YesTest is HunchRouterV2Base {
         yes.mint(donor, 3e6);
         vm.startPrank(donor);
         yes.approve(address(core), 3e6);
-        core.deposit(router.accountId(), address(yes), 3e6);
+        core.deposit(_routerAccount(), address(yes), 3e6);
         vm.stopPrank();
 
         _ask(400_000, 1000e6);

@@ -60,6 +60,9 @@ abstract contract HunchRouterV2Base is Test {
 
         _useBook(0);
         router = new HunchRouterV2(IHunchBookFactory(address(factory)), IKuruAccountCore(address(core)));
+        // Anyone can open an account for an owner by depositing to it; doing it here lets tests set the
+        // router's fee tier before its first trade (HunchRouterV2YesTest covers a router with no account).
+        core.deposit(address(router), address(usdc), 0);
         usdc.mint(address(vault), VAULT_FLOAT);
         deadline = block.timestamp + 1 hours;
     }
@@ -112,13 +115,18 @@ abstract contract HunchRouterV2Base is Test {
 
     function _estimate(bool isBuy, uint256 amountIn) internal view returns (KuruSwapResult memory) {
         // forge-lint: disable-next-line(unsafe-typecast)
-        return book.estimateSwap(router.accountId(), isBuy, uint128(amountIn));
+        return book.estimateSwap(_routerAccount(), isBuy, uint128(amountIn));
+    }
+
+    /// The router's Kuru account (Kuru's record; the router caches it on its first trade).
+    function _routerAccount() internal view returns (uint40) {
+        return core.rootAccountIdOf(address(router));
     }
 
     /// The router and its Kuru account hold nothing, and the router has no standing approvals.
     function _assertRouterClean() internal view {
         address r = address(router);
-        uint40 id = router.accountId();
+        uint40 id = _routerAccount();
         assertEq(usdc.balanceOf(r), 0, "router USDC");
         assertEq(yes.balanceOf(r), 0, "router YES");
         assertEq(no.balanceOf(r), 0, "router NO");

@@ -77,6 +77,14 @@
       "router": "0x7EFbE105Ca7415dE98F96622173458ac1c054630",
       "marginAccount": "0xd029C2D98ff85D8F64799017fE00a59B1159CE02"
     },
+    "kuruV2": {
+      "accountCore": "0xdbaaDe7B42c95399bb1E9614D51B5B9e2cf78038",
+      "spotRouter": "0xf75A7529b83941e001d7D9bc113A73C92112947E",
+      "withdrawalLimiter": "0x6d9599d6B9A5Cf601C2cdBc43fF170462B256fe0",
+      "orderBookImplementation": "0xa4171E141A3Cf7801d7f06C126284aC0a509e6a9",
+      "protocolAuthority": "0xE3dea12b5141e42626A59d538E0e8A49620d657f",
+      "usdc": "0xA402B424f392EAA05DBc8779e4502A1F6A96fEF1"
+    },
     "perpl": {
       "exchange": "0x1964C32f0bE608E7D29302AFF5E61268E72080cc",
       "perps": {

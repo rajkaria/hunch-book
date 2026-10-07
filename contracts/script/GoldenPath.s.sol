@@ -8,6 +8,8 @@ import {HunchBookFactory} from "../src/core/HunchBookFactory.sol";
 import {Market} from "../src/core/Market.sol";
 import {TestUSDC} from "../src/mocks/TestUSDC.sol";
 import {IHunchBookFactory} from "../src/interfaces/IHunchBookFactory.sol";
+import {IImpliedProbabilityOracle} from "../src/periphery/interfaces/IImpliedProbabilityOracle.sol";
+import {IOutcomeTokenPriceAdapterFactory} from "../src/periphery/interfaces/IOutcomeTokenPriceAdapterFactory.sol";
 import {GraduationRule, MarketCaps, Side} from "../src/interfaces/IHunchBookTypes.sol";
 import {PerplFundingParams} from "../src/interfaces/ITemplates.sol";
 import {IPerplExchange} from "../src/interfaces/external/IPerplExchange.sol";
@@ -37,6 +39,10 @@ import {ResolverText} from "../src/resolvers/ResolverText.sol";
 ///   GAP_USDC         how far short of the pool minimum to stop, in whole USDC (default 20)
 ///   BLOCK_TIME_MS    skip measuring the block time and use this (default: measured over 10,000
 ///                    blocks through a second fork of MONAD_TESTNET_RPC)
+///   STACK            an extra stack's name under `.stacks` (e.g. kuruV2); default the primary stack.
+///                    On a stack with a `periphery.kuruFeedFactory` (Kuru v2), the script also creates
+///                    the market's YES and NO feeds for Kuru's withdrawal limiter and pokes the oracle, so
+///                    the feeds have history before Kuru sets the tokens up (PROTOCOL.md §8.1, Kuru v2).
 contract GoldenPath is Script {
     uint32 internal constant TEMPLATE_PERPL_FUNDING = 1;
     /// The same label SeedTestnetMarket uses, so these wallets are recognisably ours.
@@ -71,8 +77,9 @@ contract GoldenPath is Script {
     function run() external {
         require(block.chainid == 10_143, "testnet only");
         string memory json = vm.readFile(string.concat(vm.projectRoot(), "/../deployments/monad-testnet.json"));
-        factory = HunchBookFactory(vm.parseJsonAddress(json, ".hunchBook.factory"));
-        usdc = TestUSDC(vm.parseJsonAddress(json, ".hunchBook.usdc"));
+        string memory stack = _stackPath();
+        factory = HunchBookFactory(vm.parseJsonAddress(json, string.concat(stack, ".factory")));
+        usdc = TestUSDC(vm.parseJsonAddress(json, string.concat(stack, ".usdc")));
         perpl = IPerplExchange(vm.parseJsonAddress(json, ".external.perpl.exchange"));
         require(!factory.creationPaused(), "market creation is paused");
 
@@ -105,6 +112,7 @@ contract GoldenPath is Script {
         _planStakes(plan);
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         Market m = _createAndSeed(pk, params, plan);
+        _createKuruFeeds(pk, json, stack, m);
 
         _report(m, p, plan, key);
         _reportSeeds(pk, plan);
@@ -253,6 +261,28 @@ contract GoldenPath is Script {
             m.stakeFor(_seed(pk, i), _side(plan, i), plan.perStake);
         }
         vm.stopBroadcast();
+    }
+
+    /// On a Kuru v2 stack: the market's YES and NO limiter feeds, and a first oracle observation.
+    function _createKuruFeeds(uint256 pk, string memory json, string memory stack, Market m) internal {
+        string memory feedsKey = string.concat(stack, ".periphery.kuruFeedFactory");
+        if (!vm.keyExistsJson(json, feedsKey)) return;
+        IOutcomeTokenPriceAdapterFactory feeds = IOutcomeTokenPriceAdapterFactory(vm.parseJsonAddress(json, feedsKey));
+        IImpliedProbabilityOracle oracle = IImpliedProbabilityOracle(
+            vm.parseJsonAddress(json, string.concat(stack, ".periphery.impliedProbabilityOracle"))
+        );
+        vm.startBroadcast(pk);
+        address yesFeed = feeds.createAdapter(address(m), Side.Yes);
+        address noFeed = feeds.createAdapter(address(m), Side.No);
+        oracle.poke(address(m));
+        vm.stopBroadcast();
+        console2.log("Kuru limiter feed, YES:", yesFeed);
+        console2.log("Kuru limiter feed, NO: ", noFeed);
+    }
+
+    function _stackPath() internal view returns (string memory) {
+        string memory stack = vm.envOr("STACK", string(""));
+        return bytes(stack).length == 0 ? ".hunchBook" : string.concat(".stacks.", stack);
     }
 
     // ---------------------------------------------------------------- report

@@ -62,10 +62,13 @@ interface IKuruSpotRouter {
 
 /// Kuru v2 balances, accounts and book registry.
 interface IKuruAccountCore {
-    /// Returns `user`'s root account id, creating it on first use.
-    function ensureRootAccount(address user) external returns (uint40);
+    /// `user`'s root account id; 0 until the account exists. An account is created by the first deposit
+    /// to it by owner (`deposit(address,...)`); only books may call AccountCore's ensureRootAccount.
     function rootAccountIdOf(address user) external view returns (uint40);
-    /// Pulls `amount` of `token` from the caller (approve AccountCore first) into `rootAccountId`.
+    /// Pulls `amount` of `token` from the caller (approve AccountCore first) into `rootOwner`'s root
+    /// account, creating the account on first use.
+    function deposit(address rootOwner, address token, uint256 amount) external payable;
+    /// Pulls `amount` of `token` from the caller into an existing root account.
     function deposit(uint40 rootAccountId, address token, uint256 amount) external payable;
     /// Sends `amount` of `token` from the caller's account to `recipient`, through the WithdrawalLimiter.
     function withdraw(uint40 rootAccountId, address token, uint256 amount, address recipient) external;
@@ -101,6 +104,9 @@ interface IKuruSpotOrderBook {
         external
         view
         returns (KuruSwapResult memory result);
+
+    /// What `swap` would do now at the book's own fees (for a caller with no account yet).
+    function estimateSwap(bool isBuy, uint128 amountIn) external view returns (KuruSwapResult memory result);
 
     /// Best bid and ask in pricePrecision units.
     function bestBidAsk() external view returns (uint32 bid, uint32 ask);

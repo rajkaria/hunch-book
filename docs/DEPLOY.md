@@ -75,7 +75,14 @@ cd contracts
 FOUNDRY_PROFILE=fork forge test --match-path test/fork/MainnetRehearsal.fork.t.sol -vv
 ```
 
-All four tests must pass on the day of the deploy.
+All tests must pass on the day of the deploy. The file rehearses the Kuru v1 path (Kuru v1 is live on
+mainnet) and the Kuru v2 launch path: a deploy with no graduator (`WIRE_KURU=0`) whose pools run and
+settle without one. The Kuru v2 contracts themselves are rehearsed on a fork of Monad testnet, against
+Kuru's live v2 contracts, with Kuru's owner impersonated for its setup steps:
+
+```bash
+FOUNDRY_PROFILE=fork forge test --match-path test/fork/KuruV2.fork.t.sol -vv
+```
 
 ### 2. Deploy
 
@@ -89,6 +96,27 @@ forge script script/Deploy.s.sol --rpc-url "$MONAD_MAINNET_RPC" \
 
 Run it once without `--broadcast` first: a dry run prints every address and writes nothing. The
 broadcast run writes the addresses into `deployments/monad-mainnet.json` under `hunchBook`.
+
+**Kuru version.** Mainnet defaults to Kuru v2 (`KURU_VERSION=2`): GraduatorV2 and HunchRouterV2,
+pointed at `external.kuruV2` in the deployments file ([PROTOCOL.md §8.1](./PROTOCOL.md#81-kuru)).
+
+- Kuru's v2 mainnet addresses are in the file: deploy as above.
+- They are not there yet: deploy with `WIRE_KURU=0`. Everything except the graduator and router goes
+  out; pools run and settle as pools. When Kuru publishes the addresses, add them under
+  `external.kuruV2` (`accountCore`, `spotRouter`, `withdrawalLimiter`, ...) and wire, with the same
+  deployer key (the factory's `setGraduator` is one-time and deployer-only):
+
+  ```bash
+  DEPLOYER_PRIVATE_KEY=... forge script script/WireKuruV2.s.sol --rpc-url "$MONAD_MAINNET_RPC" \
+    --broadcast --gas-estimate-multiplier 110
+  ```
+
+- Kuru v2 slips and Kuru v1 is the plan: `KURU_VERSION=1` (the v1 Graduator and HunchRouter).
+
+`KURU_TAKER_FEE_PPS` and `KURU_MAKER_FEE_PPS` set the fees Hunch Book asks Kuru for on v2 books
+(default 7000 and 4000 parts per 10^7, Kuru's testnet defaults). GraduatorV2 accepts any book Kuru
+creates within its limits (tick up to 0.01 USDC, minimum order up to 10 USDC, taker fee up to 0.3%),
+so a different choice by Kuru does not need a redeploy.
 
 Then verify the contracts on Sourcify (the same way testnet was verified):
 
@@ -111,6 +139,9 @@ pnpm exec biome format --write deployments/
 ```
 
 On mainnet these scripts only deploy: the deployer is not the guardian, so it cannot register templates.
+The periphery needs the router, so on a `WIRE_KURU=0` deploy it waits until after `WireKuruV2.s.sol`.
+On a Kuru v2 stack the periphery includes `kuruFeedFactory`: the per-token price feeds Kuru's
+WithdrawalLimiter uses.
 
 ### 4. The guardian registers the templates
 
@@ -134,28 +165,33 @@ shows mainnet as soon as the file has a factory address.
 
 ### 6. Books on mainnet
 
-Kuru's mainnet market creation is owner-only. So for each market that is close to its graduation
-rule:
+Only Kuru can create books on mainnet. On Kuru v2 each market's tokens also need Kuru's setup first
+(a price source in the WithdrawalLimiter, enabled in AccountCore, whitelisted), which takes Kuru 1 to 2
+days for now, so the request goes out when a market is created, not when it fills. Status: the
+scripts below are live; the keeper's v2 steps and the request API are building.
 
-1. The keeper logs a `book-request` line (and calls its alert webhook if set) with the exact
-   `deployProxy` arguments. You can print the same thing yourself:
+1. Create the market's YES and NO feeds (`kuruFeedFactory.createAdapter`) and poke the oracle from
+   creation so the feeds have history. Then print the request for Kuru:
 
    ```bash
-   MARKET=0x... forge script script/RegisterBook.s.sol --sig "request()" --rpc-url "$MONAD_MAINNET_RPC"
+   MARKET=0x... forge script script/RegisterBookV2.s.sol --sig "request()" --rpc-url "$MONAD_MAINNET_RPC"
    ```
 
-2. Send those arguments to Kuru. Kuru creates the YES/USDC book.
-3. Anyone registers it. The Graduator accepts it only if Kuru's MarginAccount knows it and its base,
-   quote, precisions, tick, size limits, fees and AMM spread all match:
+   This prints the `deploySpotMarket` arguments, the address Kuru's SpotRouter will deploy the book
+   at, and what is still missing.
+2. Kuru sets up both tokens and creates the book.
+3. Anyone registers it; GraduatorV2 accepts it only after `bookProblem` finds nothing wrong (BOOK
+   defaults to the predicted address):
 
    ```bash
-   MARKET=0x... BOOK=0x... REGISTRAR_PRIVATE_KEY=... \
-   forge script script/RegisterBook.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast
+   MARKET=0x... [BOOK=0x...] REGISTRAR_PRIVATE_KEY=... \
+   forge script script/RegisterBookV2.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast
    ```
 
 4. The keeper (or anyone) calls `graduate()` once the pool meets its rule.
 
-Until Kuru creates a book, a mainnet market runs as a pool and settles as a pool. Nothing is lost.
+Until a book is registered a market runs as a pool, and if its book never arrives it settles as a pool.
+Nothing is lost. On Kuru v1 (`KURU_VERSION=1`) use `RegisterBook.s.sol` the same way.
 
 ### 7. Start the services
 
@@ -169,9 +205,25 @@ Testnet was deployed on 2026-10-03 from block 67,856,277. The same script, with 
 set, makes the deployer the guardian and registers templates 1 and 2 in the same run. The
 deployments file lists every deploy transaction hash.
 
-Re-running `Deploy.s.sol` on a network that already has a factory stops with "already deployed on
-this network". A new deployment means a new factory, a new vault and new markets; existing markets
-keep working against the old ones.
+Re-running `Deploy.s.sol` on a stack that already has a factory stops with "already deployed on this
+stack". A new deployment means a new factory, a new vault and new markets; existing markets keep
+working against the old ones.
+
+**Two stacks on testnet.** The primary stack (`hunchBook`) uses Kuru v1, where anyone can create a
+book, so markets graduate on their own. The Kuru v2 stack sits under `stacks.kuruV2`, reuses the same
+test USDC, and graduates once Kuru creates each book:
+
+```bash
+cd contracts
+STACK=kuruV2 KURU_VERSION=2 DEPLOYER_PRIVATE_KEY=... \
+  forge script script/Deploy.s.sol --rpc-url "$MONAD_TESTNET_RPC" --broadcast --gas-estimate-multiplier 110
+STACK=kuruV2 DEPLOYER_PRIVATE_KEY=... \
+  forge script script/DeployPeriphery.s.sol --rpc-url "$MONAD_TESTNET_RPC" --broadcast --slow
+STACK=kuruV2 forge script script/DeployPeriphery.s.sol --sig "recordTxs()" --rpc-url "$MONAD_TESTNET_RPC"
+pnpm exec biome format --write deployments/
+```
+
+Every reader (app, keeper, maker, indexer) goes through all stacks in the file.
 
 ## Checklist
 

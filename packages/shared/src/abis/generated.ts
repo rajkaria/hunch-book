@@ -3928,6 +3928,11 @@ export const hunchRouterV2Abi = [
   },
   {
     "type": "error",
+    "name": "NoKuruAccount",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NotTradable",
     "inputs": []
   },

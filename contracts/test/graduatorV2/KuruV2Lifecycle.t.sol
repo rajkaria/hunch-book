@@ -157,8 +157,10 @@ contract KuruV2LifecycleTest is BaseTest {
 
         _assertSolvent();
         _assertSetsMatchSupply(m);
-        assertEq(core.getBalance(router.accountId(), address(usdc)), 0);
-        assertEq(core.getBalance(router.accountId(), address(_yes(m))), 0);
+        uint40 id = router.accountId();
+        assertTrue(id != 0, "the first trade opened the router's Kuru account");
+        assertEq(core.getBalance(id, address(usdc)), 0);
+        assertEq(core.getBalance(id, address(_yes(m))), 0);
 
         // Close: Kuru soft-pauses the book; trades stop, settlement and redemption never depend on Kuru.
         _toClose(m);

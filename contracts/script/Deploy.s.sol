@@ -4,18 +4,22 @@ pragma solidity 0.8.30;
 import {Script, console2} from "forge-std/Script.sol";
 import {VmSafe} from "forge-std/Vm.sol";
 import {Graduator} from "../src/core/Graduator.sol";
+import {GraduatorV2} from "../src/core/GraduatorV2.sol";
 import {HunchBookFactory} from "../src/core/HunchBookFactory.sol";
 import {HunchRouter} from "../src/core/HunchRouter.sol";
+import {HunchRouterV2} from "../src/core/HunchRouterV2.sol";
 import {Market} from "../src/core/Market.sol";
 import {TestUSDC} from "../src/mocks/TestUSDC.sol";
 import {PerplFundingResolver} from "../src/resolvers/PerplFundingResolver.sol";
 import {PriceAtTimeResolver} from "../src/resolvers/PriceAtTimeResolver.sol";
 import {IGraduator} from "../src/interfaces/IGraduator.sol";
+import {IGraduatorV2} from "../src/interfaces/IGraduatorV2.sol";
 import {IHunchBookFactory} from "../src/interfaces/IHunchBookFactory.sol";
 import {IResolver} from "../src/interfaces/IResolver.sol";
 import {GraduationRule, MarketCaps} from "../src/interfaces/IHunchBookTypes.sol";
 import {IKuruMarginAccount} from "../src/interfaces/external/IKuruMarginAccount.sol";
 import {IKuruRouter} from "../src/interfaces/external/IKuruRouter.sol";
+import {IKuruAccountCore, IKuruSpotRouter} from "../src/interfaces/external/IKuruV2.sol";
 import {IPerplExchange} from "../src/interfaces/external/IPerplExchange.sol";
 import {IPyth} from "../src/interfaces/external/IPyth.sol";
 
@@ -27,12 +31,25 @@ import {IPyth} from "../src/interfaces/external/IPyth.sol";
 ///
 /// The key is read from the environment, never passed on the command line.
 ///
-/// Testnet: collateral is TestUSDC (Kuru's testnet USDC cannot be minted), the Graduator creates
-/// Kuru books itself, and the deployer is the guardian, so it registers the templates here.
-/// Mainnet: collateral is Circle USDC, Kuru creates each book (the Graduator only verifies and
-/// registers), and GUARDIAN must be a separate multisig, which then adds the templates itself.
+/// Testnet: collateral is TestUSDC (Kuru's testnet USDC cannot be minted) and the deployer is the
+/// guardian, so it registers the templates here. Mainnet: collateral is Circle USDC and GUARDIAN must be
+/// a separate multisig, which then adds the templates itself.
 ///
-/// Env: DEPLOYER_PRIVATE_KEY; GUARDIAN and FEE_RECIPIENT (default: the deployer, testnet only).
+/// Kuru version (PROTOCOL.md §8.1). KURU_VERSION=1: the Graduator creates books itself where Kuru v1
+/// allows it (testnet) or registers Kuru-created ones. KURU_VERSION=2 (the mainnet default): GraduatorV2
+/// and HunchRouterV2 against `.external.kuruV2`; Kuru governance creates every book.
+///
+/// Stacks. Without STACK the deployment is the network's primary stack (`.hunchBook`). STACK=<name>
+/// deploys an extra stack under `.stacks.<name>` (testnet: STACK=kuruV2 next to the v1 stack); it reuses
+/// the primary stack's collateral token, so one test USDC works on both.
+///
+/// Mainnet before Kuru v2 is live: WIRE_KURU=0 deploys everything except the graduator and router;
+/// pools work and cannot graduate until script/WireKuruV2.s.sol wires them (the factory's one-time
+/// setGraduator, by the same deployer key).
+///
+/// Env: DEPLOYER_PRIVATE_KEY; GUARDIAN and FEE_RECIPIENT (default: the deployer, testnet only);
+/// KURU_VERSION; STACK; WIRE_KURU (default 1); KURU_TAKER_FEE_PPS / KURU_MAKER_FEE_PPS (the fees asked
+/// of Kuru for v2 books; default 7000 / 4000, Kuru's testnet defaults).
 contract Deploy is Script {
     uint256 internal constant TESTNET = 10_143;
     uint256 internal constant MAINNET = 143;
@@ -46,6 +63,15 @@ contract Deploy is Script {
     /// Conservative milliseconds per Monad block, used only for S-1 settlement deadlines.
     uint256 internal constant BLOCK_TIME_MS = 1000;
 
+    /// What to deploy; `options()` reads it from the environment (KURU_VERSION, STACK, WIRE_KURU).
+    struct Options {
+        uint8 kuruVersion;
+        /// "" for the primary stack, otherwise the name under `.stacks`.
+        string stack;
+        /// False deploys no graduator and router (mainnet before Kuru v2 exists).
+        bool wireKuru;
+    }
+
     struct Deployed {
         address usdc;
         address marketImplementation;
@@ -58,28 +84,54 @@ contract Deploy is Script {
         address guardian;
         address feeRecipient;
         uint256 deployBlock;
+        uint8 kuruVersion;
     }
 
     string internal json;
     uint256 internal pk;
+    /// The deployment goes under `.stacks` (testnet: reuse the primary stack's test USDC).
+    bool internal extraStack;
 
-    function run() external {
+    function run() external virtual {
         uint256 key = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(key);
-        Deployed memory d = deploy(key, vm.envOr("GUARDIAN", deployer), vm.envOr("FEE_RECIPIENT", deployer));
-        _write(_deploymentPath(), d);
+        Options memory o = options();
+        Deployed memory d = deployWith(key, vm.envOr("GUARDIAN", deployer), vm.envOr("FEE_RECIPIENT", deployer), o);
+        _write(_deploymentPath(), stackPathOf(o.stack), d);
+    }
+
+    /// The options from the environment: KURU_VERSION (default 2 on mainnet, 1 elsewhere), STACK
+    /// (default the primary stack) and WIRE_KURU (default 1).
+    function options() public view returns (Options memory o) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        o.kuruVersion = uint8(vm.envOr("KURU_VERSION", block.chainid == MAINNET ? uint256(2) : uint256(1)));
+        o.stack = vm.envOr("STACK", string(""));
+        o.wireKuru = vm.envOr("WIRE_KURU", uint256(1)) != 0;
     }
 
     /// Deploys everything from `key` and returns the addresses without writing them anywhere.
     /// `run` calls it; the mainnet rehearsal fork test calls it directly.
-    function deploy(uint256 key, address guardian, address feeRecipient) public returns (Deployed memory d) {
+    function deploy(uint256 key, address guardian, address feeRecipient) public returns (Deployed memory) {
+        return deployWith(key, guardian, feeRecipient, options());
+    }
+
+    /// `deploy` with explicit options (the fork tests pass them, so parallel tests share no environment).
+    function deployWith(uint256 key, address guardian, address feeRecipient, Options memory o)
+        public
+        returns (Deployed memory d)
+    {
         json = vm.readFile(_deploymentPath());
-        require(!vm.keyExistsJson(json, ".hunchBook.factory"), "already deployed on this network");
+        require(
+            !vm.keyExistsJson(json, string.concat(stackPathOf(o.stack), ".factory")), "already deployed on this stack"
+        );
+        extraStack = bytes(o.stack).length != 0;
 
         pk = key;
         address deployer = vm.addr(pk);
         d.guardian = guardian;
         d.feeRecipient = feeRecipient;
+        d.kuruVersion = o.kuruVersion;
+        require(d.kuruVersion == 1 || d.kuruVersion == 2, "KURU_VERSION must be 1 or 2");
         if (block.chainid == MAINNET) {
             require(d.guardian != deployer, "mainnet guardian must be a separate multisig, not the deployer");
             require(d.feeRecipient != address(0), "fee recipient required");
@@ -89,15 +141,46 @@ contract Deploy is Script {
         vm.startBroadcast(pk);
         _deployCore(d);
         _deployResolvers(d);
-        _deployTrading(d);
+        if (o.wireKuru) _deployTrading(d);
         if (d.guardian == deployer) _addTemplates(d);
         vm.stopBroadcast();
+    }
+
+    /// `.hunchBook` for "", otherwise `.stacks.<stack>`.
+    function stackPathOf(string memory stack) public pure returns (string memory) {
+        return bytes(stack).length == 0 ? ".hunchBook" : string.concat(".stacks.", stack);
+    }
+
+    /// The stack path for STACK in the environment.
+    function stackPath() public view returns (string memory) {
+        return stackPathOf(vm.envOr("STACK", string("")));
+    }
+
+    /// The v2 book parameters Hunch Book asks Kuru for (PROTOCOL.md §8.1, Kuru v2).
+    function requestedV2() public view returns (IGraduatorV2.RequestedParams memory) {
+        return IGraduatorV2.RequestedParams({
+            sizePrecision: 1e6,
+            pricePrecision: 1e6,
+            tickSize: 1000,
+            passiveSpreadTicks: 10,
+            minQuoteNotional: 1e6,
+            takerFeePps: vm.envOr("KURU_TAKER_FEE_PPS", uint256(7000)),
+            makerFeePps: vm.envOr("KURU_MAKER_FEE_PPS", uint256(4000))
+        });
+    }
+
+    /// What a Kuru-created v2 book may differ in: tick up to 0.01 USDC, minimum order up to 10 USDC,
+    /// taker fee up to 0.3% (Kuru's own cap is 1%).
+    function limitsV2() public pure returns (IGraduatorV2.Limits memory) {
+        return IGraduatorV2.Limits({maxTickSize: 10_000, maxMinQuoteNotional: 10e6, maxTakerFeePps: 30_000});
     }
 
     // ---- steps ----
 
     function _deployCore(Deployed memory d) internal {
-        d.usdc = block.chainid == TESTNET ? address(new TestUSDC()) : vm.parseJsonAddress(json, ".external.usdc");
+        if (block.chainid != TESTNET) d.usdc = vm.parseJsonAddress(json, ".external.usdc");
+        else if (extraStack) d.usdc = vm.parseJsonAddress(json, ".hunchBook.usdc");
+        else d.usdc = address(new TestUSDC());
         d.marketImplementation = address(new Market());
         HunchBookFactory factory = new HunchBookFactory(
             d.usdc, d.marketImplementation, d.guardian, d.feeRecipient, betaCaps(), COLLATERAL_CAP
@@ -142,6 +225,11 @@ contract Deploy is Script {
     }
 
     function _deployTrading(Deployed memory d) internal {
+        if (d.kuruVersion == 2) {
+            (d.graduator, d.router) = deployKuruV2(d.factory, d.usdc);
+            HunchBookFactory(d.factory).setGraduator(d.graduator);
+            return;
+        }
         Graduator graduator = new Graduator(
             IHunchBookFactory(d.factory),
             IKuruRouter(vm.parseJsonAddress(json, ".external.kuru.router")),
@@ -164,6 +252,22 @@ contract Deploy is Script {
         d.router = address(new HunchRouter(IHunchBookFactory(d.factory)));
     }
 
+    /// GraduatorV2 and HunchRouterV2 for `factory`, against Kuru's v2 addresses in the deployment file.
+    /// Inside a broadcast; WireKuruV2.s.sol reuses it.
+    function deployKuruV2(address factory, address usdc) public returns (address graduator, address router) {
+        string memory j = vm.readFile(_deploymentPath());
+        require(
+            vm.keyExistsJson(j, ".external.kuruV2.spotRouter"),
+            "Kuru v2 addresses are not in the deployments file: deploy with WIRE_KURU=0, wire later (WireKuruV2.s.sol)"
+        );
+        IKuruSpotRouter spotRouter = IKuruSpotRouter(vm.parseJsonAddress(j, ".external.kuruV2.spotRouter"));
+        IKuruAccountCore accountCore = IKuruAccountCore(vm.parseJsonAddress(j, ".external.kuruV2.accountCore"));
+        graduator = address(
+            new GraduatorV2(IHunchBookFactory(factory), spotRouter, accountCore, usdc, requestedV2(), limitsV2())
+        );
+        router = address(new HunchRouterV2(IHunchBookFactory(factory), accountCore));
+    }
+
     function _addTemplates(Deployed memory d) internal {
         HunchBookFactory factory = HunchBookFactory(d.factory);
         factory.addTemplate(TEMPLATE_PERPL_FUNDING, IResolver(d.perplFunding), graduationRule());
@@ -182,7 +286,7 @@ contract Deploy is Script {
 
     // ---- output ----
 
-    function _write(string memory path, Deployed memory d) internal {
+    function _write(string memory path, string memory stack, Deployed memory d) internal {
         string memory r = "resolvers";
         vm.serializeAddress(r, "perplFunding", d.perplFunding);
         string memory resolvers = vm.serializeAddress(r, "priceAtTime", d.priceAtTime);
@@ -192,19 +296,22 @@ contract Deploy is Script {
         vm.serializeAddress(k, "marketImplementation", d.marketImplementation);
         vm.serializeAddress(k, "factory", d.factory);
         vm.serializeAddress(k, "vault", d.vault);
-        vm.serializeAddress(k, "graduator", d.graduator);
-        vm.serializeAddress(k, "router", d.router);
+        if (d.graduator != address(0)) {
+            vm.serializeAddress(k, "graduator", d.graduator);
+            vm.serializeAddress(k, "router", d.router);
+        }
+        vm.serializeUint(k, "kuruVersion", d.kuruVersion);
         vm.serializeString(k, "resolvers", resolvers);
         vm.serializeAddress(k, "guardian", d.guardian);
         vm.serializeAddress(k, "feeRecipient", d.feeRecipient);
         string memory out = vm.serializeUint(k, "deployBlock", d.deployBlock);
 
-        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) vm.writeJson(out, path, ".hunchBook");
+        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) vm.writeJson(out, path, stack);
         else console2.log("dry run: deployments file not written");
         console2.log(out);
     }
 
-    function _deploymentPath() internal view returns (string memory) {
+    function _deploymentPath() internal view virtual returns (string memory) {
         string memory network;
         if (block.chainid == TESTNET) network = "monad-testnet";
         else if (block.chainid == MAINNET) network = "monad-mainnet";

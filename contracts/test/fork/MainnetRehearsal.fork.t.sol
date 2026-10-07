@@ -13,7 +13,9 @@ import {OutcomeToken} from "../../src/core/OutcomeToken.sol";
 import {IGraduator} from "../../src/interfaces/IGraduator.sol";
 import {IHunchBookFactory} from "../../src/interfaces/IHunchBookFactory.sol";
 import {IMarket} from "../../src/interfaces/IMarket.sol";
-import {MarketCaps, Outcome, Phase, Side} from "../../src/interfaces/IHunchBookTypes.sol";
+import {GraduationRule, MarketCaps, Outcome, Phase, Side, Window} from "../../src/interfaces/IHunchBookTypes.sol";
+import {IResolver} from "../../src/interfaces/IResolver.sol";
+import {MockResolver} from "../mocks/MockResolver.sol";
 import {PriceAtTimeParams} from "../../src/interfaces/ITemplates.sol";
 import {IChainlinkAggregator} from "../../src/interfaces/external/IChainlinkAggregator.sol";
 import {IKuruMarginAccount} from "../../src/interfaces/external/IKuruMarginAccount.sol";
@@ -77,7 +79,11 @@ contract MainnetRehearsalForkTest is Test {
         deployer = vm.addr(DEPLOYER_KEY);
         vm.deal(deployer, 1000 ether);
         script = new Deploy();
-        d = script.deploy(DEPLOYER_KEY, guardian, feeRecipient);
+        // The v1 rehearsal (Kuru v1 is live on mainnet; the fallback if Kuru v2 slips). The v2 launch path
+        // is rehearsed in test_mainnetFirst* below and on testnet in KuruV2.fork.t.sol.
+        d = script.deployWith(
+            DEPLOYER_KEY, guardian, feeRecipient, Deploy.Options({kuruVersion: 1, stack: "", wireKuru: true})
+        );
 
         usdc = IERC20Like(d.usdc);
         factory = HunchBookFactory(d.factory);
@@ -118,6 +124,77 @@ contract MainnetRehearsalForkTest is Test {
         Deploy again = new Deploy();
         vm.expectRevert(bytes("mainnet guardian must be a separate multisig, not the deployer"));
         again.deploy(DEPLOYER_KEY, deployer, feeRecipient);
+    }
+
+    // ------------------------------------------------------------------ mainnet first, Kuru v2 later
+
+    /// Kuru v2 is the mainnet default, and its addresses are not in the deployments file yet: a full
+    /// deploy stops with instructions instead of deploying a graduator that points nowhere.
+    function test_mainnetFirst_v2NeedsKuruAddressesOrWireLater() public {
+        Deploy again = new Deploy();
+        assertEq(again.options().kuruVersion, 2, "v2 is the mainnet default");
+        vm.expectRevert(
+            bytes(
+                "Kuru v2 addresses are not in the deployments file: deploy with WIRE_KURU=0, wire later (WireKuruV2.s.sol)"
+            )
+        );
+        again.deployWith(
+            DEPLOYER_KEY, guardian, feeRecipient, Deploy.Options({kuruVersion: 2, stack: "", wireKuru: true})
+        );
+    }
+
+    /// WIRE_KURU=0: pools run with no graduator. A pool that meets its rule cannot graduate (no book can
+    /// exist yet), locks, and settles as a pool; nobody's money waits on Kuru.
+    function test_mainnetFirst_poolsRunWithoutAGraduator() public {
+        Deploy again = new Deploy();
+        Deploy.Deployed memory p = again.deployWith(
+            DEPLOYER_KEY, guardian, feeRecipient, Deploy.Options({kuruVersion: 2, stack: "", wireKuru: false})
+        );
+        HunchBookFactory f = HunchBookFactory(p.factory);
+        assertEq(p.graduator, address(0));
+        assertEq(p.router, address(0));
+        assertEq(f.graduator(), address(0));
+        assertEq(p.kuruVersion, 2);
+
+        MockResolver mock = new MockResolver();
+        vm.prank(guardian);
+        f.addTemplate(
+            99,
+            IResolver(address(mock)),
+            GraduationRule({minPool: 500e6, minStakers: 10, minChanceBps: 300, maxChanceBps: 9700})
+        );
+        Window memory w;
+        w.lock = uint64(block.timestamp + 1 days);
+        w.close = uint64(block.timestamp + 2 days);
+        w.settleDeadline = w.close + 7 days;
+        address creator = makeAddr("creator");
+        deal(p.usdc, creator, 50e6);
+        vm.startPrank(creator);
+        IERC20Like(p.usdc).approve(p.vault, type(uint256).max);
+        Market m = Market(payable(f.createMarket(99, abi.encode(w), Side.Yes, 50e6)));
+        vm.stopPrank();
+        for (uint256 i; i < 10; ++i) {
+            address u = makeAddr(string.concat("staker", vm.toString(i)));
+            deal(p.usdc, u, 60e6);
+            vm.startPrank(u);
+            IERC20Like(p.usdc).approve(p.vault, type(uint256).max);
+            m.stake(i < 5 ? Side.Yes : Side.No, 60e6);
+            vm.stopPrank();
+        }
+        assertTrue(m.graduationRuleMet());
+        vm.expectRevert(IMarket.BookNotReady.selector);
+        m.graduate();
+
+        vm.warp(w.close);
+        assertEq(uint8(m.phase()), uint8(Phase.PoolLocked));
+        mock.setAnswer(Outcome.Yes);
+        m.settle("");
+        assertEq(uint8(m.phase()), uint8(Phase.Settled));
+        address winner = makeAddr("staker0");
+        uint256 before = IERC20Like(p.usdc).balanceOf(winner);
+        vm.prank(winner);
+        m.claimPool();
+        assertGt(IERC20Like(p.usdc).balanceOf(winner), before);
     }
 
     function test_guardianBatchRegistersTemplatesAndNobodyElseCan() public {

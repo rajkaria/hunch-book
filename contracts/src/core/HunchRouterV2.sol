@@ -16,10 +16,11 @@ import {IKuruAccountCore, IKuruSpotOrderBook, KuruSwapResult} from "../interface
 /// NO trades through the YES book: buying NO mints complete sets and sells the YES; selling NO buys YES
 /// and merges. A vault flash loan covers the gap, so the user only sends their net cost.
 ///
-/// Kuru v2 keeps balances in AccountCore under account ids. This router owns one root account
-/// (`accountId`, created at deploy) and uses it only inside a call: deposit what it trades, `swap`, then
-/// withdraw everything the account holds of both tokens. The account and this contract start and end
-/// every call with nothing in them (tokens someone else deposits into the account go to the next trader).
+/// Kuru v2 keeps balances in AccountCore under account ids. This router owns one root account, which
+/// Kuru creates on the router's first deposit (`accountId` is 0 until then), and uses it only inside a
+/// call: deposit what it trades, `swap`, then withdraw everything the account holds of both tokens. The
+/// account and this contract start and end every call with nothing in them (tokens someone else deposits
+/// into the account go to the next trader).
 ///
 /// Every call: the market must be one the factory created and in phase `Graduated`; the deadline (unix
 /// seconds, inclusive) must not have passed; amounts must be nonzero; slippage limits are checked on
@@ -51,6 +52,7 @@ contract HunchRouterV2 is IHunchRouter, IFlashLoanReceiver {
     error UnexpectedFlashLoan();
     error InsufficientLiquidity();
     error AmountTooLarge();
+    error NoKuruAccount();
 
     bytes32 internal constant FLASH_LOAN_CALLBACK = keccak256("HunchBook.onFlashLoan");
     /// Upper bound on `estimateSwap` calls in one exact-out search. Interpolation steps alternate with
@@ -62,8 +64,8 @@ contract HunchRouterV2 is IHunchRouter, IFlashLoanReceiver {
     ICollateralVault public immutable vault;
     address public immutable usdc;
     IKuruAccountCore public immutable accountCore;
-    /// This router's Kuru root account.
-    uint40 public immutable accountId;
+    /// This router's Kuru root account; 0 before its first trade.
+    uint40 public accountId;
 
     bool private transient _locked;
     /// keccak256(abi.encode(amount, data)) of the one flash loan this router has asked for; zero otherwise.
@@ -88,7 +90,6 @@ contract HunchRouterV2 is IHunchRouter, IFlashLoanReceiver {
         vault = ICollateralVault(vault_);
         usdc = usdc_;
         accountCore = accountCore_;
-        accountId = accountCore_.ensureRootAccount(address(this));
     }
 
     // ---------------------------------------------------------------- trades
@@ -319,8 +320,11 @@ contract HunchRouterV2 is IHunchRouter, IFlashLoanReceiver {
         return hi;
     }
 
+    /// Kuru's estimate for this router's account (its fee tier), or at the book's fees before the account exists.
     function _estimateBuy(address book, uint256 quoteIn) internal view returns (KuruSwapResult memory) {
-        return IKuruSpotOrderBook(book).estimateSwap(accountId, true, _toU128(quoteIn));
+        uint40 id = accountId;
+        if (id == 0) return IKuruSpotOrderBook(book).estimateSwap(true, _toU128(quoteIn));
+        return IKuruSpotOrderBook(book).estimateSwap(id, true, _toU128(quoteIn));
     }
 
     // ---------------------------------------------------------------- internals
@@ -343,19 +347,26 @@ contract HunchRouterV2 is IHunchRouter, IFlashLoanReceiver {
     {
         uint128 amount = _toU128(amountIn);
         tokenIn.safeApprove(address(accountCore), amountIn);
-        accountCore.deposit(accountId, tokenIn, amountIn);
+        // Deposit by owner: Kuru opens the router's account on the first one.
+        accountCore.deposit(address(this), tokenIn, amountIn);
         tokenIn.safeApprove(address(accountCore), 0);
+        uint40 id = accountId;
+        if (id == 0) {
+            id = accountCore.rootAccountIdOf(address(this));
+            if (id == 0) revert NoKuruAccount();
+            accountId = id;
+        }
         // Kuru's return value is ignored on purpose: callers measure balance changes instead. The
         // deadline was checked by `_tradable`; this call happens now.
         // forge-lint: disable-next-line(unused-return,unsafe-typecast)
-        IKuruSpotOrderBook(book).swap(accountId, isBuy, amount, _toU128(minOut), uint64(block.timestamp));
-        _withdrawAll(tokenOut);
-        _withdrawAll(tokenIn);
+        IKuruSpotOrderBook(book).swap(id, isBuy, amount, _toU128(minOut), uint64(block.timestamp));
+        _withdrawAll(id, tokenOut);
+        _withdrawAll(id, tokenIn);
     }
 
-    function _withdrawAll(address token) internal {
-        uint256 balance = accountCore.getBalance(accountId, token);
-        if (balance != 0) accountCore.withdraw(accountId, token, balance, address(this));
+    function _withdrawAll(uint40 id, address token) internal {
+        uint256 balance = accountCore.getBalance(id, token);
+        if (balance != 0) accountCore.withdraw(id, token, balance, address(this));
     }
 
     function _ceilDiv(uint256 a, uint256 b) internal pure returns (uint256) {
