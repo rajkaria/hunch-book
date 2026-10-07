@@ -18,6 +18,25 @@ import {
 const deployment = (network: string) =>
   JSON.parse(readFileSync(join(INDEXER_DIR, "..", "deployments", `${network}.json`), "utf8"));
 
+/** The addresses a contract has in a rendered config's chain section, in order (one line or a list). */
+function addressesOf(config: string, name: string): string[] {
+  const chain = config.slice(config.indexOf("\nchains:"));
+  const at = chain.indexOf(`      - name: ${name}\n`);
+  if (at < 0) return [];
+  const lines = chain.slice(at).split("\n").slice(1);
+  const first = lines[0] ?? "";
+  const single = first.match(/^ {8}address: "(0x[0-9a-fA-F]{40})"$/);
+  if (single?.[1]) return [single[1]];
+  if (first !== "        address:") return [];
+  const out: string[] = [];
+  for (const line of lines.slice(1)) {
+    const m = line.match(/^ {10}- "(0x[0-9a-fA-F]{40})"$/);
+    if (!m?.[1]) break;
+    out.push(m[1]);
+  }
+  return out;
+}
+
 describe("generated config", () => {
   it("is up to date with deployments/ (run gen-config if this fails)", () => {
     expect(staleFiles()).toEqual([]);
@@ -27,24 +46,36 @@ describe("generated config", () => {
     const d = deployment("monad-testnet");
     const config = readFileSync(join(INDEXER_DIR, "config.yaml"), "utf8");
     expect(config).toContain(`  - id: ${d.chainId}\n    start_block: ${d.hunchBook.deployBlock}\n`);
-    for (const key of ["factory", "vault", "router", "graduator", "usdc"]) {
-      expect(config).toContain(`address: "${d.hunchBook[key]}"`);
+    const extra = Object.values(d.stacks ?? {}) as (typeof d.hunchBook)[];
+    for (const [name, key] of [
+      ["HunchBookFactory", "factory"],
+      ["CollateralVault", "vault"],
+      ["HunchRouter", "router"],
+      ["Graduator", "graduator"],
+    ] as const) {
+      // The primary stack's address first, then each extra stack's.
+      expect(addressesOf(config, name)).toEqual([d.hunchBook[key], ...extra.map((s) => s[key])]);
     }
-    // Template 7's resolver and every periphery contract, each under its own name.
-    expect(config).toContain(
-      `      - name: SnapshotResolver\n        address: "${d.hunchBook.resolvers.snapshot}"\n`,
-    );
+    expect(addressesOf(config, "Usdc")).toEqual([d.hunchBook.usdc]);
+    // Template 7's resolver and every periphery contract, each under its own name, on every stack.
+    expect(addressesOf(config, "SnapshotResolver")).toEqual([d.hunchBook.resolvers.snapshot]);
     for (const [name, key] of [
       ["AutoRedeemer", "autoRedeemer"],
       ["ConditionalOrders", "conditionalOrders"],
       ["ReferralRegistry", "referralRegistry"],
       ["MerkleDistributor", "merkleDistributor"],
       ["ImpliedProbabilityOracle", "impliedProbabilityOracle"],
-      ["PriceAdapterFactory", "priceAdapterFactory"],
       ["TemplateTimelock", "templateTimelock"],
     ] as const) {
-      expect(config).toContain(`      - name: ${name}\n        address: "${d.hunchBook.periphery[key]}"\n`);
+      const all = [d.hunchBook, ...extra].flatMap((s) => (s.periphery?.[key] ? [s.periphery[key]] : []));
+      expect(addressesOf(config, name)).toEqual(all);
     }
+    // Lending adapter factories, then Kuru v2 feed factories.
+    const stacks = [d.hunchBook, ...extra];
+    expect(addressesOf(config, "PriceAdapterFactory")).toEqual([
+      ...stacks.flatMap((s) => (s.periphery?.priceAdapterFactory ? [s.periphery.priceAdapterFactory] : [])),
+      ...stacks.flatMap((s) => (s.periphery?.kuruFeedFactory ? [s.periphery.kuruFeedFactory] : [])),
+    ]);
     expect(config).toContain(`url: \${ENVIO_MONAD_TESTNET_RPC:-${d.rpc}}`);
     expect(config).toContain(`for: \${ENVIO_RPC_MODE:-fallback}`);
     expect(config).toContain("interval_ceiling: 100");
