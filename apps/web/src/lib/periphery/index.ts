@@ -1,4 +1,4 @@
-import type { Deployment, PeripheryContracts } from "@hunch-book/shared";
+import { type Deployment, deploymentForStack, type PeripheryContracts, stackNamed } from "@hunch-book/shared";
 import type { Address } from "viem";
 import { describeTxError } from "../wallet/errors";
 
@@ -19,6 +19,19 @@ export type PeripheryName = Exclude<
 export function peripheryAddress(deployment: Deployment, name: PeripheryName): Address | undefined {
   const value = deployment.hunchBook.periphery?.[name];
   return typeof value === "string" ? (value as Address) : undefined;
+}
+
+/**
+ * A periphery contract of the stack `stackName` (a market's `stack`; absent = primary), or undefined while
+ * that stack has none. ConditionalOrders and the oracle are per stack: each reads its own stack's books.
+ */
+export function stackPeripheryAddress(
+  deployment: Deployment,
+  name: PeripheryName,
+  stackName: string | undefined,
+): Address | undefined {
+  const stack = stackNamed(deployment, stackName ?? "primary");
+  return stack ? peripheryAddress(deploymentForStack(deployment, stack), name) : undefined;
 }
 
 /** The first block any periphery contract exists at, for log scans. */

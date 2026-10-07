@@ -1,15 +1,19 @@
 import {
+  bestPricesV2,
   type GraduationRule,
   hunchBookFactoryAbi,
   impliedChanceBps,
   kuruOrderBookAbi,
+  kuruV2OrderBookAbi,
   type MarketCaps,
   marketAbi,
   Outcome,
   PHASE_LABEL,
   Phase,
   resolverAbi,
+  type Stack,
   snapshotResolverAbi,
+  stacksOf,
   templateLabel,
   type Window,
 } from "@hunch-book/shared";
@@ -104,6 +108,12 @@ export interface MarketInfo {
   chance: Chance;
   /** Template 7: what the snapshot reads, from the resolver's `source(sourceId)`. */
   snapshotSource?: { label: string; unit: string; decimals: number } | null;
+  /**
+   * The deployment stack the market belongs to ("primary", or a name under `stacks` such as "kuruV2")
+   * and its Kuru version. Absent means the primary stack on Kuru v1.
+   */
+  stack?: string;
+  kuruVersion?: 1 | 2;
 }
 
 const MARKET_READS = [
@@ -260,7 +270,8 @@ async function withExtras(
     });
     let prices: number | null = null;
     if (m.book && m.graduated) {
-      prices = calls.push({ address: m.book, abi: kuruOrderBookAbi as Abi, functionName: "bestBidAsk" });
+      const abi = (m.kuruVersion === 2 ? kuruV2OrderBookAbi : kuruOrderBookAbi) as Abi;
+      prices = calls.push({ address: m.book, abi, functionName: "bestBidAsk" });
     }
     let source: number | null = null;
     if (m.decoded.kind === "snapshot") {
@@ -281,8 +292,17 @@ async function withExtras(
   return markets.map((m, i) => {
     const slot = slots[i] as { describe: number; prices: number | null; source: number | null };
     const rule = ok<string>(results[slot.describe]);
-    const bidAsk = slot.prices === null ? undefined : ok<readonly [bigint, bigint]>(results[slot.prices]);
-    const prices = bidAsk ? bestPricesFromKuru(bidAsk[0], bidAsk[1]) : null;
+    const bidAsk =
+      slot.prices === null
+        ? undefined
+        : ok<readonly [bigint | number, bigint | number]>(results[slot.prices]);
+    let prices: BestPrices | null = null;
+    if (bidAsk && m.kuruVersion === 2) {
+      const p = bestPricesV2(BigInt(bidAsk[0]), BigInt(bidAsk[1]));
+      prices = { bidE6: p.bid, askE6: p.ask };
+    } else if (bidAsk) {
+      prices = bestPricesFromKuru(BigInt(bidAsk[0]), BigInt(bidAsk[1]));
+    }
     const info: MarketInfo = {
       ...m,
       rule: rule?.trim() ? rule.trim() : null,
@@ -299,31 +319,57 @@ async function withExtras(
   });
 }
 
-/** Full reads for a list of market addresses, in order. Markets whose core reads fail are left out. */
-export async function readMarkets(ctx: HunchContext, addresses: readonly Address[]): Promise<MarketInfo[]> {
+/** The stack fields a market carries (absent for the primary stack on Kuru v1). */
+function stackTag(stack: Stack | undefined): Pick<MarketInfo, "stack" | "kuruVersion"> {
+  if (!stack || (stack.primary && stack.kuruVersion === 1)) return {};
+  return { stack: stack.name, kuruVersion: stack.kuruVersion };
+}
+
+/**
+ * Full reads for a list of market addresses, in order. Markets whose core reads fail are left out.
+ * `stack` is the stack every address belongs to (default: the primary one).
+ */
+export async function readMarkets(
+  ctx: HunchContext,
+  addresses: readonly Address[],
+  stack?: Stack,
+): Promise<MarketInfo[]> {
   const per = MARKET_READS.length;
   const results = await multicall(ctx, addresses.flatMap(marketCalls));
   const parsed = addresses.flatMap((address, i) => {
     const m = parseMarket(ctx, address, results, i * per);
-    return m ? [m] : [];
+    return m ? [{ ...m, ...stackTag(stack) }] : [];
   });
   return withExtras(ctx, parsed);
 }
 
-function factoryOf(ctx: HunchContext): Address {
-  const factory = ctx.deployment.hunchBook.factory;
-  if (!factory) throw new Error(`Hunch Book is not deployed on ${ctx.deployment.network} yet.`);
-  return factory;
+/** Every stack with a factory, the primary first; throws when none is deployed. */
+function stacks(ctx: HunchContext): Stack[] {
+  const out = stacksOf(ctx.deployment);
+  if (out.length === 0) throw new Error(`Hunch Book is not deployed on ${ctx.deployment.network} yet.`);
+  return out;
 }
 
-/** How many markets the factory has created. */
+/** How many markets the factories have created, all stacks together. */
 export async function marketCount(ctx: HunchContext): Promise<number> {
-  const count = await ctx.publicClient.readContract({
-    address: factoryOf(ctx),
-    abi: hunchBookFactoryAbi,
-    functionName: "marketCount",
+  const counts = await stackCounts(ctx);
+  return counts.reduce((sum, c) => sum + c, 0);
+}
+
+async function stackCounts(ctx: HunchContext): Promise<number[]> {
+  const results = await multicall(
+    ctx,
+    stacks(ctx).map((s) => ({
+      address: s.contracts.factory as Address,
+      abi: hunchBookFactoryAbi,
+      functionName: "marketCount",
+    })),
+  );
+  return results.map((r) => {
+    const c = ok<bigint>(r);
+    if (c === undefined) throw new Error("Could not read a factory's market count.");
+    return Number(c);
   });
-  return Number(count);
 }
 
 export interface ListOptions {
@@ -344,33 +390,46 @@ export interface MarketPage {
 
 export const MAX_PAGE = 200;
 
-/** The factory's markets, a page at a time. */
+/**
+ * The factories' markets, a page at a time. With several stacks the order is the primary stack's
+ * markets, then each extra stack's, each newest (or oldest) first.
+ */
 export async function listMarkets(ctx: HunchContext, options: ListOptions = {}): Promise<MarketPage> {
-  const factory = factoryOf(ctx);
+  const all = stacks(ctx);
+  const counts = await stackCounts(ctx);
   const offset = Math.max(0, Math.floor(options.offset ?? 0));
   const limit = Math.min(MAX_PAGE, Math.max(1, Math.floor(options.limit ?? 50)));
-  const total = await marketCount(ctx);
-  const indices: number[] = [];
+  const total = counts.reduce((sum, c) => sum + c, 0);
+  // Positions offset..offset+limit of the stacks laid end to end, as (stack, factory index).
+  const picks: { stack: number; index: number }[] = [];
   for (let n = offset; n < Math.min(total, offset + limit); n++) {
-    indices.push(options.order === "oldest" ? n : total - 1 - n);
+    let rest = n;
+    let s = 0;
+    while (rest >= (counts[s] as number)) rest -= counts[s++] as number;
+    const count = counts[s] as number;
+    picks.push({ stack: s, index: options.order === "oldest" ? rest : count - 1 - rest });
   }
   const results = await multicall(
     ctx,
-    indices.map((i) => ({
-      address: factory,
+    picks.map((p) => ({
+      address: all[p.stack]?.contracts.factory as Address,
       abi: hunchBookFactoryAbi,
       functionName: "marketAt",
-      args: [BigInt(i)],
+      args: [BigInt(p.index)],
     })),
   );
-  const addresses = results.flatMap((r) => {
-    const a = ok<Address>(r);
-    return a ? [a] : [];
-  });
-  return { total, offset, limit, markets: await readMarkets(ctx, addresses) };
+  const markets: MarketInfo[] = [];
+  for (let s = 0; s < all.length; s++) {
+    const addresses = picks.flatMap((p, i) => {
+      const a = p.stack === s ? ok<Address>(results[i]) : undefined;
+      return a ? [a] : [];
+    });
+    if (addresses.length > 0) markets.push(...(await readMarkets(ctx, addresses, all[s])));
+  }
+  return { total, offset, limit, markets };
 }
 
-/** Every market the factory has created, newest first, read in pages. */
+/** Every market the factories have created (all stacks), read in pages. */
 export async function listAllMarkets(ctx: HunchContext): Promise<MarketInfo[]> {
   const out: MarketInfo[] = [];
   for (let offset = 0; ; offset += MAX_PAGE) {
@@ -381,22 +440,29 @@ export async function listAllMarkets(ctx: HunchContext): Promise<MarketInfo[]> {
 }
 
 /**
- * One market in full, or null when the factory does not know the address. The factory's `isMarket`
- * is checked first, so an arbitrary contract is never read as a Hunch Book market.
+ * One market in full, or null when no factory knows the address. Every stack's factory is asked with
+ * `isMarket` first, so an arbitrary contract is never read as a Hunch Book market.
  */
 export async function getMarket(ctx: HunchContext, address: Address): Promise<MarketInfo | null> {
+  const all = stacks(ctx);
   const results = await multicall(ctx, [
-    { address: factoryOf(ctx), abi: hunchBookFactoryAbi, functionName: "isMarket", args: [address] },
+    ...all.map((s) => ({
+      address: s.contracts.factory as Address,
+      abi: hunchBookFactoryAbi,
+      functionName: "isMarket",
+      args: [address],
+    })),
     ...marketCalls(address),
   ]);
-  const check = results[0];
-  if (!check || check.status === "failure") {
-    throw check?.error ?? new Error("Could not ask the factory about this address.");
-  }
-  if (check.result !== true) return null;
-  const parsed = parseMarket(ctx, address, results, 1);
+  const checks = results.slice(0, all.length);
+  const failed = checks.find((c) => !c || c.status === "failure");
+  if (failed && failed.status === "failure") throw failed.error;
+  if (failed) throw new Error("Could not ask the factory about this address.");
+  const at = checks.findIndex((c) => c?.status === "success" && c.result === true);
+  if (at < 0) return null;
+  const parsed = parseMarket(ctx, address, results, all.length);
   if (!parsed) throw new Error(`Could not read market ${address} from the chain.`);
-  const [full] = await withExtras(ctx, [parsed]);
+  const [full] = await withExtras(ctx, [{ ...parsed, ...stackTag(all[at]) }]);
   return full ?? null;
 }
 

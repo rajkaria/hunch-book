@@ -273,9 +273,15 @@ describe("our own wallets", () => {
     hunchBook: { factory: FACTORY, guardian: GUARDIAN, feeRecipient: GUARDIAN },
   };
 
-  it("lists the guardian, fee recipient, maker and keeper", () => {
-    expect(ourAddresses(d)).toEqual([GUARDIAN, GUARDIAN, d.wallets.maker, d.wallets.keeper]);
+  it("lists the guardian, fee recipient, maker and keeper once each, every stack's too", () => {
+    expect(ourAddresses(d)).toEqual([GUARDIAN, d.wallets.maker, d.wallets.keeper]);
     expect(ourAddresses({ ...d, hunchBook: {} })).toEqual([d.wallets.maker, d.wallets.keeper]);
+    const other = "0x2222222222222222222222222222222222222222" as Address;
+    const twoStacks = {
+      ...d,
+      stacks: { kuruV2: { factory: other, guardian: other, feeRecipient: GUARDIAN } },
+    };
+    expect(ourAddresses(twoStacks)).toEqual([GUARDIAN, other, d.wallets.maker, d.wallets.keeper]);
   });
 
   it("marks markets created by them as seeded, whatever the address case", () => {

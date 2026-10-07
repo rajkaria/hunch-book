@@ -1,4 +1,4 @@
-import { type Deployment, hunchBookFactoryAbi, marketAbi, resolverAbi } from "@hunch-book/shared";
+import { type Deployment, hunchBookFactoryAbi, marketAbi, resolverAbi, stacksOf } from "@hunch-book/shared";
 import {
   type Abi,
   type Address,
@@ -79,11 +79,16 @@ const ok = <T>(r: { status: string; result?: unknown } | undefined): T | undefin
 
 const PRICE_SCALE = 10n ** 18n;
 
-/** Book mid as basis points from Kuru's 1e18 best bid and ask; null unless both sides have orders. */
-export function midBps(bid: bigint, ask: bigint): number | null {
-  const empty = (v: bigint) => v === 0n || v === maxUint256;
+/**
+ * Book mid as basis points; null unless both sides have orders. Kuru v1 answers best bid and ask at 1e18
+ * (empty: 0 or 2^256 - 1); Kuru v2 answers uint32 prices in pricePrecision units, 1e6 on Hunch books
+ * (empty: 0 or 2^32 - 1).
+ */
+export function midBps(bid: bigint, ask: bigint, kuruVersion: 1 | 2 = 1): number | null {
+  const v2 = kuruVersion === 2;
+  const empty = (v: bigint) => v === 0n || (v2 ? v >= 2n ** 32n - 1n : v === maxUint256);
   if (empty(bid) || empty(ask)) return null;
-  const bps = Number((((bid + ask) / 2n) * 10_000n) / PRICE_SCALE);
+  const bps = Number((((bid + ask) / 2n) * 10_000n) / (v2 ? 1_000_000n : PRICE_SCALE));
   return Math.min(10_000, Math.max(0, bps));
 }
 
@@ -99,33 +104,38 @@ const FIELDS = [
   "params",
 ] as const;
 
-/** Every market from the factory, with its chance and its rule sentence. */
+/** Every market of every stack's factory, with its chance and its rule sentence. */
 export async function readMarketsFromChain(
   client: Client,
   deployment: Deployment,
   limit = 500,
 ): Promise<MarketState[]> {
-  const factory = deployment.hunchBook.factory;
-  if (!factory) return [];
-  const count = Number(
-    (await client.readContract({
-      address: factory,
-      abi: hunchBookFactoryAbi as Abi,
-      functionName: "marketCount",
-    })) as bigint,
-  );
-  const n = Math.min(count, limit);
-  const at = await client.multicall({
-    allowFailure: true,
-    batchSize: 16_384,
-    contracts: Array.from({ length: n }, (_, i) =>
-      call(factory, hunchBookFactoryAbi as Abi, "marketAt", [BigInt(i)]),
-    ),
-  });
-  const addresses = at.flatMap((r) => {
-    const a = ok<Address>(r);
-    return a ? [a] : [];
-  });
+  const addresses: Address[] = [];
+  const version = new Map<string, 1 | 2>();
+  for (const stack of stacksOf(deployment)) {
+    const factory = stack.contracts.factory as Address;
+    const count = Number(
+      (await client.readContract({
+        address: factory,
+        abi: hunchBookFactoryAbi as Abi,
+        functionName: "marketCount",
+      })) as bigint,
+    );
+    const n = Math.min(count, limit);
+    const at = await client.multicall({
+      allowFailure: true,
+      batchSize: 16_384,
+      contracts: Array.from({ length: n }, (_, i) =>
+        call(factory, hunchBookFactoryAbi as Abi, "marketAt", [BigInt(i)]),
+      ),
+    });
+    for (const r of at) {
+      const a = ok<Address>(r);
+      if (!a) continue;
+      addresses.push(a);
+      version.set(a.toLowerCase(), stack.kuruVersion);
+    }
+  }
   const fields = await client.multicall({
     allowFailure: true,
     batchSize: 16_384,
@@ -173,7 +183,7 @@ export async function readMarketsFromChain(
     const total = m.yesTotal + m.noTotal;
     const chanceBps = m.graduated
       ? quote
-        ? midBps(quote[0], quote[1])
+        ? midBps(quote[0], quote[1], version.get(m.address.toLowerCase()) ?? 1)
         : null
       : total > 0n
         ? Number((m.yesTotal * 10_000n) / total)

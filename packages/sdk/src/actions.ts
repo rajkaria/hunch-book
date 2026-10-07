@@ -9,6 +9,8 @@ import {
   Phase,
   Side,
   snapshotResolverAbi,
+  stackForFactory,
+  stackNamed,
   type TradeKind,
   testUsdcAbi,
 } from "@hunch-book/shared";
@@ -54,18 +56,47 @@ export function toSide(side: SideInput): Side {
   throw new HunchError(`Unknown side ${String(side)}: use "yes" or "no".`);
 }
 
-function addresses(ctx: HunchContext): {
+/** One stack's addresses ("primary" by default, or a name under `stacks` such as "kuruV2"). */
+function addresses(
+  ctx: HunchContext,
+  stackName = "primary",
+): {
   factory: Address;
   vault: Address;
   usdc: Address;
   router: Address | undefined;
 } {
-  const hb = ctx.deployment.hunchBook;
-  const usdc = collateralOf(ctx.deployment);
-  if (!hb.factory || !hb.vault || !usdc) {
-    throw new HunchError(`Hunch Book is not deployed on ${ctx.deployment.network} yet.`);
+  const hb = stackNamed(ctx.deployment, stackName)?.contracts;
+  const usdc = hb?.usdc ?? collateralOf(ctx.deployment);
+  if (!hb?.factory || !hb.vault || !usdc) {
+    throw new HunchError(
+      stackName === "primary"
+        ? `Hunch Book is not deployed on ${ctx.deployment.network} yet.`
+        : `Stack ${stackName} is not deployed on ${ctx.deployment.network}.`,
+    );
   }
   return { factory: hb.factory, vault: hb.vault, usdc, router: hb.router };
+}
+
+const factoryOfMarketAbi = parseAbi(["function factory() view returns (address)"]);
+
+/**
+ * The addresses of the stack a market belongs to: from a MarketInfo directly, or by asking the market for
+ * its factory. Each stack has its own vault and router, so stakes, trades and redemptions must use these.
+ */
+async function marketAddresses(
+  ctx: HunchContext,
+  market: Address | MarketInfo,
+): Promise<ReturnType<typeof addresses>> {
+  if (typeof market !== "string") return addresses(ctx, market.stack ?? "primary");
+  const factory = await ctx.publicClient.readContract({
+    address: market,
+    abi: factoryOfMarketAbi,
+    functionName: "factory",
+  });
+  const stack = stackForFactory(ctx.deployment, factory);
+  if (!stack) throw new HunchError(`${market} is not a Hunch Book market on ${ctx.deployment.network}.`);
+  return addresses(ctx, stack.name);
 }
 
 /** The collateral token (test USDC on testnet, Circle USDC on mainnet). */
@@ -99,9 +130,9 @@ export function encodeCreateParams(input: Pick<CreateMarketInput, "templateId" |
 export async function createMarket(
   ctx: HunchContext,
   input: CreateMarketInput,
-  options: { approval?: ApprovalMode } & SendOptions = {},
+  options: { approval?: ApprovalMode; stack?: string } & SendOptions = {},
 ): Promise<TxResult<Address> & { market: Address }> {
-  const { factory, vault, usdc } = addresses(ctx);
+  const { factory, vault, usdc } = addresses(ctx, options.stack);
   const params = encodeCreateParams(input);
   const existing = await ctx.publicClient.readContract({
     address: factory,
@@ -136,7 +167,7 @@ export async function stake(
   amount: bigint,
   options: { approval?: ApprovalMode } & SendOptions = {},
 ): Promise<TxResult> {
-  const { vault, usdc } = addresses(ctx);
+  const { vault, usdc } = await marketAddresses(ctx, market);
   await ensureAllowance(ctx, usdc, vault, amount, options);
   return send(
     ctx,
@@ -459,9 +490,9 @@ export async function trade(
   amount: bigint,
   options: TradeOptions = {},
 ): Promise<TxResult<bigint> & { quote: Quote }> {
-  const { usdc, router } = addresses(ctx);
-  if (!router) throw new HunchError(`The router is not deployed on ${ctx.deployment.network}.`);
   const m = await requireMarket(ctx, market);
+  const { usdc, router } = addresses(ctx, m.stack ?? "primary");
+  if (!router) throw new HunchError(`The router is not deployed on ${ctx.deployment.network}.`);
   if (m.phase !== Phase.Graduated) {
     throw new HunchError(
       "This market is not trading on the book right now: it has not graduated, or it has closed.",
@@ -499,7 +530,7 @@ export async function mintSets(
   amount: bigint,
   options: { to?: Address; approval?: ApprovalMode } & SendOptions = {},
 ): Promise<TxResult> {
-  const { vault, usdc } = addresses(ctx);
+  const { vault, usdc } = await marketAddresses(ctx, market);
   const to = options.to ?? requireWallet(ctx).account.address;
   await ensureAllowance(ctx, usdc, vault, amount, options);
   return send(
@@ -516,7 +547,7 @@ export async function mergeSets(
   amount: bigint,
   options: { to?: Address } & SendOptions = {},
 ): Promise<TxResult> {
-  const { vault } = addresses(ctx);
+  const { vault } = await marketAddresses(ctx, market);
   const to = options.to ?? requireWallet(ctx).account.address;
   return send(
     ctx,
@@ -537,8 +568,8 @@ export async function redeem(
   side: SideInput,
   options: { amount?: bigint; to?: Address } & SendOptions = {},
 ): Promise<TxResult<bigint>> {
-  const { vault } = addresses(ctx);
   const m = await requireMarket(ctx, market);
+  const { vault } = addresses(ctx, m.stack ?? "primary");
   const s = toSide(side);
   const me = requireWallet(ctx).account.address;
   const amount = options.amount ?? (await balanceOf(ctx, s === Side.Yes ? m.tokens.yes : m.tokens.no, me));
@@ -598,9 +629,9 @@ export async function collect(
 /** Withdraws the creator's 25% share of fees on markets this wallet created. */
 export async function withdrawCreatorFees(
   ctx: HunchContext,
-  options: { to?: Address } & SendOptions = {},
+  options: { to?: Address; stack?: string } & SendOptions = {},
 ): Promise<TxResult<bigint>> {
-  const { vault } = addresses(ctx);
+  const { vault } = addresses(ctx, options.stack);
   const to = options.to ?? requireWallet(ctx).account.address;
   return send<bigint>(
     ctx,

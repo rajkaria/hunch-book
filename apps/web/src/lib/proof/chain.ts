@@ -4,6 +4,8 @@ import {
   type Deployment,
   hunchBookFactoryAbi,
   Phase,
+  stackNamed,
+  stacksOf,
 } from "@hunch-book/shared";
 import { type Abi, type Address, erc20Abi, type PublicClient } from "viem";
 import { MULTICALL3 } from "../chain/client";
@@ -35,13 +37,19 @@ interface LedgerTuple {
   sets: bigint;
 }
 
-/** The vault's balance and obligations, read together. Null when the vault or USDC is unknown. */
+/**
+ * The vaults' balance and obligations, read together and summed over every stack (each stack has its own
+ * vault; every one must hold at least what it owes). Null when no vault or USDC is known.
+ */
 export async function readVault(client: ProofClient, deployment: Deployment): Promise<VaultBalance | null> {
-  const vault = deployment.hunchBook.vault;
   const usdc = collateralOf(deployment);
-  if (!vault || !usdc) return null;
-  const books = await readVaultBooks(client, vault, usdc);
-  return vaultBalance(books.balance, books.obligations);
+  const vaults = stacksOf(deployment).flatMap((s) => (s.contracts.vault ? [s.contracts.vault] : []));
+  if (vaults.length === 0 || !usdc) return null;
+  const books = await Promise.all(vaults.map((v) => readVaultBooks(client, v, usdc)));
+  return vaultBalance(
+    books.reduce((sum, b) => sum + b.balance, 0n),
+    books.reduce((sum, b) => sum + b.obligations, 0n),
+  );
 }
 
 /** Each market's ledger and its YES and NO supply, in one multicall. */
@@ -99,8 +107,15 @@ export async function readProofFromChain(
             functionName: "marketCount",
           }),
         );
-  const vaultAddress = deployment.hunchBook.vault;
-  const perMarket = vaultAddress ? await readBacking(client, vaultAddress, markets) : [];
+  // Each market's backing is read from its own stack's vault.
+  const perMarket = (
+    await Promise.all(
+      stacksOf(deployment).map((s) => {
+        const ofStack = markets.filter((m) => (m.stack ?? "primary") === s.name);
+        return s.contracts.vault && ofStack.length > 0 ? readBacking(client, s.contracts.vault, ofStack) : [];
+      }),
+    )
+  ).flat();
   return {
     markets: countMarkets(total, markets),
     wallets: null,
@@ -187,12 +202,13 @@ export async function measureSettlement(
   m: MarketView,
   head: bigint,
 ): Promise<SettlementTiming | null> {
-  const from = m.window.blockClock ? m.window.close : BigInt(deployment.hunchBook.deployBlock ?? 0);
+  const stack = stackNamed(deployment, m.stack ?? "primary");
+  const from = m.window.blockClock ? m.window.close : BigInt(stack?.contracts.deployBlock ?? 0);
   const tx = await findSettlementTx(client, m, from, head);
   if (!tx) return null;
   const latency = m.window.blockClock ? tx.block - m.window.close : BigInt(tx.time) - m.window.close;
   let toFirstRedemption: bigint | null = null;
-  const vault = deployment.hunchBook.vault;
+  const vault = stack?.contracts.vault;
   if (vault) {
     const atSettle = await owedAt(client, vault, m, tx.block);
     const now = await owedAt(client, vault, m, head);

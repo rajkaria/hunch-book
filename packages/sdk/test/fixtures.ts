@@ -151,6 +151,7 @@ export function registerMarket(chain: FakeChain, m: FakeMarket): void {
     evidenceHash: () => m.evidenceHash ?? ZERO_HASH,
     marketId: () => BigInt(m.id),
     graduationRuleMet: () => m.ruleMet ?? false,
+    factory: () => FACTORY,
     stakeOf: () => [0n, 0n],
     claimableTokens: () => [0n, 0n],
     claimablePool: () => [0n, 0n],

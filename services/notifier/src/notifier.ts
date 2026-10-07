@@ -1,4 +1,4 @@
-import { type Deployment, deployments, hunchBookFactoryAbi } from "@hunch-book/shared";
+import { type Deployment, deployments, hunchBookFactoryAbi, stacksOf } from "@hunch-book/shared";
 import type { Abi, Address } from "viem";
 import { handleCommand } from "./commands.js";
 import type { NotifierConfig } from "./config.js";
@@ -145,19 +145,22 @@ export class Notifier {
     return { markets: markets.length, events: events.length, sent, source };
   }
 
+  /** True when any stack's factory knows the address. */
   async isMarket(address: Address): Promise<boolean> {
-    const factory = this.deployment.hunchBook.factory;
-    if (!factory) return false;
-    try {
-      return (await this.deps.client.readContract({
-        address: factory,
-        abi: hunchBookFactoryAbi as Abi,
-        functionName: "isMarket",
-        args: [address],
-      })) as boolean;
-    } catch {
-      return false;
+    for (const stack of stacksOf(this.deployment)) {
+      try {
+        const known = (await this.deps.client.readContract({
+          address: stack.contracts.factory as Address,
+          abi: hunchBookFactoryAbi as Abi,
+          functionName: "isMarket",
+          args: [address],
+        })) as boolean;
+        if (known) return true;
+      } catch {
+        // One stack's factory not answering never hides a market on another.
+      }
     }
+    return false;
   }
 
   /** Answers one incoming message. Exposed for tests and the command loop. */

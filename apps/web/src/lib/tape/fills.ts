@@ -1,14 +1,22 @@
-import { type Deployment, kuruOrderBookAbi } from "@hunch-book/shared";
+import {
+  type Deployment,
+  hunchRouterAbi,
+  kuruOrderBookAbi,
+  kuruV2OrderBookAbi,
+  stacksOf,
+} from "@hunch-book/shared";
 import { type Address, getAbiItem, getAddress, type Hex, isAddressEqual, type PublicClient } from "viem";
 import { ourAddresses } from "../chain/landing";
 import { address, big, hash } from "../indexer/parse";
 import type { TradeRow } from "../indexer/queries";
 
 // Fills on Hunch Book's Kuru books, for the trade tape. Two sources: the indexer's Trade entity, or
-// Kuru's Trade event read straight from recent blocks. Kuru's event (as the indexer reads it,
+// Kuru's events read straight from recent blocks. Kuru v1's Trade event (as the indexer reads it,
 // indexer/src/handlers/kuru.ts): isBuy is the taker's side (true when the taker bought YES from a
 // resting ask), price has 18 decimals, filledSize is YES base units, takerAddress is our router for
-// router trades (txOrigin is then the trader).
+// router trades (txOrigin is then the trader). Kuru v2 books emit one SpotSwap per taker swap (amount
+// in used and amount out, after the fee, no maker): a v2 fill is that whole swap at its average price,
+// and for a router trade the trader comes from the router's own Trade event in the same transaction.
 
 export interface Fill {
   /** "<block>-<logIndex>". */
@@ -46,12 +54,94 @@ export interface BookInfo {
   market: Address;
   marketNumber: number | null;
   question: string | null;
+  /** The book's Kuru version (absent = 1). */
+  kuruVersion?: 1 | 2;
 }
 
 const PRICE_E18_TO_E6 = 10n ** 12n;
 const PRICE_SCALE = 10n ** 18n;
 
 export const kuruTradeEvent = getAbiItem({ abi: kuruOrderBookAbi, name: "Trade" });
+export const kuruSwapEvent = getAbiItem({ abi: kuruV2OrderBookAbi, name: "SpotSwap" });
+export const routerTradeEvent = getAbiItem({ abi: hunchRouterAbi, name: "Trade" });
+
+/** Every stack's router (a taker that is one of them traded through Hunch Book's router). */
+export function routersOf(deployment: Deployment): Address[] {
+  return stacksOf(deployment).flatMap((s) => (s.contracts.router ? [s.contracts.router] : []));
+}
+
+const isRouter = (deployment: Deployment, a: Address) =>
+  routersOf(deployment).some((r) => isAddressEqual(r, a));
+
+export interface KuruSwapArgs {
+  userId: number;
+  executor: Address;
+  isBuy: boolean;
+  amountInUsed: bigint;
+  amountOut: bigint;
+  minAmountOut: bigint;
+}
+
+export interface SwapLog {
+  address: Address;
+  blockNumber: bigint | null;
+  logIndex: number | null;
+  transactionHash: Hex | null;
+  args: Partial<KuruSwapArgs>;
+}
+
+/**
+ * A fill from one Kuru v2 SpotSwap log: the whole swap at its average price, after Kuru's fee. `traders`
+ * maps a transaction hash to the trader named by the router's Trade event in it. A v2 swap does not name
+ * the makers it filled against, so the maker is unknown (zero address) and never counted as ours.
+ */
+export function fillFromSwapLog(
+  log: SwapLog,
+  deployment: Deployment,
+  books: ReadonlyMap<string, BookInfo>,
+  traders: ReadonlyMap<string, Address>,
+): Fill | null {
+  const a = log.args;
+  if (
+    log.blockNumber === null ||
+    log.logIndex === null ||
+    !log.transactionHash ||
+    a.executor === undefined ||
+    a.isBuy === undefined ||
+    a.amountInUsed === undefined ||
+    a.amountOut === undefined
+  ) {
+    return null;
+  }
+  const size = a.isBuy ? a.amountOut : a.amountInUsed;
+  const notional = a.isBuy ? a.amountInUsed : a.amountOut;
+  if (size === 0n) return null;
+  const viaRouter = isRouter(deployment, a.executor);
+  const trader = viaRouter ? (traders.get(log.transactionHash.toLowerCase()) ?? a.executor) : a.executor;
+  const ours = ourAddresses(deployment);
+  const info = books.get(log.address.toLowerCase());
+  return {
+    id: `${log.blockNumber.toString()}-${log.logIndex}`,
+    book: getAddress(log.address),
+    market: info?.market ?? null,
+    marketNumber: info?.marketNumber ?? null,
+    question: info?.question ?? null,
+    block: log.blockNumber,
+    logIndex: log.logIndex,
+    time: null,
+    tx: log.transactionHash,
+    priceE6: (notional * 1_000_000n) / size,
+    size,
+    notional,
+    takerBuysYes: a.isBuy,
+    maker: "0x0000000000000000000000000000000000000000",
+    trader: getAddress(trader),
+    viaRouter,
+    makerIsOurMaker: false,
+    makerIsOurs: false,
+    traderIsOurs: ours.some((o) => isAddressEqual(o, trader)),
+  };
+}
 
 /** Neither side is one of our wallets. */
 export const isBetweenOthers = (f: Pick<Fill, "makerIsOurs" | "traderIsOurs">): boolean =>
@@ -120,8 +210,7 @@ export function fillFromLog(
   ) {
     return null;
   }
-  const router = deployment.hunchBook.router;
-  const viaRouter = Boolean(router && isAddressEqual(a.takerAddress, router));
+  const viaRouter = isRouter(deployment, a.takerAddress);
   const trader = viaRouter ? a.txOrigin : a.takerAddress;
   const ours = ourAddresses(deployment);
   const isOurs = (x: Address) => ours.some((o) => isAddressEqual(o, x));
@@ -258,17 +347,51 @@ export class TapeScanner {
   }
 
   private async read(from: bigint, to: bigint): Promise<void> {
-    const books = [...this.bookMap.values()].map((b) => b.book);
+    const all = [...this.bookMap.values()];
+    const v1 = all.filter((b) => b.kuruVersion !== 2).map((b) => b.book);
+    const v2 = all.filter((b) => b.kuruVersion === 2).map((b) => b.book);
     const ranges = blockRanges(from, to);
-    const logs = (
-      await inBatches(ranges, CONCURRENCY, (r) =>
-        this.client.getLogs({ address: books, event: kuruTradeEvent, fromBlock: r.from, toBlock: r.to }),
-      )
-    ).flat() as unknown as TradeLog[];
-    const found = logs.flatMap((log) => {
-      const fill = fillFromLog(log, this.deployment, this.bookMap);
-      return fill ? [fill] : [];
-    });
+    const found: Fill[] = [];
+    if (v1.length > 0) {
+      const logs = (
+        await inBatches(ranges, CONCURRENCY, (r) =>
+          this.client.getLogs({ address: v1, event: kuruTradeEvent, fromBlock: r.from, toBlock: r.to }),
+        )
+      ).flat() as unknown as TradeLog[];
+      for (const log of logs) {
+        const fill = fillFromLog(log, this.deployment, this.bookMap);
+        if (fill) found.push(fill);
+      }
+    }
+    if (v2.length > 0) {
+      const routers = routersOf(this.deployment);
+      const [swaps, trades] = await Promise.all([
+        inBatches(ranges, CONCURRENCY, (r) =>
+          this.client.getLogs({ address: v2, event: kuruSwapEvent, fromBlock: r.from, toBlock: r.to }),
+        ),
+        routers.length === 0
+          ? Promise.resolve([])
+          : inBatches(ranges, CONCURRENCY, (r) =>
+              this.client.getLogs({
+                address: routers,
+                event: routerTradeEvent,
+                fromBlock: r.from,
+                toBlock: r.to,
+              }),
+            ),
+      ]);
+      const traders = new Map<string, Address>();
+      for (const t of trades.flat() as unknown as {
+        transactionHash: Hex | null;
+        args: { user?: Address };
+      }[]) {
+        if (t.transactionHash && t.args.user) traders.set(t.transactionHash.toLowerCase(), t.args.user);
+      }
+      for (const log of swaps.flat() as unknown as SwapLog[]) {
+        const fill = fillFromSwapLog(log, this.deployment, this.bookMap, traders);
+        if (fill) found.push(fill);
+      }
+    }
     if (found.length === 0) return;
     // One entry per log, even if an RPC answers overlapping ranges.
     const byId = new Map(this.fills.map((f) => [f.id, f]));

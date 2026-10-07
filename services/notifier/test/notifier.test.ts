@@ -268,6 +268,9 @@ describe("markets", () => {
   it("takes the book mid only when both sides have orders", () => {
     expect(midBps(600_000_000_000_000_000n, 700_000_000_000_000_000n)).toBe(6_500);
     expect(midBps(0n, 700_000_000_000_000_000n)).toBeNull();
+    // Kuru v2 books answer pricePrecision units (1e6 on Hunch books); 0 or 2^32 - 1 is empty.
+    expect(midBps(600_000n, 700_000n, 2)).toBe(6_500);
+    expect(midBps(600_000n, 2n ** 32n - 1n, 2)).toBeNull();
     expect(midBps(2n ** 256n - 1n, 700_000_000_000_000_000n)).toBeNull();
   });
 

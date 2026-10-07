@@ -68,11 +68,11 @@ const page = await listMarkets(ctx, { limit: 20 });
 
 | Call | Returns |
 |---|---|
-| `hunch.markets.count()` | how many markets the factory has created |
-| `hunch.markets.list({ offset, limit, order })` | a page of `MarketInfo`, newest first by default (at most 200 per page) |
+| `hunch.markets.count()` | how many markets the factories have created (every stack) |
+| `hunch.markets.list({ offset, limit, order })` | a page of `MarketInfo`, newest first by default (at most 200 per page); with several stacks, the primary stack's markets come first, then each extra stack's |
 | `hunch.markets.all()` | every market, read in pages |
-| `hunch.markets.get(address)` | one `MarketInfo`, or `null` if the factory does not know the address (it checks `isMarket` first) |
-| `hunch.markets.book(market)` | the Kuru book: every level from `getL2Book()`, the matching params, mid, spread, depth |
+| `hunch.markets.get(address)` | one `MarketInfo`, or `null` if no factory knows the address (every stack's `isMarket` is checked first) |
+| `hunch.markets.book(market)` | the Kuru book: every level from `getL2Book()`, the matching params, mid, spread, depth (Kuru v1 or v2, from the market's stack) |
 | `hunch.markets.position(market, user)` | stakes, claimable tokens, claimable pool payout, YES and NO balances |
 | `hunch.markets.portfolio(user)` | positions in every market that has something in it |
 
@@ -89,6 +89,10 @@ const page = await listMarkets(ctx, { limit: 20 });
   `settleDeadline`), `tokens`, `book`, `resolver`, `creator`, `graduationRule`,
   `graduationRuleMet`, `caps`, `evidenceHash`;
 - `prices`: the YES book's best bid and ask in USDC base units per token (E6), null where a side is empty;
+- `stack` and `kuruVersion` for a market on an extra stack (absent: the primary stack on Kuru v1). Each
+  stack has its own vault and router; `stake`, `trade`, `mintSets`, `mergeSets` and `redeem` use the
+  market's own, and `createMarket` takes `{ stack }` (default the primary stack). On a Kuru v2 book the
+  matching params carry `takerFeePps` (parts per 10^7), which selects v2 matching in quotes;
 - `chance`: `{ bps, source }`. Pool phase: `Y / T`. Trading: the book's mid, or the one side's price
   when the other is empty (as the onchain ImpliedProbabilityOracle reads it). Settled: 100% or 0%.
   Voided: 50%.

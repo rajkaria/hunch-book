@@ -5,6 +5,7 @@ import {
   type GraduationRule,
   hunchBookFactoryAbi,
   Phase,
+  stacksOf,
   TemplateId,
 } from "@hunch-book/shared";
 import { type Address, erc20Abi } from "viem";
@@ -71,12 +72,15 @@ export type LandingRead =
 
 /** Addresses that belong to Hunch Book itself: its guardian (the deployer), fee recipient, maker and keeper. */
 export function ourAddresses(deployment: Deployment): Address[] {
-  return [
+  const stacks = stacksOf(deployment).map((s) => s.contracts);
+  const all = [
     deployment.hunchBook.guardian,
     deployment.hunchBook.feeRecipient,
+    ...stacks.flatMap((c) => [c.guardian, c.feeRecipient]),
     deployment.wallets.maker,
     deployment.wallets.keeper,
   ].filter((a): a is Address => Boolean(a));
+  return all.filter((a, i) => all.findIndex((b) => b.toLowerCase() === a.toLowerCase()) === i);
 }
 
 /** True when a market was created by one of Hunch Book's own wallets. */
@@ -163,6 +167,21 @@ export function landingClock(
   return { blockNumber: data.block, timestamp: data.blockTime, msPerBlock: data.msPerBlock };
 }
 
+/** Every stack's vault books, summed (each stack has its own vault). */
+export async function readAllVaultBooks(
+  client: ReadClient,
+  deployment: Deployment,
+  usdc: Address,
+): Promise<VaultBooks | null> {
+  const vaults = stacksOf(deployment).flatMap((s) => (s.contracts.vault ? [s.contracts.vault] : []));
+  if (vaults.length === 0) return null;
+  const books = await Promise.all(vaults.map((v) => readVaultBooks(client, v, usdc)));
+  return {
+    balance: books.reduce((sum, b) => sum + b.balance, 0n),
+    obligations: books.reduce((sum, b) => sum + b.obligations, 0n),
+  };
+}
+
 /** Reads the landing page's live data. Never throws. */
 export async function readLandingSnapshot(
   client: ReadClient,
@@ -173,10 +192,19 @@ export async function readLandingSnapshot(
   if (!factory) return { status: "not-deployed" };
 
   const work = (async (): Promise<LandingRead> => {
-    const count = Number(
-      await client.readContract({ address: factory, abi: hunchBookFactoryAbi, functionName: "marketCount" }),
+    // Markets of every stack (testnet: the Kuru v2 stack next to the primary one).
+    const counts = await Promise.all(
+      stacksOf(deployment).map(async (s) =>
+        Number(
+          await client.readContract({
+            address: s.contracts.factory as Address,
+            abi: hunchBookFactoryAbi,
+            functionName: "marketCount",
+          }),
+        ),
+      ),
     );
-    const vault = deployment.hunchBook.vault;
+    const count = counts.reduce((sum, c) => sum + c, 0);
     const usdc = collateralOf(deployment);
     const [list, template, pace, books] = await Promise.allSettled([
       (async () => {
@@ -198,7 +226,7 @@ export async function readLandingSnapshot(
           ms: await measureMsPerBlock(client, head.blockNumber),
         };
       })(),
-      vault && usdc ? readVaultBooks(client, vault, usdc) : Promise.resolve(null),
+      usdc ? readAllVaultBooks(client, deployment, usdc) : Promise.resolve(null),
     ]);
     const tmpl = settled(template);
     const rule: GraduationRule | null =

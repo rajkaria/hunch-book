@@ -24,6 +24,7 @@ const PERIPHERY_LABEL: Record<string, string> = {
   merkleDistributor: "Rewards distributor",
   impliedProbabilityOracle: "Implied-probability oracle",
   priceAdapterFactory: "Price adapter factory",
+  kuruFeedFactory: "Kuru limiter feed factory",
   templateTimelock: "Template timelock",
 };
 
@@ -66,10 +67,39 @@ export function contractGroups(d: Deployment): ContractGroup[] {
       address,
     })),
   ].filter((x) => isAddress(x.address));
+  const v2 = d.external.kuruV2;
+  if (v2) {
+    external.splice(
+      2,
+      0,
+      ...[
+        { label: "Kuru v2 SpotRouter", address: v2.spotRouter },
+        { label: "Kuru v2 AccountCore", address: v2.accountCore },
+        { label: "Kuru v2 WithdrawalLimiter", address: v2.withdrawalLimiter as Address },
+      ].filter((x) => isAddress(x.address)),
+    );
+  }
+  // Extra stacks (testnet: the Kuru v2 stack next to the primary one), each as its own group.
+  const extra = Object.entries(d.stacks ?? {}).flatMap(([name, c]) => {
+    const items = (
+      [
+        ["Factory", c.factory],
+        ["Collateral vault", c.vault],
+        ["Graduator", c.graduator],
+        ["Router", c.router],
+        ...Object.entries(c.periphery ?? {}).flatMap(([key, address]) =>
+          PERIPHERY_LABEL[key] ? [[PERIPHERY_LABEL[key] as string, address] as const] : [],
+        ),
+      ] as const
+    ).flatMap(([label, address]) => (isAddress(address) ? [{ label, address }] : []));
+    const version = c.kuruVersion === 2 ? "Kuru v2" : "Kuru v1";
+    return items.length > 0 ? [{ title: `Stack ${name} (${version})`, items }] : [];
+  });
   return [
     { title: "Hunch Book core", items: core },
     { title: "Resolvers", items: resolvers },
     { title: "Periphery", items: periphery },
+    ...extra,
     { title: "Our wallets and roles", items: ours },
     { title: "Outside contracts it reads or trades on", items: external },
   ].filter((g) => g.items.length > 0);

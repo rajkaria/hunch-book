@@ -90,10 +90,10 @@ export function OrderForm({ m, contract }: { m: MarketView; contract: Address })
   const wallet = useAppChain();
   const now = useNow(5_000);
   const clock = useChainClock(m.window.blockClock);
-  const book = useBook(m.book);
-  const protocol = useProtocolAddresses();
+  const book = useBook(m.book, m.kuruVersion);
+  const protocol = useProtocolAddresses(m);
   const funds = useOrderFunds(wallet.address, m);
-  const orders = useOwnerOrders(wallet.address);
+  const orders = useOwnerOrders(wallet.address, contract);
   const user = wallet.address;
   const tx = useTxRunner([
     ...walletQueryKeys(m, user),

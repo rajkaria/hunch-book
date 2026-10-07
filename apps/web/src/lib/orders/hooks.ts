@@ -6,7 +6,7 @@ import { getPublicClient } from "../chain/client";
 import { appDeployment, appNetwork } from "../config";
 import { useProtocolAddresses } from "../hooks";
 import type { MarketView } from "../market/types";
-import { peripheryAddress } from "../periphery";
+import { peripheryAddress, stackPeripheryAddress } from "../periphery";
 import { readOrderFunds, readOwnerOrders } from "./read";
 
 export const orderKeys = {
@@ -17,14 +17,22 @@ export const orderKeys = {
 };
 
 /** The ConditionalOrders address on this network, or undefined. */
-export const conditionalOrdersAddress = (): Address | undefined =>
-  peripheryAddress(appDeployment, "conditionalOrders");
+/**
+ * The ConditionalOrders contract of `m`'s stack (the primary stack when no market is given): each stack's
+ * contract trades through its own router and reads its own books.
+ */
+export const conditionalOrdersAddress = (m?: Pick<MarketView, "stack">): Address | undefined =>
+  m?.stack
+    ? stackPeripheryAddress(appDeployment, "conditionalOrders", m.stack)
+    : peripheryAddress(appDeployment, "conditionalOrders");
 
-/** Every order the wallet placed (newest first), read from ConditionalOrders. */
-export function useOwnerOrders(owner: Address | undefined) {
-  const contract = conditionalOrdersAddress();
+/** Every order the wallet placed (newest first), read from `contract` (default: the primary stack's). */
+export function useOwnerOrders(
+  owner: Address | undefined,
+  contract: Address | undefined = conditionalOrdersAddress(),
+) {
   return useQuery({
-    queryKey: orderKeys.owner(owner ?? "0x"),
+    queryKey: [...orderKeys.owner(owner ?? "0x"), contract ?? "none"],
     queryFn: () => readOwnerOrders(getPublicClient(), contract as Address, owner as Address),
     enabled: Boolean(contract && owner),
     refetchInterval: 15_000,
@@ -33,8 +41,8 @@ export function useOwnerOrders(owner: Address | undefined) {
 
 /** The wallet's USDC, YES and NO for a market, and its approvals to ConditionalOrders. */
 export function useOrderFunds(owner: Address | undefined, m: MarketView) {
-  const contract = conditionalOrdersAddress();
-  const protocol = useProtocolAddresses();
+  const contract = conditionalOrdersAddress(m);
+  const protocol = useProtocolAddresses(m);
   return useQuery({
     queryKey: orderKeys.funds(m.address, owner ?? "0x"),
     queryFn: () =>

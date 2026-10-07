@@ -37,8 +37,8 @@ const HISTORY_SHOWN = 10;
 export function OrderList({ m, contract }: { m: MarketView; contract: Address }) {
   const wallet = useAppChain();
   const now = useNow(5_000);
-  const book = useBook(m.book);
-  const orders = useOwnerOrders(wallet.address);
+  const book = useBook(m.book, m.kuruVersion);
+  const orders = useOwnerOrders(wallet.address, contract);
   const user = wallet.address;
   const tx = useTxRunner(user ? [orderKeys.owner(user)] : []);
 

@@ -53,7 +53,7 @@ export function HealthPanel({
   clock: ChainClock | null;
   now: number | null;
 }) {
-  const book = useBook(m.graduated ? m.book : null);
+  const book = useBook(m.graduated ? m.book : null, m.kuruVersion);
   if (now === null) return null;
   const depth = book.data
     ? depthWithinBand(

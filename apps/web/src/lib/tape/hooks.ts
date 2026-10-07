@@ -26,7 +26,15 @@ export interface TapeData {
 export function booksOf(markets: readonly MarketView[]): BookInfo[] {
   return markets.flatMap((m) =>
     m.graduated && m.book
-      ? [{ book: m.book, market: m.address, marketNumber: Number(m.marketId), question: m.description }]
+      ? [
+          {
+            book: m.book,
+            market: m.address,
+            marketNumber: Number(m.marketId),
+            question: m.description,
+            kuruVersion: m.kuruVersion ?? 1,
+          },
+        ]
       : [],
   );
 }

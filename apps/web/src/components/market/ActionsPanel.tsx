@@ -4,7 +4,7 @@ import { collateralVaultAbi, marketAbi, Outcome, Phase, Side } from "@hunch-book
 import Link from "next/link";
 import { useState } from "react";
 import { type Abi, erc20Abi } from "viem";
-import { appDeployment, appNetworkLabel } from "@/lib/config";
+import { appNetworkLabel } from "@/lib/config";
 import { formatUsdc } from "@/lib/format";
 import {
   useProtocolAddresses,
@@ -24,6 +24,7 @@ import {
 import { parseUsdcInput } from "@/lib/market/logic";
 import type { SettlePlan } from "@/lib/market/settle";
 import type { MarketView } from "@/lib/market/types";
+import { vaultOf } from "@/lib/stacks";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, type TxStep, useTxRunner } from "@/lib/wallet/useTxRunner";
 import { Button, Panel } from "../ui";
@@ -72,7 +73,7 @@ export function ActionsPanel({ m, head }: { m: MarketView; head: ChainHead | nul
   const wallet = useAppChain();
   const position = useUserPosition(m.address, wallet.address);
   const balances = useWalletBalances(wallet.address, m);
-  const protocol = useProtocolAddresses();
+  const protocol = useProtocolAddresses(m);
   const tx = useTxRunner(walletQueryKeys(m, wallet.address));
   const gate = settleGate(m, head);
   const plan = useSettlePlan(m, gate === null);
@@ -210,7 +211,7 @@ export function SetsSection({ m }: { m: MarketView }) {
   const [mintInput, setMintInput] = useState("");
   const [mergeInput, setMergeInput] = useState("");
   const wallet = useAppChain();
-  const protocol = useProtocolAddresses();
+  const protocol = useProtocolAddresses(m);
   const balances = useWalletBalances(wallet.address, m);
   const tx = useTxRunner(walletQueryKeys(m, wallet.address));
   const gates = setsAvailability(m);
@@ -343,8 +344,7 @@ export function SetsSection({ m }: { m: MarketView }) {
         ) : null}
         <TxList txs={tx.txs} />
         <p className={s.laterNote}>
-          Vault:{" "}
-          <span className="mono">{appDeployment.hunchBook.vault ?? protocol.data?.vault ?? "unknown"}</span>
+          Vault: <span className="mono">{protocol.data?.vault ?? vaultOf(m) ?? "unknown"}</span>
         </p>
       </div>
     </details>

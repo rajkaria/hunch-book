@@ -36,7 +36,7 @@ export function GaslessStake({
   const mon = useMonBalance(wallet.address);
   const lowGas = mon.data !== undefined && mon.data < LOW_MON_WEI;
   const relay = useRelayStatus(lowGas);
-  const protocol = useProtocolAddresses();
+  const protocol = useProtocolAddresses(m);
   const relayed = useRelayedStake([
     queryKeys.market(m.address),
     queryKeys.usdc(wallet.address ?? "0x"),

@@ -49,6 +49,18 @@ export interface MarketView {
   quote: BookQuote | null;
   /** IMarket.graduationRuleMet(), ignoring book readiness and pauses. */
   ruleMet: boolean | null;
+  /**
+   * The deployment stack the market belongs to ("primary" or a name under `stacks`) and its Kuru
+   * version. Absent means the primary stack on Kuru v1. The stack gives the market's vault, router and
+   * periphery (lib/stacks.ts).
+   */
+  stack?: string;
+  kuruVersion?: 1 | 2;
+  /**
+   * Kuru v2 pools: whether GraduatorV2 has this market's book registered yet (only Kuru creates v2
+   * books, so a pool can meet its rule before it can graduate). Absent elsewhere.
+   */
+  bookReady?: boolean;
 }
 
 /** The chain head, used for block-clock estimates and countdowns. */

@@ -1,12 +1,18 @@
 import {
+  bestBidAskV2AsV1,
   type Deployment,
   type GraduationRule,
+  graduatorV2Abi,
   hunchBookFactoryAbi,
+  kuruV2OrderBookAbi,
   type MarketCaps,
   marketAbi,
   type Outcome,
   type Phase,
   resolverAbi,
+  type Stack,
+  stackNamed,
+  stacksOf,
   type Window,
 } from "@hunch-book/shared";
 import {
@@ -149,10 +155,17 @@ export function parseMarketResults(address: Address, results: CallResult[], offs
   };
 }
 
-/** Second pass: the resolver's rule sentence for each market, and Kuru's best bid/ask once graduated. */
-async function readExtras(client: ReadClient, markets: MarketView[]): Promise<MarketView[]> {
+/**
+ * Second pass: the resolver's rule sentence for each market, Kuru's best bid/ask once graduated, and for
+ * Kuru v2 pools whether the stack's GraduatorV2 (`graduator`) has the book registered.
+ */
+async function readExtras(
+  client: ReadClient,
+  markets: MarketView[],
+  graduator?: Address,
+): Promise<MarketView[]> {
   const calls: Call[] = [];
-  const slots: { describe: number; quote: number | null }[] = [];
+  const slots: { describe: number; quote: number | null; bookOf: number | null }[] = [];
   for (const m of markets) {
     const describe = calls.push({
       address: m.resolver,
@@ -162,46 +175,79 @@ async function readExtras(client: ReadClient, markets: MarketView[]): Promise<Ma
     });
     let quote: number | null = null;
     if (m.graduated && m.book) {
-      quote = calls.push({ address: m.book, abi: kuruOrderBookAbi as Abi, functionName: "bestBidAsk" });
+      const abi = (m.kuruVersion === 2 ? kuruV2OrderBookAbi : kuruOrderBookAbi) as Abi;
+      quote = calls.push({ address: m.book, abi, functionName: "bestBidAsk" });
     }
-    slots.push({ describe: describe - 1, quote: quote === null ? null : quote - 1 });
+    let bookOf: number | null = null;
+    if (m.kuruVersion === 2 && graduator && Number(m.phase) === 0) {
+      bookOf = calls.push({
+        address: graduator,
+        abi: graduatorV2Abi as Abi,
+        functionName: "bookOf",
+        args: [m.address],
+      });
+    }
+    slots.push({
+      describe: describe - 1,
+      quote: quote === null ? null : quote - 1,
+      bookOf: bookOf === null ? null : bookOf - 1,
+    });
   }
   const results = await multicall(client, calls);
   return markets.map((m, i) => {
     const slot = slots[i];
     if (!slot) return m;
     const description = ok<string>(results[slot.describe]);
-    const bidAsk = slot.quote === null ? undefined : ok<readonly [bigint, bigint]>(results[slot.quote]);
+    const raw =
+      slot.quote === null ? undefined : ok<readonly [bigint | number, bigint | number]>(results[slot.quote]);
+    // v2 books answer in pricePrecision units (1e6 on Hunch books): read them at v1's 1e18 scale.
+    const bidAsk =
+      raw === undefined
+        ? undefined
+        : m.kuruVersion === 2
+          ? bestBidAskV2AsV1(BigInt(raw[0]), BigInt(raw[1]), 1_000_000n)
+          : ([BigInt(raw[0]), BigInt(raw[1])] as const);
+    const registered = slot.bookOf === null ? undefined : ok<Address>(results[slot.bookOf]);
     return {
       ...m,
       description: description && description.trim().length > 0 ? description.trim() : null,
       quote: bidAsk ? parseBestBidAsk(bidAsk[0], bidAsk[1]) : null,
+      ...(registered === undefined ? {} : { bookReady: !isAddressEqual(registered, zeroAddress) }),
     };
   });
 }
 
-/** Reads full views for a list of market addresses. Markets whose core reads fail are skipped. */
+/** The stack fields a view carries (absent for the primary stack on Kuru v1, as before stacks existed). */
+function stackTag(stack: Stack | undefined): Pick<MarketView, "stack" | "kuruVersion"> {
+  if (!stack || (stack.primary && stack.kuruVersion === 1)) return {};
+  return { stack: stack.name, kuruVersion: stack.kuruVersion };
+}
+
+/**
+ * Reads full views for a list of market addresses. Markets whose core reads fail are skipped. `stack` is
+ * the stack every address belongs to (default: the primary one).
+ */
 export async function readMarketViews(
   client: ReadClient,
   addresses: readonly Address[],
+  stack?: Stack,
 ): Promise<MarketView[]> {
   const perMarket = MARKET_READS.length;
   const results = await multicall(client, addresses.flatMap(marketCalls));
   const views = addresses.flatMap((address, i) => {
     const view = parseMarketResults(address, results, i * perMarket);
-    return view ? [view] : [];
+    return view ? [{ ...view, ...stackTag(stack) }] : [];
   });
-  return readExtras(client, views);
+  return readExtras(client, views, stack?.contracts.graduator);
 }
 
-/** Lists markets from the factory, newest first: marketCount, then marketAt for each index. */
-export async function listMarkets(
+/** One stack's markets, newest first: marketCount, then marketAt for each index. */
+async function listStack(
   client: ReadClient,
-  deployment: Deployment,
-  { limit = MARKET_LIST_LIMIT }: { limit?: number } = {},
-): Promise<ReadResult<{ markets: MarketView[]; total: number }>> {
-  const factory = deployment.hunchBook.factory;
-  if (!factory) return { status: "not-deployed" };
+  stack: Stack,
+  limit: number,
+): Promise<{ markets: MarketView[]; total: number }> {
+  const factory = stack.contracts.factory as Address;
   const count = await client.readContract({
     address: factory,
     abi: hunchBookFactoryAbi,
@@ -222,34 +268,58 @@ export async function listMarkets(
     const a = ok<Address>(r);
     return a ? [a] : [];
   });
-  const markets = await readMarketViews(client, addresses);
-  return { status: "ok", data: { markets, total } };
+  return { markets: await readMarketViews(client, addresses, stack), total };
 }
 
 /**
- * Reads one market. The factory must confirm the address with `isMarket`, so a page for an arbitrary
- * address never shows it as a Hunch Book market or offers to stake in it.
+ * Lists markets from every stack's factory (the primary stack first), each newest first. `limit`
+ * applies per stack.
+ */
+export async function listMarkets(
+  client: ReadClient,
+  deployment: Deployment,
+  { limit = MARKET_LIST_LIMIT }: { limit?: number } = {},
+): Promise<ReadResult<{ markets: MarketView[]; total: number }>> {
+  const stacks = stacksOf(deployment);
+  if (stacks.length === 0) return { status: "not-deployed" };
+  const lists = await Promise.all(stacks.map((s) => listStack(client, s, limit)));
+  return {
+    status: "ok",
+    data: { markets: lists.flatMap((l) => l.markets), total: lists.reduce((sum, l) => sum + l.total, 0) },
+  };
+}
+
+/**
+ * Reads one market. A factory must confirm the address with `isMarket` (every stack's is asked), so a
+ * page for an arbitrary address never shows it as a Hunch Book market or offers to stake in it.
  */
 export async function readMarket(
   client: ReadClient,
   deployment: Deployment,
   address: Address,
 ): Promise<ReadResult<MarketView>> {
-  const factory = deployment.hunchBook.factory;
-  if (!factory) return { status: "not-deployed" };
+  const stacks = stacksOf(deployment);
+  if (stacks.length === 0) return { status: "not-deployed" };
   const results = await multicall(client, [
-    { address: factory, abi: hunchBookFactoryAbi as Abi, functionName: "isMarket", args: [address] },
+    ...stacks.map((s) => ({
+      address: s.contracts.factory as Address,
+      abi: hunchBookFactoryAbi as Abi,
+      functionName: "isMarket",
+      args: [address],
+    })),
     ...marketCalls(address),
   ]);
-  const check = results[0];
-  if (!check || check.status === "failure") {
-    throw check?.error ?? new Error("Could not ask the factory about this address.");
-  }
-  if (check.result !== true) return { status: "not-market" };
-  const view = parseMarketResults(address, results, 1);
+  const checks = results.slice(0, stacks.length);
+  const failed = checks.find((c) => !c || c.status === "failure");
+  if (failed && failed.status === "failure") throw failed.error;
+  if (failed) throw new Error("Could not ask the factory about this address.");
+  const at = checks.findIndex((c) => c?.status === "success" && c.result === true);
+  if (at < 0) return { status: "not-market" };
+  const view = parseMarketResults(address, results, stacks.length);
   if (!view) throw new Error("Could not read this market from the chain.");
-  const [full] = await readExtras(client, [view]);
-  return { status: "ok", data: full ?? view };
+  const tagged = { ...view, ...stackTag(stacks[at]) };
+  const [full] = await readExtras(client, [tagged], stacks[at]?.contracts.graduator);
+  return { status: "ok", data: full ?? tagged };
 }
 
 /** The connected wallet's position in every listed market; only rows with something in them. */
@@ -336,13 +406,16 @@ export function hasPosition(e: PortfolioEntry): boolean {
 export async function readProtocolAddresses(
   client: ReadClient,
   deployment: Deployment,
+  stackName = "primary",
 ): Promise<{ vault: Address; usdc: Address } | null> {
-  const factory = deployment.hunchBook.factory;
-  if (!factory) return null;
+  const stack = stackNamed(deployment, stackName);
+  const factory = stack?.contracts.factory;
+  if (!stack || !factory) return null;
   const vault =
-    deployment.hunchBook.vault ??
+    stack.contracts.vault ??
     (await client.readContract({ address: factory, abi: hunchBookFactoryAbi, functionName: "vault" }));
   const usdc =
+    stack.contracts.usdc ??
     usdcOf(deployment) ??
     (await client.readContract({ address: factory, abi: hunchBookFactoryAbi, functionName: "usdc" }));
   return { vault, usdc };

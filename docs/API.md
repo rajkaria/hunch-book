@@ -45,6 +45,10 @@ Base URL: `https://book.playhunch.xyz/api/v1` (the app's own origin; the network
   wallets), `makerIsHunchMaker` (the fill's maker is our maker bot, `wallets.maker` in the deployments
   file) and `traderIsHunch` (the taking wallet is ours). Stats split fills and volume the same way.
 
+- **Stacks**: a network can run several stacks (a factory with its vault, graduator and router;
+  testnet has the original Kuru v1 stack and a Kuru v2 stack, [PROTOCOL.md §8.1](./PROTOCOL.md#81-kuru)).
+  Every endpoint covers all of them; a market on an extra stack carries `stack` and `kuruVersion`.
+
 ## GET /markets
 
 | Query | Default | Meaning |
@@ -192,6 +196,11 @@ indexer (`source: "indexer"`), with the market's full history. Without it, or wh
 for an explicit `fromBlock`, they come from Kuru's `Trade` logs on the market's book, read in 100-block
 windows (public Monad RPCs answer `eth_getLogs` for at most 100 blocks), and `fromBlock` and `toBlock`
 say what was read.
+
+On a Kuru v2 book the log source is Kuru's `SpotSwap` event: one row per taker swap at its average
+price after Kuru's fee. A v2 swap does not name the makers it filled against, so `maker` is the zero
+address there and `makerIsHunchMaker` is false; for a router trade, `trader` is the wallet named by the
+router's own `Trade` event in the same transaction.
 
 These are the four router trades the README links (buy YES, sell YES, buy NO, sell NO on market #1),
 all from our own wallet against our own maker bot:
@@ -596,6 +605,27 @@ the create page on template 1 for that perp. The same read for BTC:
 Errors: `400` for an asset that is not letters and digits, `404` for an asset the deployments file does
 not list (the message names the ones it does), `502` when the chain does not answer. `?format=csv` gives
 `field,value` rows. Cached like the feed: 15 seconds.
+
+## GET /kuru/requests
+
+What Kuru still has to do for each market on a Kuru v2 stack that has no registered book yet, read from
+the chain on the request (cached 30 seconds). Kuru creates every v2 book after setting up its YES token,
+which takes days, so markets are listed from creation, oldest first. `404` where the deployments file has
+no Kuru v2.
+
+Each request has:
+
+- `market`, `marketNumber`, `stack`, `question`, `phase`, `ruleMet`, `pool`;
+- `status`: `needs-token-setup` (the YES token or USDC is not yet enabled in AccountCore, whitelisted in
+  the SpotRouter, or priced in the WithdrawalLimiter), `needs-book`, `book-not-registrable` (Kuru deployed
+  something GraduatorV2 refuses; `bookProblem` says why) or `ready-to-register` (the keeper registers it
+  on its next pass);
+- `tokens.yes` and `tokens.usdc`: the token, the feed Kuru's price source should wrap (`priceFeed`: the
+  market's Chainlink-shaped OutcomeTokenPriceAdapter, 8 decimals, and whether it is created yet), and what
+  Kuru has done for it (`enabledInAccountCore`, `whitelistedInSpotRouter`, `priceSource`);
+- `deploySpotMarket`: the exact arguments GraduatorV2 publishes (`bookRequest`), with `maxQuoteNotional`
+  the market's pool cap;
+- `expectedBook`: where Kuru's SpotRouter deploys a book with those arguments, and `bookDeployed`.
 
 ## Embed
 

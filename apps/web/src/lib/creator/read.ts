@@ -1,4 +1,4 @@
-import { collateralVaultAbi, type Deployment, splitFee } from "@hunch-book/shared";
+import { collateralVaultAbi, type Deployment, splitFee, stackNamed } from "@hunch-book/shared";
 import { type Address, type Hex, isAddressEqual } from "viem";
 import type { ReadClient } from "../chain/client";
 import { isSeededByUs } from "../chain/landing";
@@ -145,8 +145,9 @@ export async function readCreatorFees(
   client: Pick<ReadClient, "readContract">,
   deployment: Deployment,
   creator: Address,
+  stackName = "primary",
 ): Promise<bigint | null> {
-  const vault = deployment.hunchBook.vault;
+  const vault = stackNamed(deployment, stackName)?.contracts.vault;
   if (!vault) return null;
   return client.readContract({
     address: vault,

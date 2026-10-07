@@ -17,6 +17,7 @@ import {
   portfolioTotals,
 } from "@/lib/market/portfolio";
 import type { PortfolioEntry } from "@/lib/market/types";
+import { vaultOf } from "@/lib/stacks";
 import { useAtomicBatch } from "@/lib/wallet/batch";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, type TxStep, useTxRunner } from "@/lib/wallet/useTxRunner";
@@ -42,12 +43,13 @@ const REFRESH = [
 ];
 
 /** One planned call as a write: market calls for claims, the vault for redemptions. */
+/** `vault` is the primary stack's; a market on another stack redeems through its own stack's vault. */
 export function toTxStep(action: PlannedAction, vault: Address, user: Address): TxStep {
   if (action.kind === "redeem") {
     return {
       label: action.label,
       request: {
-        address: vault,
+        address: action.market.stack ? (vaultOf(action.market) ?? vault) : vault,
         abi: collateralVaultAbi as Abi,
         functionName: "redeem",
         args: [action.market.address, action.side, action.amount, user],

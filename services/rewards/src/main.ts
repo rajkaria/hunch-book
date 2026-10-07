@@ -68,8 +68,18 @@ async function sample(
     if (!isAddress(a)) throw new Error(`${a} is not an address`);
     return getAddress(a);
   });
-  const markets = (await listAllMarkets(ctx)).filter(
-    (m) => m.graduated && m.book && (wanted.length === 0 || wanted.includes(m.address)),
+  // Kuru v2 books report orders as packed events this sampler does not decode yet: only v1 books are
+  // sampled, and v2 markets are named in the log so nobody mistakes the gap for no liquidity.
+  const all = await listAllMarkets(ctx);
+  const skippedV2 = all.filter((m) => m.kuruVersion === 2 && m.graduated && m.book).map((m) => m.address);
+  if (skippedV2.length > 0) {
+    console.error(
+      `skipping ${skippedV2.length} market(s) on Kuru v2 books (not sampled yet): ${skippedV2.join(", ")}`,
+    );
+  }
+  const markets = all.filter(
+    (m) =>
+      m.kuruVersion !== 2 && m.graduated && m.book && (wanted.length === 0 || wanted.includes(m.address)),
   );
   const out = (args.out as string | undefined) ?? "samples.jsonl";
   const lines: string[] = [];

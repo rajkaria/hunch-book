@@ -18,7 +18,7 @@ export const ORDERS_DOCS_URL = `${REPO_URL}/blob/main/docs/PERIPHERY.md#conditio
  */
 export function OrdersPanel({ m }: { m: MarketView }) {
   if (!m.graduated) return null;
-  const contract = conditionalOrdersAddress();
+  const contract = conditionalOrdersAddress(m);
   const trading = m.phase === Phase.Graduated;
   return (
     <Panel

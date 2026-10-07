@@ -1,6 +1,7 @@
 import { formatUsdc, type MarketInfo } from "@hunch-book/sdk";
 import { kuruOrderBookAbi } from "@hunch-book/shared";
 import { type Address, getAbiItem, type Hex, isAddressEqual } from "viem";
+import { kuruSwapEvent, routersOf, routerTradeEvent } from "@/lib/tape/fills";
 import { cached } from "./cache";
 import type { ApiDeps } from "./deps";
 import { isOurs } from "./markets";
@@ -62,8 +63,7 @@ function shape(
     txOrigin: Address;
   },
 ): ApiTrade {
-  const router = deps.deployment.hunchBook.router;
-  const viaRouter = router !== undefined && isAddressEqual(t.taker, router);
+  const viaRouter = routersOf(deps.deployment).some((r) => isAddressEqual(t.taker, r));
   const trader = viaRouter ? t.txOrigin : t.taker;
   return {
     block: t.block.toString(),
@@ -96,12 +96,78 @@ export interface BlockRange {
   fromBlock: bigint | null;
 }
 
+/**
+ * Fills from a Kuru v2 book's SpotSwap logs: one per taker swap, at its average price after the fee. A v2
+ * swap names no maker (zero address here); for a router trade the trader is the `user` of the router's
+ * Trade event in the same transaction.
+ */
+async function swapsFromLogs(
+  deps: ApiDeps,
+  book: Address,
+  windows: { fromBlock: bigint; toBlock: bigint }[],
+): Promise<
+  {
+    block: bigint;
+    logIndex: number;
+    tx: Hex;
+    isBuy: boolean;
+    priceE18: bigint;
+    size: bigint;
+    taker: Address;
+    txOrigin: Address;
+  }[]
+> {
+  const client = deps.sdk.context.publicClient;
+  const routers = routersOf(deps.deployment);
+  const [swaps, trades] = await Promise.all([
+    inBatches(windows, CONCURRENCY, (w) =>
+      client.getLogs({ address: book, event: kuruSwapEvent, fromBlock: w.fromBlock, toBlock: w.toBlock }),
+    ),
+    routers.length === 0
+      ? Promise.resolve([])
+      : inBatches(windows, CONCURRENCY, (w) =>
+          client.getLogs({
+            address: routers,
+            event: routerTradeEvent,
+            fromBlock: w.fromBlock,
+            toBlock: w.toBlock,
+          }),
+        ),
+  ]);
+  const traders = new Map<string, Address>();
+  for (const t of trades.flat()) {
+    const user = (t.args as { user?: Address }).user;
+    if (t.transactionHash && user) traders.set(t.transactionHash.toLowerCase(), user);
+  }
+  return swaps.flat().flatMap((l) => {
+    const a = l.args;
+    if (a.isBuy === undefined || a.amountInUsed === undefined || a.amountOut === undefined || !a.executor)
+      return [];
+    const size = a.isBuy ? a.amountOut : a.amountInUsed;
+    const notional = a.isBuy ? a.amountInUsed : a.amountOut;
+    if (size === 0n || l.blockNumber === null || !l.transactionHash) return [];
+    return [
+      {
+        block: l.blockNumber,
+        logIndex: l.logIndex ?? 0,
+        tx: l.transactionHash,
+        isBuy: a.isBuy,
+        priceE18: (notional * 10n ** 18n) / size,
+        size,
+        taker: a.executor,
+        txOrigin: traders.get(l.transactionHash.toLowerCase()) ?? a.executor,
+      },
+    ];
+  });
+}
+
 /** Fills from Kuru's logs over a range of blocks (at most MAX_LOOKBACK), newest first. */
 export async function tradesFromLogs(
   deps: ApiDeps,
   book: Address,
   range: BlockRange,
   limit: number,
+  kuruVersion: 1 | 2 = 1,
 ): Promise<TradesResult> {
   const client = deps.sdk.context.publicClient;
   const head = await client.getBlockNumber();
@@ -113,6 +179,29 @@ export async function tradesFromLogs(
   for (let start = from; start <= to; start += LOG_WINDOW) {
     const end = start + LOG_WINDOW - 1n;
     windows.push({ fromBlock: start, toBlock: end > to ? to : end });
+  }
+  if (kuruVersion === 2) {
+    const fills = (await swapsFromLogs(deps, book, windows)).sort(
+      (a, b) => Number(b.block - a.block) || b.logIndex - a.logIndex,
+    );
+    const kept = fills.slice(0, limit);
+    const times = new Map<bigint, number>();
+    await inBatches([...new Set(kept.map((f) => f.block))], CONCURRENCY, async (b) => {
+      times.set(b, Number((await client.getBlock({ blockNumber: b })).timestamp));
+    });
+    return {
+      source: "logs",
+      fromBlock: from.toString(),
+      toBlock: to.toString(),
+      note: `Swaps from Kuru v2's SpotSwap logs over blocks ${from} to ${to}: one row per swap at its average price after the fee; v2 swaps do not name their makers.`,
+      trades: kept.map((f) =>
+        shape(deps, {
+          ...f,
+          time: times.get(f.block) ?? null,
+          maker: "0x0000000000000000000000000000000000000000",
+        }),
+      ),
+    };
   }
   const logs = (
     await inBatches(windows, CONCURRENCY, (w) =>
@@ -238,14 +327,14 @@ export async function marketTrades(
         try {
           return await tradesFromIndexer(deps, m.address, limit);
         } catch (e) {
-          const fallback = await tradesFromLogs(deps, book, range, limit);
+          const fallback = await tradesFromLogs(deps, book, range, limit, m.kuruVersion ?? 1);
           return {
             ...fallback,
             note: `The indexer failed (${e instanceof Error ? e.message : "unknown error"}); ${fallback.note}`,
           };
         }
       }
-      return tradesFromLogs(deps, book, range, limit);
+      return tradesFromLogs(deps, book, range, limit, m.kuruVersion ?? 1);
     },
     deps.now(),
   );

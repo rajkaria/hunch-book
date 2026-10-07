@@ -4,11 +4,12 @@ import { hunchRouterAbi, isBuy, Side, type TradeKind, touchPrice } from "@hunch-
 import { type ReactNode, useState } from "react";
 import { type Abi, type Address, erc20Abi } from "viem";
 import { getPublicClient } from "@/lib/chain/client";
-import { appDeployment, appNetworkLabel } from "@/lib/config";
+import { appNetworkLabel } from "@/lib/config";
 import { formatUsdc } from "@/lib/format";
 import { useBook, useProtocolAddresses, useWalletBalances, walletQueryKeys } from "@/lib/hooks";
 import { parseUsdcInput } from "@/lib/market/logic";
 import type { MarketView } from "@/lib/market/types";
+import { routerOf } from "@/lib/stacks";
 import {
   amountUnit,
   DEFAULT_SLIPPAGE_BPS,
@@ -43,12 +44,12 @@ export function TradeTicket({ m, initialSide = Side.Yes }: { m: MarketView; init
   const [custom, setCustom] = useState("");
 
   const wallet = useAppChain();
-  const book = useBook(m.book);
-  const protocol = useProtocolAddresses();
+  const book = useBook(m.book, m.kuruVersion);
+  const protocol = useProtocolAddresses(m);
   const balances = useWalletBalances(wallet.address, m);
   const tx = useTxRunner(walletQueryKeys(m, wallet.address));
 
-  const router = appDeployment.hunchBook.router;
+  const router = routerOf(m);
   const kind: TradeKind = tradeKindOf(tab, side);
   const unit = amountUnit(kind);
   const amount = parseUsdcInput(input);

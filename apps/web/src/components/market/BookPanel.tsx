@@ -170,7 +170,7 @@ export function BookLadder({ book, nowSeconds }: { book: BookSnapshot; nowSecond
 
 /** Depth ladder for a graduated market's Kuru book, refreshed every few seconds. */
 export function BookPanel({ m }: { m: MarketView }) {
-  const book = useBook(m.book);
+  const book = useBook(m.book, m.kuruVersion);
   const now = useNow();
   if (!m.book) return null;
   return (

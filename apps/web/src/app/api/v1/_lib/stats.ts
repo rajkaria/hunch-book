@@ -1,5 +1,5 @@
 import { formatBps, formatUsdc, type MarketInfo } from "@hunch-book/sdk";
-import { collateralVaultAbi } from "@hunch-book/shared";
+import { collateralVaultAbi, stacksOf } from "@hunch-book/shared";
 import { cached } from "./cache";
 import type { ApiDeps } from "./deps";
 import { allMarkets, PHASE_NAMES } from "./markets";
@@ -78,7 +78,11 @@ export async function protocolStats(deps: ApiDeps) {
     30_000,
     async () => {
       const client = deps.sdk.context.publicClient;
-      const vault = deps.deployment.hunchBook.vault;
+      // Every stack's vault, each solvent on its own; the totals below add them up.
+      const vaults = stacksOf(deps.deployment).flatMap((st) =>
+        st.contracts.vault ? [st.contracts.vault] : [],
+      );
+      const vault = vaults[0];
       const [markets, head, activity] = await Promise.all([
         allMarkets(deps),
         client.getBlock({ blockTag: "latest" }),
@@ -87,26 +91,39 @@ export async function protocolStats(deps: ApiDeps) {
       let vaultJson: Record<string, unknown> | null = null;
       if (vault) {
         const reads = await client.multicall({
-          contracts: [
-            { address: vault, abi: collateralVaultAbi, functionName: "totalCollateral" },
-            { address: vault, abi: collateralVaultAbi, functionName: "totalObligations" },
-            { address: vault, abi: collateralVaultAbi, functionName: "surplus" },
-            { address: vault, abi: collateralVaultAbi, functionName: "collateralCap" },
-          ],
+          contracts: vaults.flatMap((address) => [
+            { address, abi: collateralVaultAbi, functionName: "totalCollateral" },
+            { address, abi: collateralVaultAbi, functionName: "totalObligations" },
+            { address, abi: collateralVaultAbi, functionName: "surplus" },
+            { address, abi: collateralVaultAbi, functionName: "collateralCap" },
+          ]),
           allowFailure: true,
           multicallAddress: deps.sdk.context.multicallAddress,
           blockNumber: head.number,
         });
-        const v = (i: number): bigint | null =>
-          reads[i]?.status === "success" ? (reads[i]?.result as bigint) : null;
-        const surplus = v(2);
+        // Field i of every vault, summed; null if any vault's read failed.
+        const sum = (i: number): bigint | null => {
+          let total = 0n;
+          for (let k = 0; k < vaults.length; k++) {
+            const r = reads[k * 4 + i];
+            if (r?.status !== "success") return null;
+            total += r.result as bigint;
+          }
+          return total;
+        };
+        const surpluses = vaults.map((_, k) => reads[k * 4 + 2]);
+        const solvent = surpluses.every((r) => r?.status === "success")
+          ? surpluses.every((r) => (r?.result as bigint) >= 0n)
+          : null;
+        const surplus = sum(2);
         vaultJson = {
           address: vault,
-          usdcHeld: v(0) === null ? null : formatUsdc(v(0) as bigint),
-          owedUsdc: v(1) === null ? null : formatUsdc(v(1) as bigint),
+          addresses: vaults,
+          usdcHeld: sum(0) === null ? null : formatUsdc(sum(0) as bigint),
+          owedUsdc: sum(1) === null ? null : formatUsdc(sum(1) as bigint),
           surplusUsdc: surplus === null ? null : formatUsdc(surplus),
-          solvent: surplus === null ? null : surplus >= 0n,
-          capUsdc: v(3) === null ? null : formatUsdc(v(3) as bigint),
+          solvent,
+          capUsdc: sum(3) === null ? null : formatUsdc(sum(3) as bigint),
         };
       }
       const byPhase = Object.fromEntries(PHASE_NAMES.map((p) => [p, 0]));

@@ -5,6 +5,7 @@ import {
   hunchBookFactoryAbi,
   marketAbi,
   type Network,
+  stacksOf,
   txUrl,
 } from "@hunch-book/shared";
 import {
@@ -111,24 +112,30 @@ function dripChain(network: Network): DripChain {
 function relayChain(network: Network): RelayChain {
   const c = clientsFor(network);
   const deployment = deployments[network];
-  const factory = deployment.hunchBook.factory;
+  // Every stack's factory: a relayed stake is for a market of any of them.
+  const factories = stacksOf(deployment).flatMap((s) => (s.contracts.factory ? [s.contracts.factory] : []));
   const usdc = collateralOf(deployment);
   const chainId = deployment.chainId;
-  const requireDeployed = (): { factory: Address; usdc: Address } => {
-    if (!factory || !usdc) throw new Error(`Hunch Book is not deployed on ${network}.`);
-    return { factory, usdc };
+  const requireDeployed = (): { factories: Address[]; usdc: Address } => {
+    if (factories.length === 0 || !usdc) throw new Error(`Hunch Book is not deployed on ${network}.`);
+    return { factories, usdc };
   };
   return {
     relayer: c.relayer,
     chainId,
     async checkMarket(r: RelayStakeRequest): Promise<MarketCheck> {
       const d = requireDeployed();
-      const isMarket = await c.publicClient.readContract({
-        address: d.factory,
-        abi: hunchBookFactoryAbi,
-        functionName: "isMarket",
-        args: [r.market],
-      });
+      const answers = await Promise.all(
+        d.factories.map((factory) =>
+          c.publicClient.readContract({
+            address: factory,
+            abi: hunchBookFactoryAbi,
+            functionName: "isMarket",
+            args: [r.market],
+          }),
+        ),
+      );
+      const isMarket = answers.some(Boolean);
       if (!isMarket) return { isMarket, phase: -1, nonce: "0x", minStake: 0n };
       const [phase, nonce, caps] = await c.publicClient.multicall({
         allowFailure: false,

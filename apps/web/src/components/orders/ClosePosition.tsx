@@ -3,11 +3,11 @@
 import { hunchRouterAbi, Side } from "@hunch-book/shared";
 import { type Abi, type Address, erc20Abi } from "viem";
 import { getPublicClient } from "@/lib/chain/client";
-import { appDeployment } from "@/lib/config";
 import { formatUsdc } from "@/lib/format";
 import { useBook, useWalletBalances, walletQueryKeys } from "@/lib/hooks";
 import type { MarketView } from "@/lib/market/types";
 import { type ClosePlan, closePlan } from "@/lib/orders/close";
+import { routerOf } from "@/lib/stacks";
 import { DEFAULT_SLIPPAGE_BPS, formatBps, tradeDeadline } from "@/lib/trade/ticket";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, useTxRunner } from "@/lib/wallet/useTxRunner";
@@ -25,10 +25,10 @@ const SIDE_NAME: Record<Side, string> = { [Side.Yes]: "YES", [Side.No]: "NO" };
  */
 export function ClosePosition({ m }: { m: MarketView }) {
   const wallet = useAppChain();
-  const book = useBook(m.book);
+  const book = useBook(m.book, m.kuruVersion);
   const balances = useWalletBalances(wallet.address, m);
   const tx = useTxRunner(walletQueryKeys(m, wallet.address));
-  const router = appDeployment.hunchBook.router;
+  const router = routerOf(m);
 
   if (!wallet.isConnected || !wallet.address || !balances.data) return null;
   const ctx = {

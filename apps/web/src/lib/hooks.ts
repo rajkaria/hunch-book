@@ -20,6 +20,7 @@ import {
 import { appChain, appDeployment, appNetwork, isDeployed, usdcOf } from "./config";
 import { planSettlement } from "./market/settle";
 import type { ChainClock, MarketView } from "./market/types";
+import { routerOf } from "./stacks";
 import { findSettlementTx, runVerification } from "./verify/read";
 
 // React Query hooks over the read layer. Query keys never hold bigints.
@@ -99,10 +100,12 @@ export function useUserPosition(market: Address, user: Address | undefined) {
   });
 }
 
-export function useProtocolAddresses() {
+/** The vault and USDC of `market`'s stack (the primary stack when no market is given). */
+export function useProtocolAddresses(market?: Pick<MarketView, "stack">) {
+  const stack = market?.stack ?? "primary";
   return useQuery({
-    queryKey: queryKeys.protocol(),
-    queryFn: () => readProtocolAddresses(getPublicClient(), appDeployment),
+    queryKey: [...queryKeys.protocol(), stack],
+    queryFn: () => readProtocolAddresses(getPublicClient(), appDeployment, stack),
     enabled: deployed(),
     staleTime: Number.POSITIVE_INFINITY,
   });
@@ -162,11 +165,15 @@ export function useNow(intervalMs = 1_000): number | null {
   return now;
 }
 
-/** A graduated market's Kuru book: levels, params and our maker's share of each level. */
-export function useBook(book: Address | null) {
+/**
+ * A graduated market's Kuru book: levels, params and our maker's share of each level (Kuru v1 only).
+ * `kuruVersion` is the market's (MarketView.kuruVersion; absent = 1).
+ */
+export function useBook(book: Address | null, kuruVersion: 1 | 2 = 1) {
   return useQuery({
     queryKey: queryKeys.book(book ?? "0x"),
-    queryFn: () => readBookSnapshot(getPublicClient(), book as Address, appDeployment.wallets.maker),
+    queryFn: () =>
+      readBookSnapshot(getPublicClient(), book as Address, appDeployment.wallets.maker, kuruVersion),
     enabled: deployed() && book !== null,
     refetchInterval: 5_000,
   });
@@ -174,7 +181,7 @@ export function useBook(book: Address | null) {
 
 /** The wallet's USDC, YES and NO for one market, and its allowances to the router and the vault. */
 export function useWalletBalances(user: Address | undefined, market: MarketView) {
-  const protocol = useProtocolAddresses();
+  const protocol = useProtocolAddresses(market);
   return useQuery({
     queryKey: queryKeys.balances(market.address, user ?? "0x"),
     queryFn: () =>
@@ -183,7 +190,7 @@ export function useWalletBalances(user: Address | undefined, market: MarketView)
         {
           usdc: protocol.data?.usdc as Address,
           vault: protocol.data?.vault as Address,
-          router: appDeployment.hunchBook.router,
+          router: routerOf(market),
           yes: market.tokens.yes,
           no: market.tokens.no,
         },

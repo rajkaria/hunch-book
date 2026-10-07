@@ -3,8 +3,12 @@ import {
   decodeL2Book,
   HUNCH_BOOK_PARAMS,
   type KuruMatchParams,
+  type KuruV2L2Result,
   kuruOrderBookAbi,
+  kuruV2OrderBookAbi,
+  type L2Book,
   type L2Level,
+  l2BookFromV2,
   midPrice,
   ONE_USDC,
 } from "@hunch-book/shared";
@@ -71,26 +75,69 @@ export function toE6(price: bigint, params: KuruMatchParams): bigint {
   return (price * ONE_USDC) / params.pricePrecision;
 }
 
-/** Reads a book by its address. */
+/** Kuru v2 `getMarketParams()`: pricePrecision, sizePrecision, tickSize, min and max quote notional, fees (pps). */
+type RawParamsV2 = readonly [number, bigint, number, bigint, bigint, bigint, bigint];
+
+/**
+ * Kuru v2 `getMarketParams()` as matching parameters: the taker fee in pps selects v2 matching in the
+ * shared quote code (docs/PROTOCOL.md §8.1, Kuru v2). Hunch books are 6-decimal YES against 6-decimal USDC.
+ */
+export function matchParamsV2(raw: RawParamsV2): KuruMatchParams {
+  return {
+    pricePrecision: BigInt(raw[0]),
+    sizePrecision: raw[1],
+    baseDecimals: 6,
+    quoteDecimals: 6,
+    takerFeeBps: raw[5] / 1000n,
+    takerFeePps: raw[5],
+  };
+}
+
+/** Levels per side read from a v2 book. */
+const V2_LEVELS = 64n;
+
+/** Reads a book by its address (`kuruVersion`: the market's, 1 when absent). */
 export async function readBook(
   ctx: HunchContext,
   book: Address,
   market: Address,
-  options: { blockNumber?: bigint } = {},
+  options: { blockNumber?: bigint; kuruVersion?: 1 | 2 } = {},
 ): Promise<OrderBook> {
-  const results = await multicall(
-    ctx,
-    [
-      { address: book, abi: kuruOrderBookAbi as Abi, functionName: "getL2Book", args: [] },
-      { address: book, abi: kuruOrderBookAbi as Abi, functionName: "getMarketParams" },
-    ],
-    options,
-  );
-  const data = ok<Hex>(results[0]);
-  if (data === undefined) throw new Error(`Could not read the Kuru book ${book}.`);
-  const raw = ok<RawParams>(results[1]);
-  const params = raw ? matchParams(raw) : HUNCH_BOOK_PARAMS;
-  const l2 = decodeL2Book(data);
+  let l2: L2Book;
+  let params: KuruMatchParams;
+  if (options.kuruVersion === 2) {
+    const [block, results] = await Promise.all([
+      options.blockNumber ?? ctx.publicClient.getBlockNumber(),
+      multicall(
+        ctx,
+        [
+          { address: book, abi: kuruV2OrderBookAbi as Abi, functionName: "getL2Book", args: [V2_LEVELS] },
+          { address: book, abi: kuruV2OrderBookAbi as Abi, functionName: "getMarketParams" },
+        ],
+        options,
+      ),
+    ]);
+    const levels = ok<KuruV2L2Result>(results[0]);
+    const raw = ok<RawParamsV2>(results[1]);
+    if (levels === undefined || raw === undefined)
+      throw new Error(`Could not read the Kuru v2 book ${book}.`);
+    l2 = l2BookFromV2(levels, block);
+    params = matchParamsV2(raw);
+  } else {
+    const results = await multicall(
+      ctx,
+      [
+        { address: book, abi: kuruOrderBookAbi as Abi, functionName: "getL2Book", args: [] },
+        { address: book, abi: kuruOrderBookAbi as Abi, functionName: "getMarketParams" },
+      ],
+      options,
+    );
+    const data = ok<Hex>(results[0]);
+    if (data === undefined) throw new Error(`Could not read the Kuru book ${book}.`);
+    const raw = ok<RawParams>(results[1]);
+    params = raw ? matchParams(raw) : HUNCH_BOOK_PARAMS;
+    l2 = decodeL2Book(data);
+  }
   const mid = midPrice(l2);
   const bid = l2.bids[0]?.price;
   const ask = l2.asks[0]?.price;
@@ -111,7 +158,7 @@ export async function readBook(
 export async function getOrderBook(ctx: HunchContext, market: Address | MarketInfo): Promise<OrderBook> {
   const m = await requireMarket(ctx, market);
   if (!m.book) throw new Error(`Market #${m.id} has no Kuru book yet: it trades only after graduation.`);
-  return readBook(ctx, m.book, m.address);
+  return readBook(ctx, m.book, m.address, { kuruVersion: m.kuruVersion ?? 1 });
 }
 
 /** Levels in E6 prices, for display and JSON. */

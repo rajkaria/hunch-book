@@ -133,12 +133,18 @@ export function lifecycleActions(
   const noWallet = "Connect a wallet to see what you can claim.";
 
   if (m.phase === Phase.Pool) {
+    // Kuru v2: only Kuru creates books, after setting the YES token up (a day or two), so the book must
+    // be registered first (docs/PROTOCOL.md §8.1, Kuru v2).
+    const waitingForKuru = m.kuruVersion === 2 && m.bookReady !== true;
     actions.push({
       id: "graduate",
       label: "Graduate to Kuru",
-      enabled: m.ruleMet === true,
-      reason:
-        m.ruleMet === true
+      enabled: m.ruleMet === true && !waitingForKuru,
+      reason: waitingForKuru
+        ? m.ruleMet === true
+          ? "The rule is met. Kuru creates this market's book first (on Kuru v2 that can take a day or two); the keeper asked for it and graduates the pool once it is registered. If it never arrives, the pool settles as a pool."
+          : "The pool does not meet its graduation rule yet. Kuru is creating this market's book meanwhile (Kuru v2)."
+        : m.ruleMet === true
           ? "The rule is met. Anyone can graduate the pool into YES and NO tokens on a Kuru book."
           : "The pool does not meet its graduation rule yet.",
     });

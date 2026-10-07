@@ -28,7 +28,7 @@ export function StakeTicket({ m, initialSide = Side.Yes }: { m: MarketView; init
   const [input, setInput] = useState("");
 
   const wallet = useAppChain();
-  const protocol = useProtocolAddresses();
+  const protocol = useProtocolAddresses(m);
   const usdc = useUsdcState(wallet.address, protocol.data);
   const position = useUserPosition(m.address, wallet.address);
   const tx = useTxRunner([

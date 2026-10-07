@@ -2,7 +2,9 @@ import {
   decodeL2Book,
   type KuruMatchParams,
   kuruOrderBookAbi as kuruBookAbi,
+  kuruV2OrderBookAbi,
   type L2Level,
+  l2BookFromV2,
 } from "@hunch-book/shared";
 import { type Abi, type Address, isAddressEqual } from "viem";
 import { MULTICALL3, type ReadClient } from "./client";
@@ -156,12 +158,75 @@ export async function readOwnedSizes(
   return owned;
 }
 
+/** Levels per side read from a Kuru v2 book. */
+const V2_LEVELS = 64n;
+
+/**
+ * A Kuru v2 book (docs/PROTOCOL.md §8.1, Kuru v2) as the same snapshot: levels from getL2Book(levels),
+ * the params with the taker fee in pps (which selects v2 matching in the shared quote code), and no
+ * owner attribution (v2 orders sit in per-account slots that the book does not expose by price).
+ * Swaps have no minimum size; minQuoteNotional applies to resting orders only.
+ */
+export async function readBookSnapshotV2(client: ReadClient, book: Address): Promise<BookSnapshot> {
+  const [head, results] = await Promise.all([
+    client.getBlock(),
+    client.multicall({
+      contracts: [
+        { address: book, abi: kuruV2OrderBookAbi, functionName: "getL2Book", args: [V2_LEVELS] },
+        { address: book, abi: kuruV2OrderBookAbi, functionName: "getMarketParams" },
+        { address: book, abi: kuruV2OrderBookAbi, functionName: "marketState" },
+        { address: book, abi: kuruV2OrderBookAbi, functionName: "baseToken" },
+        { address: book, abi: kuruV2OrderBookAbi, functionName: "quoteToken" },
+      ],
+      allowFailure: true,
+      multicallAddress: MULTICALL3,
+    }),
+  ]);
+  const [l2, params, state, base, quote] = results;
+  if (
+    l2.status !== "success" ||
+    params.status !== "success" ||
+    base.status !== "success" ||
+    quote.status !== "success"
+  ) {
+    throw new Error("Could not read this Kuru v2 book.");
+  }
+  const block = head.number;
+  const levels = l2BookFromV2(l2.result, block);
+  const [pricePrecision, sizePrecision, tickSize, , maxQuoteNotional, takerFeePps] = params.result;
+  return {
+    address: book,
+    block,
+    readAt: Date.now(),
+    bids: levels.bids,
+    asks: levels.asks,
+    params: {
+      pricePrecision: BigInt(pricePrecision),
+      sizePrecision: BigInt(sizePrecision),
+      // Hunch books are 6-decimal YES against 6-decimal USDC on both versions (GraduatorV2 checks it).
+      baseDecimals: 6,
+      quoteDecimals: 6,
+      base: base.result,
+      quote: quote.result,
+      tickSize: BigInt(tickSize),
+      minSize: 1n,
+      maxSize: (BigInt(maxQuoteNotional) * BigInt(sizePrecision)) / BigInt(pricePrecision),
+      takerFeeBps: takerFeePps / 1000n,
+      takerFeePps,
+    },
+    state: state.status === "success" ? Number(state.result) : BookState.Active,
+    owned: null,
+  };
+}
+
 /** Reads a book's L2 levels, params and state in one call, then attributes `owner`'s orders. */
 export async function readBookSnapshot(
   client: ReadClient,
   book: Address,
   owner?: Address,
+  kuruVersion: 1 | 2 = 1,
 ): Promise<BookSnapshot> {
+  if (kuruVersion === 2) return readBookSnapshotV2(client, book);
   const [l2, params, state] = await multicall(client, [
     { address: book, functionName: "getL2Book" },
     { address: book, functionName: "getMarketParams" },

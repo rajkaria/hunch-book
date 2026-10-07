@@ -17,6 +17,7 @@ import {
   type TradeKind,
   type Verification,
 } from "@hunch-book/sdk";
+import { stacksOf } from "@hunch-book/shared";
 import { isAddress } from "viem";
 import { z } from "zod";
 import type { McpConfig } from "./config.js";
@@ -351,6 +352,15 @@ export const TOOLS = [
         router: sdk.deployment.hunchBook.router ?? null,
         usdc: sdk.deployment.hunchBook.usdc ?? sdk.deployment.external.usdc ?? null,
       },
+      // Every stack (a market's `stack` field names the one it belongs to; its trades and stakes go to
+      // that stack's router and vault, which the tools pick on their own).
+      stacks: stacksOf(sdk.deployment).map((s) => ({
+        name: s.name,
+        kuruVersion: s.kuruVersion,
+        factory: s.contracts.factory ?? null,
+        vault: s.contracts.vault ?? null,
+        router: s.contracts.router ?? null,
+      })),
       templates: Object.values(TEMPLATES).map((t) => ({
         id: t.id,
         name: t.label,
