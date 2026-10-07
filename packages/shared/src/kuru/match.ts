@@ -15,7 +15,10 @@ export interface KuruMatchParams {
   sizePrecision: bigint;
   baseDecimals: number;
   quoteDecimals: number;
+  /** v1 taker fee in basis points (ignored when `takerFeePps` is set). */
   takerFeeBps: bigint;
+  /** v2 taker fee in parts per 10^7. Setting it selects v2 matching (see `simulateMarketBuy`). */
+  takerFeePps?: bigint;
 }
 
 /** Every Hunch book: 6-decimal YES and USDC with both precisions at 1e6, so book units are token units. */
@@ -29,6 +32,22 @@ export const HUNCH_BOOK_PARAMS: KuruMatchParams = {
 
 const ceilDiv = (a: bigint, b: bigint): bigint => (a === 0n ? 0n : (a - 1n) / b + 1n);
 const pow10 = (n: number): bigint => 10n ** BigInt(n);
+const PPS = 10_000_000n;
+
+/** True for a Kuru v2 book's params (fees in pps, exact-in `swap` matching). */
+export const isV2Match = (p: KuruMatchParams): boolean => p.takerFeePps !== undefined;
+
+/** Kuru's taker fee on `gross` output, rounded up (v1 bps, v2 pps). */
+export function takerFee(gross: bigint, p: KuruMatchParams): bigint {
+  return p.takerFeePps !== undefined
+    ? ceilDiv(gross * p.takerFeePps, PPS)
+    : ceilDiv(gross * p.takerFeeBps, BPS);
+}
+
+/** Params for a Hunch book on Kuru v2 with the given taker fee (parts per 10^7). */
+export function hunchBookParamsV2(takerFeePps: bigint): KuruMatchParams {
+  return { ...HUNCH_BOOK_PARAMS, takerFeePps };
+}
 
 export interface MarketBuyFill {
   /** Base credited to the taker after the fee, in base token units. */
@@ -56,6 +75,7 @@ export function simulateMarketBuy(
   quoteIn: bigint,
   p: KuruMatchParams,
 ): MarketBuyFill {
+  if (isV2Match(p)) return simulateSwapBuyV2(asks, quoteIn, p);
   let q = quoteIn;
   let filled = 0n;
   let levels = 0;
@@ -76,11 +96,44 @@ export function simulateMarketBuy(
   let fee = 0n;
   if (filled !== 0n) {
     const gross = (filled * pow10(p.baseDecimals)) / p.sizePrecision;
-    fee = ceilDiv(gross * p.takerFeeBps, BPS);
+    fee = takerFee(gross, p);
     baseOut = gross - fee;
   }
   const refund = q > 0n ? (q * pow10(p.quoteDecimals)) / p.pricePrecision : 0n;
   return { baseOut, filled, fee, refund, levels, exhausted: q > 0n };
+}
+
+/**
+ * Kuru v2 `swap` buying with `quoteIn` (exact in). At each ask level (price p, size s) it takes
+ * t = min(floor(q · sP / p), s) for ceil(t · p / sP) quote and moves on; it stops when the rest cannot
+ * buy one size unit (that dust is not spent). The fee is taken from the base, rounded up. This is the
+ * model contracts/test/mocks/MockKuruV2.sol uses. Against `estimateSwap` on Kuru's testnet books, sells
+ * match exactly and buys within a few units: books can also carry passive liquidity bands, which
+ * `getL2Book` does not list. HunchRouterV2 enforces the user's limits onchain, not this quote.
+ */
+function simulateSwapBuyV2(asks: readonly L2Level[], quoteIn: bigint, p: KuruMatchParams): MarketBuyFill {
+  let q = quoteIn;
+  let filled = 0n;
+  let levels = 0;
+  for (const level of asks) {
+    if (q <= 0n || level.price <= 0n) break;
+    const fillable = (q * p.sizePrecision) / level.price;
+    if (fillable === 0n) break;
+    levels += 1;
+    const take = fillable < level.size ? fillable : level.size;
+    q -= ceilDiv(take * level.price, p.sizePrecision);
+    filled += take;
+  }
+  let baseOut = 0n;
+  let fee = 0n;
+  if (filled !== 0n) {
+    const gross = (filled * pow10(p.baseDecimals)) / p.sizePrecision;
+    fee = takerFee(gross, p);
+    baseOut = gross - fee;
+  }
+  const refund = q > 0n ? (q * pow10(p.quoteDecimals)) / p.pricePrecision : 0n;
+  const depth = asks.reduce((sum, l) => sum + l.size, 0n);
+  return { baseOut, filled, fee, refund, levels, exhausted: q > 0n && filled >= depth };
 }
 
 export interface MarketSellFill {
@@ -106,6 +159,7 @@ export function simulateMarketSell(
   sizeIn: bigint,
   p: KuruMatchParams,
 ): MarketSellFill {
+  if (isV2Match(p)) return simulateSwapSellV2(bids, sizeIn, p);
   let s = sizeIn;
   let quote = 0n;
   let levels = 0;
@@ -120,7 +174,36 @@ export function simulateMarketSell(
   let fee = 0n;
   if (quote !== 0n) {
     const gross = (quote * pow10(p.quoteDecimals)) / p.pricePrecision;
-    fee = ceilDiv(gross * p.takerFeeBps, BPS);
+    fee = takerFee(gross, p);
+    quoteOut = gross - fee;
+  }
+  const refund = s > 0n ? (s * pow10(p.baseDecimals)) / p.sizePrecision : 0n;
+  return { quoteOut, filled: sizeIn - s, fee, refund, levels, exhausted: s > 0n };
+}
+
+/**
+ * Kuru v2 `swap` selling `sizeIn` base (exact in). Each bid level pays floor(t · p / sP) for the t it
+ * takes; matching stops at a level where that rounds to zero (the dust comes back). Fee from the quote,
+ * rounded up.
+ */
+function simulateSwapSellV2(bids: readonly L2Level[], sizeIn: bigint, p: KuruMatchParams): MarketSellFill {
+  let s = sizeIn;
+  let quote = 0n;
+  let levels = 0;
+  for (const level of bids) {
+    if (s <= 0n) break;
+    const take = s < level.size ? s : level.size;
+    const paid = (take * level.price) / p.sizePrecision;
+    if (paid === 0n) break;
+    levels += 1;
+    quote += paid;
+    s -= take;
+  }
+  let quoteOut = 0n;
+  let fee = 0n;
+  if (quote !== 0n) {
+    const gross = (quote * pow10(p.quoteDecimals)) / p.pricePrecision;
+    fee = takerFee(gross, p);
     quoteOut = gross - fee;
   }
   const refund = s > 0n ? (s * pow10(p.baseDecimals)) / p.sizePrecision : 0n;
@@ -140,6 +223,7 @@ export function quoteForExactBase(
   p: KuruMatchParams,
 ): bigint | null {
   if (baseOut <= 0n) return null;
+  if (isV2Match(p)) return quoteForExactBaseV2(asks, baseOut, p);
   if (p.takerFeeBps >= BPS) return null;
   const gross = ceilDiv(baseOut * BPS, BPS - p.takerFeeBps);
   let cumulative = 0n;
@@ -207,4 +291,22 @@ export function withCumulative(levels: readonly L2Level[]): DepthRow[] {
     running += l.size;
     return { price: l.price, size: l.size, cumulative: running };
   });
+}
+
+/**
+ * v2: the least quote whose `simulateSwapBuyV2` credits at least `baseOut`, by bisection over the model
+ * (HunchRouterV2 searches Kuru's own `estimateSwap` the same way onchain). Null if the asks cannot
+ * supply it.
+ */
+function quoteForExactBaseV2(asks: readonly L2Level[], baseOut: bigint, p: KuruMatchParams): bigint | null {
+  const all = asks.reduce((sum, l) => sum + ceilDiv(l.size * l.price, p.sizePrecision), 0n) + 1n;
+  if (simulateMarketBuy(asks, all, p).baseOut < baseOut) return null;
+  let lo = 0n;
+  let hi = all;
+  while (hi - lo > 1n) {
+    const mid = (lo + hi) / 2n;
+    if (simulateMarketBuy(asks, mid, p).baseOut >= baseOut) hi = mid;
+    else lo = mid;
+  }
+  return hi;
 }
