@@ -1,4 +1,4 @@
-import { KURU_EMPTY_BID, Phase } from "@hunch-book/shared";
+import { bestBidAskV2AsV1, KURU_EMPTY_BID, Phase } from "@hunch-book/shared";
 
 // When a ConditionalOrders order may execute, as pure functions of the order, the market's YES book
 // and the time. They mirror the contract (contracts/src/periphery/ConditionalOrders.sol and
@@ -49,6 +49,15 @@ export interface YesQuote {
 const ONE = 1_000_000n;
 const SCALE_DOWN = 1_000_000_000_000n;
 const MAX = KURU_EMPTY_BID;
+
+/**
+ * BookPrice.yesQuoteV2 from a Kuru v2 book's bestBidAsk() (two uint32 in pricePrecision units; 0 or
+ * 2^32 - 1 is empty on either side): the v1 reading of the same prices at 1e18, which is exact.
+ */
+export function yesQuoteV2(bestBid: bigint, bestAsk: bigint): YesQuote {
+  const [bid, ask] = bestBidAskV2AsV1(bestBid, bestAsk, ONE);
+  return yesQuote(bid, ask);
+}
 
 /** BookPrice.yesQuote from bestBidAsk()'s raw answer. */
 export function yesQuote(bestBid: bigint, bestAsk: bigint): YesQuote {

@@ -119,6 +119,7 @@ describe("Health", () => {
       "autoRedeem",
       "orders",
       "oracle",
+      "kuruFeeds",
     ]);
   });
 });

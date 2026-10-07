@@ -50,6 +50,7 @@ const testnetGlobals: Globals = {
   graduator: GRADUATOR,
   canCreateBooks: true,
   usdc: "0x13c5B2e982F437566991c4d9aC0a30F9f9aC15Ed",
+  kuruVersion: 1,
 };
 const mainnetGlobals: Globals = { ...testnetGlobals, canCreateBooks: false };
 
@@ -138,6 +139,56 @@ describe("graduate", () => {
     });
     expect(deployed[0]).toMatchObject({ action: "register-book" });
     expect(deployed[0]?.reason).toContain(BOOK);
+  });
+
+  it("Kuru v2: looks for the book from creation, asks for it, registers it before the pool fills", () => {
+    const v2: Globals = { ...mainnetGlobals, kuruVersion: 2 };
+    const filling = market({ ruleMet: false, yesTotal: 10n * USDC, noTotal: 0n, stakers: 1 });
+    // From creation, whatever the rule: Kuru's setup takes days.
+    expect(needsBookLookup(filling, v2)).toBe(true);
+    expect(needsBookLookup({ ...filling, graduatorBook: BOOK }, v2)).toBe(false);
+    expect(needsBookLookup({ ...filling, phase: Phase.PoolLocked }, v2)).toBe(false);
+    expect(needsBookLookup(filling, mainnetGlobals)).toBe(false);
+
+    expect(
+      plan(filling, at(1n), { globals: v2, predictedBook: { address: BOOK, deployed: false } })[0],
+    ).toEqual({
+      job: "graduate",
+      action: "book-request",
+      reason: "only Kuru can create v2 books: ask Kuru for this market's book and token setup",
+    });
+    const blocked = plan(filling, at(1n), {
+      globals: v2,
+      predictedBook: {
+        address: BOOK,
+        deployed: true,
+        problem: { code: 10, text: "Kuru has not enabled the YES token or USDC" },
+      },
+    })[0];
+    expect(blocked).toMatchObject({ action: "book-request" });
+    expect(blocked?.reason).toContain("Kuru has not enabled the YES token or USDC");
+    const ready = plan(filling, at(1n), {
+      globals: v2,
+      predictedBook: { address: BOOK, deployed: true, problem: { code: 0, text: "none" } },
+    })[0];
+    expect(ready).toMatchObject({ action: "register-book" });
+
+    // Registered: graduate once the rule is met (and not while graduation is paused).
+    expect(plan({ ...filling, graduatorBook: BOOK }, at(1n), { globals: v2 })[0]).toMatchObject({
+      job: "graduate",
+      reason: expect.stringContaining("rule not met"),
+    });
+    expect(plan(market({ graduatorBook: BOOK }), at(1n), { globals: v2 })[0]).toMatchObject({
+      action: "graduate",
+    });
+    expect(
+      plan(market({ graduatorBook: BOOK }), at(1n), { globals: { ...v2, graduationPaused: true } })[0]
+        ?.action,
+    ).toBe(undefined);
+    expect(plan(filling, at(1n), { globals: { ...v2, graduator: zeroAddress } })[0]).toEqual({
+      job: "graduate",
+      reason: "the factory has no graduator yet (WireKuruV2.s.sol)",
+    });
   });
 
   it("does nothing for graduation outside the Pool phase", () => {

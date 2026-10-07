@@ -54,6 +54,12 @@ export const ARTIFACTS = {
   conditionalOrders: artifact("ConditionalOrders.sol", "ConditionalOrders"),
   oracle: artifact("ImpliedProbabilityOracle.sol", "ImpliedProbabilityOracle"),
   peripheryBook: artifact("PeripheryBook.sol", "PeripheryBook"),
+  // Kuru v2: GraduatorV2, the limiter feeds' factory, and the contracts' mock of Kuru's v2 exchange.
+  graduatorV2: artifact("GraduatorV2.sol", "GraduatorV2"),
+  adapterFactory: artifact("OutcomeTokenPriceAdapterFactory.sol", "OutcomeTokenPriceAdapterFactory"),
+  mockKuruAccountCoreV2: artifact("MockKuruV2.sol", "MockKuruAccountCoreV2"),
+  mockKuruSpotRouterV2: artifact("MockKuruV2.sol", "MockKuruSpotRouterV2"),
+  mockKuruLimiterV2: artifact("MockKuruV2.sol", "MockKuruWithdrawalLimiterV2"),
 };
 export type ArtifactName = keyof typeof ARTIFACTS;
 

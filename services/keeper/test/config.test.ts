@@ -2,7 +2,14 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { describeConfig, loadEnvFile, parseConfig, parseEnvFile, secretsOf } from "../src/config.js";
+import {
+  configForStack,
+  describeConfig,
+  loadEnvFile,
+  parseConfig,
+  parseEnvFile,
+  secretsOf,
+} from "../src/config.js";
 
 // A throwaway key generated for this test file only; it holds nothing on any network.
 const KEY = `0x${"cd".repeat(32)}`;
@@ -146,6 +153,32 @@ describe("parseConfig", () => {
   it("does not treat the public RPC as a secret", () => {
     expect(secretsOf(parseConfig({}))).toEqual([]);
     expect(describeConfig(parseConfig({})).rpcUrl).toBe("https://testnet-rpc.monad.xyz");
+  });
+});
+
+describe("stacks", () => {
+  it("reads the Kuru v2 poke interval and the stacks to run", () => {
+    expect(parseConfig({})).toMatchObject({ kuruPokeSeconds: 900, stacks: undefined });
+    expect(
+      parseConfig({ KEEPER_KURU_POKE_SECONDS: "300", KEEPER_STACKS: " primary, kuruV2 ,," }),
+    ).toMatchObject({
+      kuruPokeSeconds: 300,
+      stacks: ["primary", "kuruV2"],
+    });
+    expect(() => parseConfig({ KEEPER_KURU_POKE_SECONDS: "0" })).toThrow(/KEEPER_KURU_POKE_SECONDS/);
+    expect(() => parseConfig({ KEEPER_JOBS_OFF: "kuruFeeds" })).not.toThrow();
+  });
+
+  it("gives extra stacks their own state and health files", () => {
+    const config = parseConfig({
+      KEEPER_STATE_FILE: "/var/k/state.json",
+      KEEPER_HEALTH_FILE: "/var/k/health",
+    });
+    expect(configForStack(config, { name: "primary", primary: true })).toBe(config);
+    expect(configForStack(config, { name: "kuruV2", primary: false })).toMatchObject({
+      stateFile: "/var/k/state.kuruV2.json",
+      healthFile: "/var/k/health.kuruV2",
+    });
   });
 });
 

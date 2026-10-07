@@ -25,6 +25,29 @@ tokens, settling, voiding. The keeper makes sure someone does, on time, for ever
 Every decision comes from pure functions in [`src/plan.ts`](./src/plan.ts) of one market's state and
 the chain's current block and time, and carries a plain reason. The dry run prints them all.
 
+### Stacks and Kuru v2
+
+A deployments file can hold several stacks (a factory with its graduator, router and periphery): the
+primary one under `hunchBook`, extra ones under `stacks` (testnet: `kuruV2`). The keeper runs one keeper per
+stack in the same process, one after another (so its transactions never race for a nonce), each with its
+own state and health files (`state.json` becomes `state.kuruV2.json`). Log lines carry `stack` when there
+is more than one. `KEEPER_STACKS` limits it to the named stacks.
+
+On a Kuru v2 stack (`kuruVersion: 2`, [docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-kuru)) only Kuru
+creates books, after a per-token setup that takes days. So the graduate job changes:
+
+| Step | When | What the keeper does |
+|---|---|---|
+| Ask for the book | A pool market has no registered book, from creation on | `book-request` log line and webhook post: the token setup with the YES feed's address, the exact `deploySpotMarket` arguments from `GraduatorV2.bookRequest`, and the address the book will land at. Repeated at most every `KEEPER_BOOK_REQUEST_SECONDS`. |
+| Register | Kuru has deployed the book at `GraduatorV2.predictedBook` and `bookProblem` is none | `graduatorV2.registerBook(market, book)`, before the pool fills |
+| Graduate | The book is registered and the pool meets its rule | `market.graduate()` |
+
+and two cycle jobs do more: the Kuru feeds job (`kuruFeeds`) creates each open market's YES and NO feeds
+on the stack's `kuruFeedFactory` (`createAdapter`), and the oracle job pokes every open market, pools too,
+at most every `KEEPER_KURU_POKE_SECONDS` (or `KEEPER_ORACLE_POKE_SECONDS` when lower). Kuru's
+WithdrawalLimiter reads those feeds and refuses a stale price, and Kuru reads the price when it sets a
+token up.
+
 After the markets, four jobs look at every market at once ([`src/jobs/`](./src/jobs)). Each runs only when
 its contract is in `hunchBook.periphery` (or, for series, a file is set), and each can be switched off by
 name with `KEEPER_JOBS_OFF`:
@@ -34,7 +57,8 @@ name with `KEEPER_JOBS_OFF`:
 | Auto-redeem (`autoRedeem`) | A graduated market has settled or voided, and holders who opted in on the AutoRedeemer still hold redeemable tokens with an allowance | `autoRedeemer.redeemManyFor(market, holders)`, in batches |
 | Conditional orders (`orders`) | An open ConditionalOrders order's trigger holds against its market's book | `conditionalOrders.execute(orderId)` |
 | Oracle pokes (`oracle`) | A market with a live book was last poked at least `KEEPER_ORACLE_POKE_SECONDS` ago | `oracle.pokeMany(markets)` |
-| Recurring series (`series`) | A series period's creation point has come and the period has no market yet | `factory.createMarket(...)` with the keeper's first stake ([docs/SERIES.md](../../docs/SERIES.md)) |
+| Recurring series (`series`) | A series period's creation point has come and the period has no market yet (primary stack only) | `factory.createMarket(...)` with the keeper's first stake ([docs/SERIES.md](../../docs/SERIES.md)) |
+| Kuru feeds (`kuruFeeds`, Kuru v2 stacks) | An open market has no YES or NO feed on the stack's `kuruFeedFactory` | `kuruFeedFactory.createAdapter(market, side)` |
 
 ### Settlement evidence, per template
 
@@ -186,15 +210,17 @@ To run it as a service (Railway, launchd, or in the background on this machine),
 | `KEEPER_SCAN_REQUESTS_PER_CYCLE` | `300` | Log requests the keeper may spend per cycle. |
 | `KEEPER_SETTLE_RETRY_SECONDS` | `60` | First wait after a settlement that could not go through. Doubles each time. |
 | `KEEPER_SETTLE_RETRY_MAX_SECONDS` | `1800` | Longest wait between settlement attempts. |
-| `KEEPER_BOOK_REQUEST_SECONDS` | `21600` | How often a book request to Kuru is repeated for one market (mainnet). |
+| `KEEPER_BOOK_REQUEST_SECONDS` | `21600` | How often a book request to Kuru is repeated for one market (Kuru v1 mainnet, and every Kuru v2 stack). |
 | `KEEPER_STATE_FILE` | `services/keeper/.keeper-state.json` | Scan cursors, stakers found and book requests sent. Can be deleted at any time; it is rebuilt from the chain. |
 | `KEEPER_HEALTH_FILE` | `services/keeper/health.json` | Where the health snapshot is written after every cycle. |
-| `KEEPER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET http://localhost:<port>/health`. |
+| `KEEPER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET http://localhost:<port>/health` (the primary stack) and `GET /health/<stack>` (each extra stack). |
 | `KEEPER_ALERT_WEBHOOK` | none | When set, errors, a low balance, markets that cannot settle (or still have not after the longest retry wait) and book requests are posted there as JSON. |
 | `KEEPER_ALERT_REPEAT_SECONDS` | `1800` | The same alert (same event, same market) is posted at most this often. |
 | `KEEPER_MARKETS` | all | Comma-separated market addresses to handle; all markets when unset. |
-| `KEEPER_JOBS_OFF` | none | Comma-separated jobs to switch off: `prove`, `snapshot`, `autoRedeem`, `orders`, `oracle`, `series`. |
+| `KEEPER_JOBS_OFF` | none | Comma-separated jobs to switch off: `prove`, `snapshot`, `autoRedeem`, `orders`, `oracle`, `series`, `kuruFeeds`. |
 | `KEEPER_ORACLE_POKE_SECONDS` | `1800` | Poke each market with a live book at most this often; `0` turns pokes off. |
+| `KEEPER_KURU_POKE_SECONDS` | `900` | Kuru v2 stacks: poke every open market (pools too) at most this often, to keep Kuru's limiter feeds fresh. Keep it well under the maximum price age Kuru sets for them. |
+| `KEEPER_STACKS` | all | Comma-separated stacks to run (`primary`, or names under `stacks` such as `kuruV2`); every deployed stack when unset. |
 | `KEEPER_ORACLE_BATCH` | `25` | Markets per `pokeMany` transaction (1 to 200). |
 | `KEEPER_REDEEM_BATCH` | `50` | Holders per `redeemManyFor` transaction (1 to 500). |
 | `KEEPER_REDEEM_RECHECK_SECONDS` | `600` | A settled market's opted-in holders are checked again this often. |
@@ -273,7 +299,9 @@ test (the mock graduator creates no Kuru book and the mock resolver reads no sou
 pnpm --filter @hunch-book/keeper test
 ```
 
-- **Unit tests**: config parsing; the Chainlink round finder against 301 rounds per feed recorded from
+- **Unit tests**: config parsing; one keeper per stack (views, files, `KEEPER_STACKS`); the Kuru v2
+  graduate plan (request from creation, register before the pool fills, graduate once both are there);
+  v2 book prices for conditional-order triggers; the Chainlink round finder against 301 rounds per feed recorded from
   Monad mainnet (BTC, ETH and MON, the maker's fixtures), checked against brute force for every T in the
   recording; the plan for every phase, including market #1's `waiting for block > 68264005`; batching
   and the gas-cap split; scan windows and cursors surviving a restart; evidence encoding for both
@@ -296,6 +324,10 @@ pnpm --filter @hunch-book/keeper test
   - Books on a network where only Kuru can create them, with the real Graduator: the keeper asks Kuru
     once with the exact `deployProxy` parameters, finds the book Kuru deploys at the predicted address,
     registers it (the Graduator verifies it) and graduates into it.
+  - A Kuru v2 stack, with the real GraduatorV2, oracle and feeds factory and the contracts' mock of Kuru's
+    v2 exchange: from creation the keeper creates the market's feeds, pokes its pool and asks Kuru once
+    with the exact `deploySpotMarket` arguments; it registers the book as soon as Kuru deploys it (before
+    the pool fills) and graduates into it once the rule is met.
   - A template with no settler is skipped with one warning; a settler registered at startup settles it.
   - The new jobs against the real resolvers for templates 3, 4, 6 and 7 (with the resolvers' own
     Chainlink, Perpl and snapshot-source stand-ins) and the real AutoRedeemer, ConditionalOrders,

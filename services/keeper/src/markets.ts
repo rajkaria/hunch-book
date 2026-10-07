@@ -62,6 +62,8 @@ export interface Globals {
   graduator: Address;
   canCreateBooks: boolean;
   usdc: Address;
+  /** The stack's Kuru version (deployments file, `kuruVersion`; absent = 1). */
+  kuruVersion: 1 | 2;
 }
 
 const BATCH_BYTES = 16_384;
@@ -70,6 +72,7 @@ export async function readGlobals(
   client: PublicClient,
   factory: Address,
   blockNumber: bigint,
+  kuruVersion: 1 | 2 = 1,
 ): Promise<Globals> {
   const [graduationPaused, graduator, usdc] = await client.multicall({
     allowFailure: false,
@@ -88,7 +91,13 @@ export async function readGlobals(
         functionName: "canCreateBooks",
         blockNumber,
       });
-  return { graduationPaused, graduator: getAddress(graduator), canCreateBooks, usdc: getAddress(usdc) };
+  return {
+    graduationPaused,
+    graduator: getAddress(graduator),
+    canCreateBooks,
+    usdc: getAddress(usdc),
+    kuruVersion,
+  };
 }
 
 export class MarketDirectory {

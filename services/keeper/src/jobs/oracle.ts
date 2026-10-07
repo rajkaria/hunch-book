@@ -11,7 +11,8 @@ import { type CycleJob, type JobContext, type JobRun, wentOut } from "./context.
 // records a market's chance only when someone pokes it, and each recorded value holds until the next
 // poke. The keeper pokes every market with a live book at most once per KEEPER_ORACLE_POKE_SECONDS, all
 // due markets in one `pokeMany` transaction, so the averages lending markets and other apps read stay
-// fresh. When a market was last poked comes from the oracle itself (`latest(market).timestamp`), so a
+// fresh. On a Kuru v2 stack it pokes every open market, pools included, at most once per
+// KEEPER_KURU_POKE_SECONDS: Kuru's WithdrawalLimiter reads the market's feeds and refuses a stale price. When a market was last poked comes from the oracle itself (`latest(market).timestamp`), so a
 // restart, or a poke by anyone else, counts.
 
 export interface OracleOptions {
@@ -20,6 +21,11 @@ export interface OracleOptions {
   pokeSeconds: number;
   /** Markets per pokeMany transaction. */
   batch: number;
+  /**
+   * Kuru v2 stacks: poke every open market, pools too. Kuru's WithdrawalLimiter prices YES and NO through
+   * feeds built on this oracle, and Kuru sets a market's tokens up (reading the price) before it graduates.
+   */
+  includePools?: boolean;
 }
 
 /** Markets whose last recorded poke is at least `pokeSeconds` old (never poked: due). Pure. */
@@ -37,6 +43,10 @@ export function marketsDue(
 export const hasLiveBook = (m: Pick<MarketSnapshot, "graduated" | "phase">) =>
   m.graduated && (m.phase === Phase.Graduated || m.phase === Phase.Closed);
 
+/** Kuru v2: markets whose feeds Kuru may read, from creation (pool odds) until settlement. */
+export const hasKuruFeed = (m: Pick<MarketSnapshot, "graduated" | "phase">) =>
+  m.phase === Phase.Pool || hasLiveBook(m);
+
 export class OraclePokeJob implements CycleJob {
   readonly name = "oracle" as const;
   private lastPokeAt: string | undefined;
@@ -44,7 +54,7 @@ export class OraclePokeJob implements CycleJob {
   constructor(private readonly opts: OracleOptions) {}
 
   async run(ctx: JobContext, markets: MarketSnapshot[], now: ChainNow): Promise<JobRun> {
-    const live = markets.filter(hasLiveBook);
+    const live = markets.filter(this.opts.includePools ? hasKuruFeed : hasLiveBook);
     let due: Address[] = [];
     if (live.length > 0) {
       const latest = await ctx.client.multicall({

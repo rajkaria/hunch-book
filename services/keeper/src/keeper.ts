@@ -2,10 +2,13 @@ import {
   chainsByNetwork,
   type Deployment,
   graduatorAbi,
+  graduatorV2Abi,
   loadDeployment,
   marketAbi,
+  outcomeTokenPriceAdapterFactoryAbi,
   PHASE_LABEL,
   Phase,
+  Side,
 } from "@hunch-book/shared";
 import {
   type Account,
@@ -31,7 +34,15 @@ import { Health, type HealthJob, JOBS } from "./health.js";
 import { buildCycleJobs, type CycleJob, type JobContext } from "./jobs/index.js";
 import { errorMessage, log, setRedactions } from "./log.js";
 import { type Globals, MarketDirectory, type MarketSnapshot, readGlobals } from "./markets.js";
-import { type ActionKind, type Decision, isFinal, needsBookLookup, planMarket } from "./plan.js";
+import {
+  type ActionKind,
+  BOOK_PROBLEMS,
+  type Decision,
+  isFinal,
+  needsBookLookup,
+  type PredictedBook,
+  planMarket,
+} from "./plan.js";
 import { rateLimitedFetch } from "./rpc.js";
 import { ScanBudget, type ScanContext } from "./scan.js";
 import { type ChainNow, defaultSettlers, type SettleDeps, type SettlerRegistry } from "./settlers/index.js";
@@ -73,6 +84,8 @@ export interface KeeperDeps {
   cycleJobs?: CycleJob[];
   /** Used for Hermes, the indexer and the alert webhook (tests pass a fake). */
   fetchFn?: typeof fetch;
+  /** The stack this keeper works on, when the deployment has several (main.ts runs one keeper each). */
+  stack?: { name: string; primary: boolean };
 }
 
 export interface CycleSummary {
@@ -125,6 +138,8 @@ export class Keeper {
   readonly cycleJobs: CycleJob[];
   /** Log every plan line (the `once` mode), not just the ones that changed. */
   verbosePlan = false;
+  /** "primary", or the name of the extra stack this keeper works on. */
+  readonly stackName: string;
 
   /** `deployment` defaults to deployments/<network>.json; tests pass one with their own addresses. */
   constructor(
@@ -170,11 +185,14 @@ export class Keeper {
           ? new IndexerStakerSource(config.indexerUrl, rpcSource, undefined, this.fetchFn)
           : rpcSource);
     }
+    this.stackName = deps.stack?.name ?? "primary";
     this.health = new Health(config.healthFile, {
       network: config.network,
       keeper: accountAddress(this.tx),
       enabled: config.enabled,
       minMon: config.minMon,
+      stack: this.stackName,
+      kuruVersion: this.kuruVersion,
     });
     this.alerter = new Alerter(
       config.alertWebhook,
@@ -187,7 +205,8 @@ export class Keeper {
       config.alertRepeatSeconds,
       this.fetchFn,
     );
-    this.cycleJobs = deps.cycleJobs ?? (factory ? buildCycleJobs(config, this.deployment) : []);
+    this.cycleJobs =
+      deps.cycleJobs ?? (factory ? buildCycleJobs(config, this.deployment, deps.stack?.primary ?? true) : []);
   }
 
   get keeper(): Address {
@@ -224,7 +243,7 @@ export class Keeper {
     }
     const head = await this.client.getBlock();
     const now: ChainNow = { block: head.number, timestamp: head.timestamp };
-    const globals = await readGlobals(this.client, factory, now.block);
+    const globals = await readGlobals(this.client, factory, now.block, this.kuruVersion);
     const markets = await this.directory.refresh(now.block, globals.graduator);
     const runAt = new Date().toISOString();
     // Every job looks at every live market each cycle, even when none has anything for it to do.
@@ -260,7 +279,7 @@ export class Keeper {
           "warn",
         );
       }
-      let predictedBook: { address: Address; deployed: boolean } | undefined;
+      let predictedBook: PredictedBook | undefined;
       if (needsBookLookup(m, globals)) {
         try {
           predictedBook = await this.predictBook(m, globals);
@@ -383,7 +402,7 @@ export class Keeper {
     now: ChainNow,
     globals: Globals,
     scan: ScanContext,
-    predictedBook: { address: Address; deployed: boolean } | undefined,
+    predictedBook: PredictedBook | undefined,
   ): Promise<boolean> {
     switch (action) {
       case "graduate":
@@ -791,8 +810,41 @@ export class Keeper {
     return this.bookParamsCache;
   }
 
+  /** This stack's Kuru version (deployments file `kuruVersion`; absent = 1). */
+  get kuruVersion(): 1 | 2 {
+    return this.deployment.hunchBook.kuruVersion === 2 ? 2 : 1;
+  }
+
+  /**
+   * Kuru v2: where Kuru's SpotRouter would deploy the book GraduatorV2 asks for, whether it is there, and
+   * if so whether GraduatorV2 would accept it (bookProblem).
+   */
+  private async predictBookV2(m: MarketSnapshot, g: Globals): Promise<PredictedBook> {
+    const address = await this.client.readContract({
+      address: g.graduator,
+      abi: graduatorV2Abi,
+      functionName: "predictedBook",
+      args: [m.address],
+    });
+    const code = await this.client.getCode({ address });
+    const deployed = code !== undefined && code !== "0x";
+    if (!deployed) return { address, deployed };
+    const problem = await this.client.readContract({
+      address: g.graduator,
+      abi: graduatorV2Abi,
+      functionName: "bookProblem",
+      args: [m.address, address],
+    });
+    return {
+      address,
+      deployed,
+      problem: { code: problem, text: BOOK_PROBLEMS[problem] ?? `problem ${problem}` },
+    };
+  }
+
   /** The address Kuru's deployProxy gives this market's book, and whether a book is already there. */
-  private async predictBook(m: MarketSnapshot, g: Globals): Promise<{ address: Address; deployed: boolean }> {
+  private async predictBook(m: MarketSnapshot, g: Globals): Promise<PredictedBook> {
+    if (this.kuruVersion === 2) return this.predictBookV2(m, g);
     const p = await this.bookParams(g.graduator);
     const address = await this.client.readContract({
       address: this.deployment.external.kuru.router,
@@ -825,12 +877,88 @@ export class Keeper {
   private async requestBook(
     m: MarketSnapshot,
     g: Globals,
-    predictedBook: { address: Address; deployed: boolean } | undefined,
+    predictedBook: PredictedBook | undefined,
   ): Promise<boolean> {
     if (!this.store) return false;
     const nowSeconds = Math.floor(Date.now() / 1000);
     const last = this.store.market(m.address).bookRequestedAt;
     if (last !== undefined && nowSeconds - last < this.config.bookRequestSeconds) return false;
+    const request =
+      this.kuruVersion === 2
+        ? await this.bookRequestV2(m, g, predictedBook)
+        : await this.bookRequestV1(m, g, predictedBook);
+    log("book-request", request, "warn");
+    await this.alerter.send(`book-request:${m.address}`, "book-request", request, "warn");
+    this.store.update(m.address, (s) => {
+      s.bookRequestedAt = nowSeconds;
+    });
+    this.health.jobAction("graduate", { market: m.address, action: "book-request", status: "requested" });
+    return true;
+  }
+
+  /**
+   * Kuru v2: everything Kuru needs for this market (docs/PROTOCOL.md §8.1, Kuru v2): the token setup with
+   * the feed for each token, the exact deploySpotMarket call, where the book will land, and what is done.
+   */
+  private async bookRequestV2(
+    m: MarketSnapshot,
+    g: Globals,
+    predictedBook: PredictedBook | undefined,
+  ): Promise<Record<string, unknown>> {
+    const r = await this.client.readContract({
+      address: g.graduator,
+      abi: graduatorV2Abi,
+      functionName: "bookRequest",
+      args: [m.address],
+    });
+    // The YES feed's address is fixed before it exists (CREATE2), so the request can name it either way.
+    const feeds = this.deployment.hunchBook.periphery?.kuruFeedFactory;
+    const yesFeed = feeds
+      ? await this.client.readContract({
+          address: feeds,
+          abi: outcomeTokenPriceAdapterFactoryAbi,
+          functionName: "predictAdapter",
+          args: [m.address, Side.Yes],
+        })
+      : undefined;
+    const kuru = this.deployment.external.kuruV2;
+    return {
+      market: m.address,
+      network: this.config.network,
+      kuru: 2,
+      spotRouter: kuru?.spotRouter,
+      accountCore: kuru?.accountCore,
+      tokenSetup: {
+        token: m.yes,
+        priceFeed: yesFeed,
+        steps:
+          "WithdrawalLimiter.setPriceSource (Kuru's price source over priceFeed), AccountCore.configureSpotToken, SpotRouter.whitelistSpotToken",
+      },
+      call: "deploySpotMarket",
+      args: {
+        baseToken: r.baseToken,
+        quoteToken: r.quoteToken,
+        sizePrecision: r.sizePrecision,
+        pricePrecision: r.pricePrecision,
+        tickSize: r.tickSize,
+        passiveSpreadTicks: r.passiveSpreadTicks,
+        minQuoteNotional: r.minQuoteNotional,
+        maxQuoteNotional: r.maxQuoteNotional,
+        takerFeePps: r.takerFeePps,
+        makerFeePps: r.makerFeePps,
+      },
+      expectedBook: predictedBook?.address,
+      bookState: predictedBook?.deployed ? (predictedBook.problem?.text ?? "deployed") : "not deployed",
+      afterwards: `the keeper registers the book on GraduatorV2 ${g.graduator}, then graduates the market once its pool meets the rule`,
+      pool: { yes: m.yesTotal, no: m.noTotal, stakers: m.stakers },
+    };
+  }
+
+  private async bookRequestV1(
+    m: MarketSnapshot,
+    g: Globals,
+    predictedBook: PredictedBook | undefined,
+  ): Promise<Record<string, unknown>> {
     const p = await this.bookParams(g.graduator);
     const request = {
       market: m.address,
@@ -854,12 +982,6 @@ export class Keeper {
       afterwards: `anyone calls registerBook(${m.address}, <book>) on the graduator ${g.graduator}, then graduate() on the market`,
       pool: { yes: m.yesTotal, no: m.noTotal, stakers: m.stakers },
     };
-    log("book-request", request, "warn");
-    await this.alerter.send(`book-request:${m.address}`, "book-request", request, "warn");
-    this.store.update(m.address, (s) => {
-      s.bookRequestedAt = nowSeconds;
-    });
-    this.health.jobAction("graduate", { market: m.address, action: "book-request", status: "requested" });
-    return true;
+    return request;
   }
 }

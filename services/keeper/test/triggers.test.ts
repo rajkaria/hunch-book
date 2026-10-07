@@ -9,6 +9,7 @@ import {
   type TriggerOrder,
   triggerSidePrice,
   yesQuote,
+  yesQuoteV2,
 } from "../src/jobs/triggers.js";
 
 // The pure trigger rules, against the same cases as contracts/test/periphery/ConditionalOrders.t.sol
@@ -117,5 +118,21 @@ describe("evaluateOrder", () => {
     expect(conditionMet(Condition.AtOrAbove, 4n, 5n)).toBe(false);
     expect(conditionMet(Condition.AtOrBelow, 5n, 5n)).toBe(true);
     expect(conditionMet(Condition.AtOrBelow, 6n, 5n)).toBe(false);
+  });
+});
+
+describe("Kuru v2 books", () => {
+  it("reads bestBidAsk as E6 prices, with either sentinel empty on either side", () => {
+    expect(yesQuoteV2(420_000n, 440_000n)).toEqual({
+      hasBid: true,
+      hasAsk: true,
+      bid: 420_000n,
+      ask: 440_000n,
+    });
+    const max = 2n ** 32n - 1n;
+    expect(yesQuoteV2(0n, max)).toEqual({ hasBid: false, hasAsk: false, bid: 0n, ask: 0n });
+    expect(yesQuoteV2(max, 0n)).toEqual({ hasBid: false, hasAsk: false, bid: 0n, ask: 0n });
+    // The same prices read the v1 way agree.
+    expect(yesQuoteV2(420_000n, 440_000n)).toEqual(yesQuote(420_000n * 10n ** 12n, 440_000n * 10n ** 12n));
   });
 });

@@ -9,7 +9,7 @@ import type { JobName } from "./plan.js";
 // its last error. Overall: markets per phase, the keeper's MON balance and the last error.
 
 /** Per-market jobs (plan.ts), plus the jobs that run once per cycle over every market. */
-export type HealthJob = JobName | "discover" | "series" | "autoRedeem" | "orders" | "oracle";
+export type HealthJob = JobName | "discover" | "series" | "autoRedeem" | "orders" | "oracle" | "kuruFeeds";
 
 export interface LastAction {
   at: string;
@@ -37,6 +37,9 @@ export interface HealthSnapshot {
   updatedAt: string;
   status: "ok" | "warn";
   network: string;
+  /** The stack this keeper works on ("primary" or a name under `stacks`) and its Kuru version. */
+  stack?: string;
+  kuruVersion?: number;
   keeper: string;
   enabled: boolean;
   cycles: number;
@@ -66,6 +69,7 @@ export const JOBS: HealthJob[] = [
   "autoRedeem",
   "orders",
   "oracle",
+  "kuruFeeds",
 ];
 
 export class Health {
@@ -74,7 +78,14 @@ export class Health {
 
   constructor(
     private readonly file: string,
-    base: { network: string; keeper: string; enabled: boolean; minMon: number },
+    base: {
+      network: string;
+      keeper: string;
+      enabled: boolean;
+      minMon: number;
+      stack?: string;
+      kuruVersion?: number;
+    },
   ) {
     this.snapshot = {
       ...base,
@@ -132,11 +143,13 @@ export class Health {
     }
   }
 
-  serve(port: number): void {
+  /** GET /health: this snapshot. GET /health/<name>: the snapshot of another stack's keeper. */
+  serve(port: number, others: Record<string, Health> = {}): void {
     this.server = createServer((req, res) => {
-      if (req.url === "/health" || req.url === "/") {
+      const other = req.url?.startsWith("/health/") ? others[req.url.slice("/health/".length)] : undefined;
+      if (req.url === "/health" || req.url === "/" || other) {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(toJson(this.snapshot, 2));
+        res.end(toJson(other ? other.current() : this.snapshot, 2));
       } else {
         res.writeHead(404).end();
       }

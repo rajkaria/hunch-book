@@ -46,6 +46,13 @@ export interface KeeperConfig {
   jobsOff: Set<OptionalJob>;
   /** Poke each market with a live book at most this often; 0 turns oracle pokes off. */
   oraclePokeSeconds: number;
+  /**
+   * Kuru v2 stacks: poke every open market (pools too) at most this often, so the feeds Kuru's
+   * WithdrawalLimiter reads stay fresher than its maximum price age.
+   */
+  kuruPokeSeconds: number;
+  /** Run only these stacks ("primary" or names under `stacks`); all when unset. */
+  stacks: string[] | undefined;
   /** Markets per pokeMany transaction. */
   oracleBatch: number;
   /** Holders per redeemManyFor transaction. */
@@ -59,7 +66,15 @@ export interface KeeperConfig {
 }
 
 /** Jobs that can be switched off one by one with KEEPER_JOBS_OFF (the core jobs cannot). */
-export const OPTIONAL_JOBS = ["prove", "snapshot", "autoRedeem", "orders", "oracle", "series"] as const;
+export const OPTIONAL_JOBS = [
+  "prove",
+  "snapshot",
+  "autoRedeem",
+  "orders",
+  "oracle",
+  "series",
+  "kuruFeeds",
+] as const;
 export type OptionalJob = (typeof OPTIONAL_JOBS)[number];
 
 type Env = Record<string, string | undefined>;
@@ -75,6 +90,14 @@ function num(env: Env, name: string, fallback: number, check: (x: number) => boo
 }
 
 const positive = (x: number) => x > 0;
+/** A comma-separated list, trimmed, empty entries dropped; undefined when unset or empty. */
+const list = (raw: string | undefined): string[] | undefined => {
+  const items = (raw ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
+  return items.length > 0 ? items : undefined;
+};
 const nonNegative = (x: number) => x >= 0;
 const positiveInt = (x: number) => Number.isInteger(x) && x > 0;
 
@@ -181,6 +204,8 @@ export function parseConfig(env: Env): KeeperConfig {
     markets: markets && markets.length > 0 ? markets : undefined,
     jobsOff,
     oraclePokeSeconds: num(env, "KEEPER_ORACLE_POKE_SECONDS", 1_800, nonNegative, "zero or more"),
+    kuruPokeSeconds: num(env, "KEEPER_KURU_POKE_SECONDS", 900, positive, "above zero"),
+    stacks: list(env.KEEPER_STACKS),
     oracleBatch: num(
       env,
       "KEEPER_ORACLE_BATCH",
@@ -276,3 +301,20 @@ export function loadEnvFile(path: string, env: Env = process.env): string[] {
 
 /** The repository root's .env (the checkout this package lives in). */
 export const REPO_ENV_FILE = fileURLToPath(new URL("../../../.env", import.meta.url));
+
+/**
+ * The config for the keeper of one stack: extra stacks get their own state and health files
+ * (`state.json` becomes `state.kuruV2.json`), so the stacks never share a market record.
+ */
+export function configForStack(
+  config: KeeperConfig,
+  stack: { name: string; primary: boolean },
+): KeeperConfig {
+  if (stack.primary) return config;
+  const suffixed = (file: string) => {
+    const dot = file.lastIndexOf(".");
+    const slash = file.lastIndexOf("/");
+    return dot > slash ? `${file.slice(0, dot)}.${stack.name}${file.slice(dot)}` : `${file}.${stack.name}`;
+  };
+  return { ...config, stateFile: suffixed(config.stateFile), healthFile: suffixed(config.healthFile) };
+}

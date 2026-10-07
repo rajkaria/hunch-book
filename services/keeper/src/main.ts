@@ -1,6 +1,7 @@
 import { describeConfig, loadEnvFile, parseConfig, REPO_ENV_FILE } from "./config.js";
-import { Keeper } from "./keeper.js";
-import { errorMessage, log } from "./log.js";
+import type { Keeper } from "./keeper.js";
+import { errorMessage, log, setLogContext } from "./log.js";
+import { buildKeepers } from "./stacks.js";
 
 // Usage: tsx src/main.ts <run | once> [--env-file <path>]
 //   run   keep every market moving until SIGINT/SIGTERM (finishes the current cycle, then exits)
@@ -37,26 +38,34 @@ async function main(): Promise<void> {
   const envFile = args.envFile ?? process.env.KEEPER_ENV_FILE ?? REPO_ENV_FILE;
   const loaded = loadEnvFile(envFile);
   const config = parseConfig(process.env);
-  const keeper = new Keeper(config);
+  const keepers = buildKeepers(config);
+  const keeper = keepers[0] as Keeper;
   log("start", {
     mode: args.mode,
     envFile,
     envLoaded: loaded,
     keeper: keeper.keeper,
     ...describeConfig(config),
+    stacks: keepers.map((k) => ({ stack: k.stackName, kuruVersion: k.kuruVersion })),
     templates: keeper.settlers.templates(),
-    cycleJobs: keeper.cycleJobs.map((j) => j.name),
+    cycleJobs: keepers.map((k) => ({ stack: k.stackName, jobs: k.cycleJobs.map((j) => j.name) })),
   });
   keeper.checkPublishedAddress();
 
   if (args.mode === "once") {
-    keeper.verbosePlan = true;
-    const summary = await keeper.cycle();
-    log("cycle", { ...summary, enabled: config.enabled });
+    for (const k of keepers) {
+      k.verbosePlan = true;
+      setLogContext(keepers.length > 1 ? { stack: k.stackName } : {});
+      const summary = await k.cycle();
+      log("cycle", { ...summary, enabled: config.enabled });
+    }
     return;
   }
 
-  if (config.healthPort) keeper.health.serve(config.healthPort);
+  if (config.healthPort) {
+    const others = Object.fromEntries(keepers.slice(1).map((k) => [k.stackName, k.health]));
+    keeper.health.serve(config.healthPort, others);
+  }
   const stop = new AbortController();
   let signals = 0;
   const onSignal = (signal: string) => {
@@ -72,16 +81,22 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => onSignal("SIGTERM"));
 
   while (!stop.signal.aborted) {
-    try {
-      const summary = await keeper.cycle();
-      if (summary.sent > 0) log("cycle", { ...summary });
-    } catch (error) {
-      keeper.jobFailed("discover", undefined, error);
-      keeper.health.update({});
+    // One stack after another, so the keeper's transactions never race for a nonce.
+    for (const k of keepers) {
+      if (stop.signal.aborted) break;
+      setLogContext(keepers.length > 1 ? { stack: k.stackName } : {});
+      try {
+        const summary = await k.cycle();
+        if (summary.sent > 0) log("cycle", { ...summary });
+      } catch (error) {
+        k.jobFailed("discover", undefined, error);
+        k.health.update({});
+      }
     }
+    setLogContext({});
     await sleep(config.pollSeconds * 1000, stop.signal);
   }
-  keeper.store?.save();
+  for (const k of keepers) k.store?.save();
   keeper.health.close();
   log("stopped", {});
 }

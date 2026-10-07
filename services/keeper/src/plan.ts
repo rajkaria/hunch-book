@@ -52,9 +52,37 @@ export interface PlanInput {
   now: ChainNow;
   globals: Globals;
   settler: Pick<Settler, "name" | "waitReason" | "prover" | "snapshot"> | undefined;
-  /** Mainnet only: where Kuru would deploy this market's book, and whether it already has. */
-  predictedBook?: { address: Address; deployed: boolean };
+  /** Where Kuru would deploy this market's book (v1 mainnet, or any Kuru v2 stack), and its state. */
+  predictedBook?: PredictedBook;
 }
+
+/** A market's book as Kuru would deploy it, and whether it is there and registrable. */
+export interface PredictedBook {
+  address: Address;
+  deployed: boolean;
+  /** Kuru v2: GraduatorV2.bookProblem for the deployed book (0 = registrable), in words. */
+  problem?: { code: number; text: string };
+}
+
+/** GraduatorV2.Problem, in words (contracts/src/interfaces/IGraduatorV2.sol). */
+export const BOOK_PROBLEMS = [
+  "none",
+  "no contract there",
+  "Kuru's SpotRouter did not deploy it",
+  "Kuru's AccountCore has not registered it",
+  "it points at another AccountCore",
+  "its base or quote is not this market's YES token and USDC",
+  "its precisions are not 1e6 / 1e6",
+  "its tick size is outside the limits",
+  "its fees are outside the limits",
+  "its minimum order is above the limit",
+  "Kuru has not enabled the YES token or USDC",
+  "the WithdrawalLimiter has no price source for the YES token or USDC",
+] as const;
+
+/** True when a Kuru-deployed book can be registered right now. */
+export const registrable = (b: PredictedBook): boolean =>
+  b.deployed && (b.problem === undefined || b.problem.code === 0);
 
 const usdc = (amount: bigint) => formatUnits(amount, 6);
 const isZero = (a: Address) => isAddressEqual(a, zeroAddress);
@@ -85,19 +113,20 @@ export function ruleShortfall(m: Pick<PlanMarket, "yesTotal" | "noTotal" | "stak
   return out;
 }
 
-/** True when the graduate job needs to know whether Kuru already created this market's book (mainnet). */
+/**
+ * True when the graduate job needs to know whether Kuru already created this market's book. Kuru v1
+ * mainnet: once the rule is met. Kuru v2: from creation, because Kuru's setup takes days and the book
+ * can be registered before the pool fills.
+ */
 export function needsBookLookup(m: PlanMarket, g: Globals): boolean {
-  return (
-    m.phase === Phase.Pool &&
-    m.ruleMet &&
-    !g.graduationPaused &&
-    !isZero(g.graduator) &&
-    isZero(m.graduatorBook) &&
-    !g.canCreateBooks
-  );
+  if (m.phase !== Phase.Pool || isZero(g.graduator) || !isZero(m.graduatorBook) || g.canCreateBooks)
+    return false;
+  if (g.kuruVersion === 2) return true;
+  return m.ruleMet && !g.graduationPaused;
 }
 
 function planGraduate(input: PlanInput): Decision {
+  if (input.globals.kuruVersion === 2) return planGraduateV2(input);
   const { market: m, globals: g, predictedBook } = input;
   const job = "graduate" as const;
   if (!m.ruleMet) {
@@ -131,6 +160,36 @@ function planGraduate(input: PlanInput): Decision {
     action: "book-request",
     reason: "rule met, but only Kuru can create books on this network: ask Kuru for the book",
   };
+}
+
+/**
+ * Kuru v2: only Kuru creates books, after a per-token setup that takes days. So the keeper asks for the
+ * book while the pool is still filling, registers it as soon as GraduatorV2 accepts it (the rule does not
+ * matter for registration), and graduates once both the book and the rule are there.
+ */
+function planGraduateV2(input: PlanInput): Decision {
+  const { market: m, globals: g, predictedBook } = input;
+  const job = "graduate" as const;
+  if (isZero(g.graduator)) return { job, reason: "the factory has no graduator yet (WireKuruV2.s.sol)" };
+  if (!isZero(m.graduatorBook)) {
+    if (!m.ruleMet) {
+      const missing = ruleShortfall(m);
+      return { job, reason: `Kuru book ${m.graduatorBook} registered; rule not met: ${missing.join("; ")}` };
+    }
+    if (g.graduationPaused) return { job, reason: "rule met and book registered, but graduation is paused" };
+    return { job, action: "graduate", reason: `rule met and Kuru book ${m.graduatorBook} is registered` };
+  }
+  if (predictedBook && registrable(predictedBook)) {
+    return {
+      job,
+      action: "register-book",
+      reason: `Kuru has created the book at ${predictedBook.address}: register it`,
+    };
+  }
+  const waiting = predictedBook?.deployed
+    ? `the book at ${predictedBook.address} is not registrable yet: ${predictedBook.problem?.text ?? "unknown"}`
+    : "only Kuru can create v2 books: ask Kuru for this market's book and token setup";
+  return { job, action: "book-request", reason: waiting };
 }
 
 function planClaims(m: PlanMarket): Decision {

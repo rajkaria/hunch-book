@@ -1,4 +1,4 @@
-import { conditionalOrdersAbi, kuruOrderBookAbi } from "@hunch-book/shared";
+import { conditionalOrdersAbi, kuruOrderBookAbi, kuruV2OrderBookAbi } from "@hunch-book/shared";
 import { type Address, encodeFunctionData, getAddress, zeroAddress } from "viem";
 import { log } from "../log.js";
 import type { MarketSnapshot } from "../markets.js";
@@ -11,6 +11,7 @@ import {
   OrderStatus,
   type YesQuote,
   yesQuote,
+  yesQuoteV2,
 } from "./triggers.js";
 
 // Conditional orders (roadmap A-11, docs/PERIPHERY.md#conditionalorders). Owners place take-profit,
@@ -175,6 +176,26 @@ export class ConditionalOrdersJob implements CycleJob {
     });
     const out = new Map<Address, YesQuote>();
     if (markets.length === 0) return out;
+    // A book that cannot be read reads as empty, as BookPrice does.
+    if (ctx.deployment.hunchBook.kuruVersion === 2) {
+      const results = await ctx.client.multicall({
+        allowFailure: true,
+        batchSize: BATCH_BYTES,
+        contracts: markets.map((m) => ({
+          address: byMarket.get(m)?.book as Address,
+          abi: kuruV2OrderBookAbi,
+          functionName: "bestBidAsk" as const,
+        })),
+      });
+      markets.forEach((m, i) => {
+        const r = results[i];
+        out.set(
+          m,
+          r?.status === "success" ? yesQuoteV2(BigInt(r.result[0]), BigInt(r.result[1])) : yesQuote(0n, 0n),
+        );
+      });
+      return out;
+    }
     const results = await ctx.client.multicall({
       allowFailure: true,
       batchSize: BATCH_BYTES,
@@ -186,7 +207,6 @@ export class ConditionalOrdersJob implements CycleJob {
     });
     markets.forEach((m, i) => {
       const r = results[i];
-      // A book that cannot be read reads as empty, as BookPrice does.
       out.set(m, r?.status === "success" ? yesQuote(r.result[0], r.result[1]) : yesQuote(0n, 0n));
     });
     return out;
