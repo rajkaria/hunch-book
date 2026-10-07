@@ -5,6 +5,10 @@
 # - Every USDC and outcome-token amount is in base units (6 decimals) as a BigInt: 1 USDC = 1000000.
 # - Prices ending in E6 are USDC base units per whole YES token (0.416 USDC = 416000).
 # - Timestamps are unix seconds. Block numbers and timestamps are BigInt.
+# - A network can have more than one stack of Hunch Book contracts (docs/PROTOCOL.md section 8.1):
+#   the primary one and, on testnet, `kuruV2`, whose books are on Kuru v2. Every stack is indexed into
+#   the same tables. Records a contract numbers on its own (templates, orders, reward epochs, timelock
+#   operations) keep the plain number as their id on the primary stack and "<stack>-<number>" on others.
 # - Activity by Hunch Book's own wallets (maker bot, keeper, guardian, fee recipient, reward funder,
 #   timelock proposer) and by wallets our wallets paid to seed is labelled as ours: see Wallet.ourRole
 #   and the *Ours / *OurMaker / *IsOurs / *ByUs fields.
@@ -161,8 +165,11 @@ enum VaultEventKind {
 }
 
 type Template {
+  "The template id on the primary stack, \"<stack>-<template id>\" on another."
   id: ID!
   templateId: BigInt!
+  "The stack whose factory has this template."
+  stack: String!
   resolver: String!
   minPool: BigInt!
   minStakers: BigInt!
@@ -177,8 +184,12 @@ type Template {
 
 type Market {
   id: ID!
-  "1, 2, 3...: the factory's market number, which also names the tokens (HB1-YES)."
+  "1, 2, 3...: the factory's market number, which also names the tokens (HB1-YES). Each stack's factory counts from 1."
   number: Int!
+  "\"primary\", or the stack's name under `stacks` in the deployments file (testnet: kuruV2)."
+  stack: String! @index
+  "The Kuru version of the stack's books: 1, or 2 (Kuru creates each book, PROTOCOL.md section 8.1)."
+  kuruVersion: Int!
   template: Template!
   templateId: BigInt!
   key: String!
@@ -248,6 +259,8 @@ type Market {
   "Kuru fills on this market's book."
   fillCount: Int!
   fillCountOurMaker: Int!
+  "Kuru v2 swaps: the event does not name the makers, so whether ours was one is unknown."
+  fillCountMakerUnknown: Int!
   volume: BigInt!
   volumeOurMaker: BigInt!
   lastPriceE6: BigInt
@@ -334,7 +347,7 @@ type Wallet {
   marketsCreated: Int!
   redemptionCount: Int!
   redeemedUsdc: BigInt!
-  "This wallet's latest referral binding, active or not (compare expiresAt with the time)."
+  "This wallet's latest referral binding on any stack, active or not (compare expiresAt with the time). ReferralLink has the latest per stack."
   referral: Referral
   stakes: [Stake!]! @derivedFrom(field: "wallet")
   positions: [Position!]! @derivedFrom(field: "wallet")
@@ -425,8 +438,11 @@ type Book {
   market: Market!
   source: BookSource!
   registrar: String
+  "1 for a Kuru v1 book (Trade events, one per maker order filled), 2 for a v2 book (one SpotSwap per taker swap)."
+  kuruVersion: Int!
   fillCount: Int!
   fillCountOurMaker: Int!
+  fillCountMakerUnknown: Int!
   volume: BigInt!
   volumeOurMaker: BigInt!
   lastPriceE6: BigInt
@@ -439,35 +455,46 @@ type Book {
   orders: [BookOrder!]! @derivedFrom(field: "book")
 }
 
-"One fill on a Hunch Book market's Kuru book (Kuru's Trade event)."
+"""
+One fill on a Hunch Book market's Kuru book. On a Kuru v1 book: one maker order filled (Kuru's Trade
+event). On a Kuru v2 book: one taker swap, at its average price (Kuru's SpotSwap event), which can fill
+several maker orders and does not name them, so the maker is unknown (makerKnown false).
+"""
 type Trade @index(fields: ["market", ["timestamp", "DESC"]]) {
   id: ID!
   market: Market!
   book: Book!
-  orderId: BigInt!
+  kuruVersion: Int!
+  "Kuru v1: the maker order's id. Null on v2 swaps."
+  orderId: BigInt
+  "The maker; the zero address when it is unknown (Kuru v2 swaps)."
   maker: String! @index
-  "Kuru's taker: the router for trades through Hunch Book's router."
+  "False on Kuru v2 swaps: the maker is unknown, so it is never counted as ours or as someone else's."
+  makerKnown: Boolean!
+  "Kuru's taker (v1) or the swap's executor (v2): the router for trades through Hunch Book's router."
   taker: String!
+  "The transaction sender (v1: Kuru's txOrigin)."
   txOrigin: String!
   "The wallet on the taking side: the transaction sender when the taker is our router, else the taker."
   trader: String! @index
   viaRouter: Boolean!
   "True when the taker bought YES (lifted an ask), false when the taker sold YES (hit a bid)."
   takerBuysYes: Boolean!
-  "Kuru's price, 18 decimals."
-  priceE18: BigInt!
+  "Kuru v1's price, 18 decimals. Null on v2 swaps."
+  priceE18: BigInt
+  "v1: the fill's price. v2: the swap's average price, notional over size."
   priceE6: BigInt!
-  "YES base units filled."
+  "YES base units filled (v2: YES received on a buy, after Kuru's fee; YES sold on a sell)."
   size: BigInt!
-  "USDC base units: size times price, rounded down, before any Kuru fee."
+  "USDC base units. v1: size times price, rounded down, before any Kuru fee. v2: USDC paid on a buy, USDC received after Kuru's fee on a sell."
   notional: BigInt!
-  "The maker order's size left after this fill."
-  makerRemaining: BigInt!
-  "The maker is Hunch Book's maker bot (deployments wallets.maker)."
+  "Kuru v1: the maker order's size left after this fill. Null on v2 swaps."
+  makerRemaining: BigInt
+  "The maker is Hunch Book's maker bot (deployments wallets.maker). False when the maker is unknown."
   isOurMaker: Boolean!
   makerIsOurs: Boolean!
   traderIsOurs: Boolean!
-  "Neither side is one of our wallets."
+  "Neither side is one of our wallets. False when the maker is unknown."
   betweenOthers: Boolean!
   block: BigInt!
   timestamp: BigInt! @index
@@ -652,6 +679,22 @@ type Creator {
   markets: [Market!]! @derivedFrom(field: "creator")
 }
 
+"""
+One stack of Hunch Book contracts on a chain (docs/PROTOCOL.md section 8.1), created at its first
+market. Id: <chain id>-<stack name>. ProtocolStats adds up every stack.
+"""
+type Stack {
+  id: ID!
+  chainId: Int!
+  "\"primary\", or the stack's name under `stacks` in the deployments file."
+  name: String!
+  primary: Boolean!
+  kuruVersion: Int!
+  factory: String!
+  "Markets the stack's factory created: the next one's number is this plus one."
+  marketsCreated: Int!
+}
+
 "Totals for the whole protocol on one chain. Id: the chain id. These feed the proof page."
 type ProtocolStats {
   id: ID!
@@ -680,10 +723,13 @@ type ProtocolStats {
   "Fills where the taking side is one of our wallets."
   fillCountOurTrader: Int!
   fillCountBetweenOthers: Int!
+  "Kuru v2 swaps, whose makers are unknown: never counted as ours or as between others."
+  fillCountMakerUnknown: Int!
   volume: BigInt!
   volumeOurMaker: BigInt!
   volumeBetweenOthers: BigInt!
-  "Share of fills, and of volume, where our maker bot was the maker, in basis points."
+  volumeMakerUnknown: BigInt!
+  "Share of fills, and of volume, where our maker bot was the maker, in basis points, among fills whose maker is known."
   ourMakerShareBps: Int!
   ourMakerVolumeShareBps: Int!
   routerTradeCount: Int!
@@ -731,7 +777,7 @@ type ProtocolStats {
   "Template 7 snapshots taken, and how many of them one of our wallets sent."
   snapshotsTaken: Int!
   snapshotsTakenOurs: Int!
-  "AutoRedeemer: holders opted in now, redemptions made, USDC paid, those called by our wallets, and failures."
+  "AutoRedeemer: holders opted in now (once per stack's AutoRedeemer), redemptions made, USDC paid, those called by our wallets, and failures."
   autoRedeemHolders: Int!
   autoRedemptionCount: Int!
   autoRedeemedUsdc: BigInt!
@@ -758,7 +804,7 @@ type ProtocolStats {
   oraclePokes: Int!
   oraclePokesOurs: Int!
   oracleCheckpoints: Int!
-  "OutcomeTokenPriceAdapter contracts created."
+  "OutcomeTokenPriceAdapter contracts created, Kuru v2 feed adapters included (PriceAdapter.kuruFeed)."
   priceAdapters: Int!
   "TemplateTimelock operations: queued, executed, cancelled, and still queued now."
   timelockQueued: Int!
@@ -784,6 +830,7 @@ type DailyStats {
   fillCount: Int!
   fillCountOurMaker: Int!
   fillCountBetweenOthers: Int!
+  fillCountMakerUnknown: Int!
   volume: BigInt!
   volumeOurMaker: BigInt!
   routerTradeCount: Int!
@@ -851,9 +898,11 @@ type Snapshot {
 
 # ---- AutoRedeemer -------------------------------------------------------------------------------
 
-"A holder's auto-redeem setting and what the AutoRedeemer did for them. Id: the holder."
+"A holder's auto-redeem setting and what the AutoRedeemer did for them. Id: the holder on the primary stack's AutoRedeemer, \"<stack>-<holder>\" on another's."
 type AutoRedeemOptIn {
   id: ID!
+  "The stack whose AutoRedeemer this is."
+  stack: String!
   holder: Wallet!
   holderIsOurs: Boolean!
   "On for every market, apart from the ones in marketOptOuts that are still opted out."
@@ -872,7 +921,7 @@ type AutoRedeemOptIn {
   marketOptOuts: [AutoRedeemMarketOptOut!]! @derivedFrom(field: "optIn")
 }
 
-"One holder's exclusion of one market (MarketOptOutSet). Id: <market>-<holder>."
+"One holder's exclusion of one market (MarketOptOutSet). Id: <market>-<holder>, with \"<stack>-\" in front on a stack other than the primary one."
 type AutoRedeemMarketOptOut {
   id: ID!
   optIn: AutoRedeemOptIn!
@@ -932,11 +981,14 @@ type AutoRedeemFailure {
 
 """
 A take-profit, stop-loss or limit order (ConditionalOrders), from OrderPlaced to OrderExecuted or
-OrderCancelled. Id: the order id. Prices are E6 on the traded side's own book price.
+OrderCancelled. Id: the order id on the primary stack's ConditionalOrders, "<stack>-<order id>" on
+another's. Prices are E6 on the traded side's own book price.
 """
 type ConditionalOrder {
   id: ID!
   orderId: BigInt!
+  "The stack whose ConditionalOrders holds the order."
+  stack: String!
   owner: Wallet!
   ownerIsOurs: Boolean!
   market: Market!
@@ -975,6 +1027,8 @@ type ConditionalOrder {
 "A referral binding (Bound). A user binds again only after a binding expires. Id: <block>-<logIndex>."
 type Referral {
   id: ID!
+  "The stack whose ReferralRegistry holds the binding. It earns credit only from that stack's markets."
+  stack: String!
   user: Wallet!
   userIsOurs: Boolean!
   referrer: Referrer!
@@ -993,6 +1047,14 @@ type Referral {
   timestamp: BigInt!
   tx: String!
   feeEvents: [ReferralFee!]! @derivedFrom(field: "referral")
+}
+
+"A user's latest binding on one stack's ReferralRegistry: the one a fee on that stack's markets is credited by. Id: <stack>-<user>."
+type ReferralLink {
+  id: ID!
+  stack: String!
+  user: String!
+  referral: Referral!
 }
 
 "A referrer and every binding to it. Id: the referrer."
@@ -1064,7 +1126,7 @@ type ReferralCredit {
 
 # ---- MerkleDistributor --------------------------------------------------------------------------
 
-"One reward epoch (EpochCreated), funded in full when created. Id: the epoch number."
+"One reward epoch (EpochCreated), funded in full when created. Id: the epoch number on the primary stack's distributor, \"<stack>-<epoch>\" on another's."
 type RewardEpoch {
   id: ID!
   epoch: BigInt!
@@ -1091,7 +1153,7 @@ type RewardEpoch {
   claims: [RewardClaim!]! @derivedFrom(field: "epoch")
 }
 
-"One account's claim in one epoch (Claimed). Id: <epoch>-<account>."
+"One account's claim in one epoch (Claimed). Id: <epoch id>-<account>."
 type RewardClaim {
   id: ID!
   epoch: RewardEpoch!
@@ -1166,6 +1228,8 @@ type OracleCheckpoint {
 type PriceAdapter {
   id: ID!
   factory: String!
+  "True for a Kuru v2 stack's feed adapters, the prices Kuru's WithdrawalLimiter reads; false for the lending adapters."
+  kuruFeed: Boolean!
   market: Market!
   side: Side!
   "The transaction sender."
@@ -1180,7 +1244,9 @@ type PriceAdapter {
 
 """
 A queued factory change (OperationQueued), with its full calldata decoded so anyone can review a new
-template before it can go live. Id: the operation id, keccak256(abi.encode(data, nonce)).
+template before it can go live. Id: the operation id, keccak256(abi.encode(data, nonce)), with
+"<stack>-" in front on a stack other than the primary one (two timelocks can queue the same call at the
+same nonce).
 """
 type TimelockOperation {
   id: ID!

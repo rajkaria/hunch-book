@@ -4,14 +4,16 @@
 // AutoRedeemer did.
 import { type Enum, indexer } from "envio";
 import { sideOf } from "../lib/enums.js";
-import { addr } from "../lib/network.js";
+import { addr, scopedId } from "../lib/network.js";
 import { pairId, Unit } from "../lib/store.js";
 
-/** The holder's setting, created at its first event. */
+/** The holder's setting on this event's AutoRedeemer (one per stack), created at its first event. */
 async function optInOf(u: Unit, holder: string) {
   const wallet = await u.wallet(holder);
-  return u.load("AutoRedeemOptIn", wallet.id, () => ({
-    id: wallet.id,
+  const id = scopedId(u.m.chainId, u.m.src, wallet.id);
+  return u.load("AutoRedeemOptIn", id, () => ({
+    id,
+    stack: u.stackConstants().name,
     holder_id: wallet.id,
     holderIsOurs: wallet.isOurs,
     optedIn: false,
@@ -64,11 +66,11 @@ indexer.onEvent({ contract: "AutoRedeemer", event: "MarketOptOutSet" }, async ({
   if (!u) return;
   const { holder, market, optedOut } = event.params;
   const row = await optInOf(u, holder);
-  const id = pairId(market, holder);
+  const id = scopedId(u.m.chainId, u.m.src, pairId(market, holder));
   const optOut = await u.load("AutoRedeemMarketOptOut", id, () => ({
     id,
     optIn_id: row.id,
-    holder: row.id,
+    holder: row.holder_id,
     market_id: addr(market),
     optedOut: false,
     updatedAt: u.m.timestamp,

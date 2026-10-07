@@ -1,6 +1,6 @@
 import { type Deployment, deployments } from "@hunch-book/shared";
 import { render, screen, within } from "@testing-library/react";
-import type { Address, Hex } from "viem";
+import { type Address, type Hex, zeroAddress } from "viem";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TxList } from "../src/components/market/TxList";
 import { FillTable } from "../src/components/tape/FillTable";
@@ -129,8 +129,14 @@ describe("fillFromRow", () => {
       maker: MAKER,
       trader: STRANGER,
       makerIsOurMaker: true,
+      makerKnown: true,
       marketNumber: 3,
     });
+    // A Kuru v2 swap: the indexer marks the maker unknown (zero address); older rows lack the field.
+    const swap = { ...row, maker: zeroAddress, isOurMaker: false, makerIsOurs: false, betweenOthers: false };
+    expect(fillFromRow({ ...swap, makerKnown: false }).makerKnown).toBe(false);
+    expect(fillFromRow(swap).makerKnown).toBe(false);
+    expect(isBetweenOthers(fillFromRow(swap))).toBe(false);
   });
 });
 
@@ -223,11 +229,20 @@ describe("tapeStats", () => {
       fills: 3,
       ourMakerFills: 2,
       betweenOthers: 1,
+      makerUnknown: 0,
       volume: USDC(31.2),
       ourMakerVolume: USDC(20.8),
       ourMakerShareBps: 6_666,
     });
     expect(tapeStats([]).ourMakerShareBps).toBeNull();
+    // A Kuru v2 swap (maker unknown) stays out of our maker's share.
+    const swap: Fill = { ...others, id: "swap", maker: OTHER, makerKnown: false, makerIsOurs: false };
+    expect(tapeStats([ours, swap])).toMatchObject({
+      fills: 2,
+      ourMakerFills: 1,
+      makerUnknown: 1,
+      ourMakerShareBps: 10_000,
+    });
   });
 });
 

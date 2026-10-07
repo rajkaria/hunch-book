@@ -37,10 +37,13 @@ export interface TradeCounts {
   fillsOurMaker: number;
   fillsOurTrader: number;
   fillsBetweenOthers: number;
+  /** Kuru v2 swaps: they do not name their makers, so they count neither as ours nor as others'. */
+  fillsMakerUnknown: number;
   volume: bigint;
   volumeOurMaker: bigint;
   volumeBetweenOthers: bigint;
-  /** Our maker's share of fills and of volume, basis points. */
+  volumeMakerUnknown: bigint;
+  /** Our maker's share of fills and of volume, basis points, among fills whose maker is known. */
   ourMakerShareBps: number;
   ourMakerVolumeShareBps: number;
   routerTrades: number;
@@ -245,9 +248,11 @@ export function proofFromIndexer(r: ProofResult): ProofData {
       fillsOurMaker: s.fillCountOurMaker,
       fillsOurTrader: s.fillCountOurTrader,
       fillsBetweenOthers: s.fillCountBetweenOthers,
+      fillsMakerUnknown: s.fillCountMakerUnknown ?? 0,
       volume: big(s.volume),
       volumeOurMaker: big(s.volumeOurMaker),
       volumeBetweenOthers: big(s.volumeBetweenOthers),
+      volumeMakerUnknown: big(s.volumeMakerUnknown ?? "0"),
       ourMakerShareBps: s.ourMakerShareBps,
       ourMakerVolumeShareBps: s.ourMakerVolumeShareBps,
       routerTrades: s.routerTradeCount,

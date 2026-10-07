@@ -1,4 +1,5 @@
 import type {
+  Book,
   Creator,
   DailyStats,
   Entity,
@@ -10,11 +11,12 @@ import type {
   ProtocolStats,
   RewardEpoch,
   RewardToken,
+  Stack,
   Staker,
   Wallet,
 } from "envio";
 import { average, impliedChanceBps, marketSolvencyMargin, shareBps, utcDay } from "./math.js";
-import { addr, staticRoleOf } from "./network.js";
+import { addr, type StackConstants, stackNamed, stackOfContract, staticRoleOf } from "./network.js";
 
 /** Entities read from the context are frozen; handlers work on mutable copies and write them once. */
 export type Mut<T> = { -readonly [K in keyof T]: T[K] };
@@ -170,6 +172,25 @@ export class Unit {
     return this.find("Market", addr(id));
   }
 
+  /** The stack this event's contract belongs to (the primary one for any other contract). */
+  stackConstants(): StackConstants {
+    return stackOfContract(this.m.chainId, this.m.src) ?? stackNamed(this.m.chainId, "primary");
+  }
+
+  /** The Stack record of the stack called `name`, created at its first use. */
+  stack(name: string): Promise<Mut<Stack>> {
+    const c = stackNamed(this.m.chainId, name);
+    return this.load("Stack", `${this.m.chainId}-${c.name}`, () => ({
+      id: `${this.m.chainId}-${c.name}`,
+      chainId: this.m.chainId,
+      name: c.name,
+      primary: c.primary,
+      kuruVersion: c.kuruVersion,
+      factory: c.factory ?? "",
+      marketsCreated: 0,
+    }));
+  }
+
   async position(market: string, wallet: string): Promise<Mut<Position>> {
     await this.wallet(wallet);
     return this.load("Position", pairId(market, wallet), () => emptyPosition(market, wallet, this.m));
@@ -280,8 +301,9 @@ export class Unit {
 
 export function refreshStats(s: Mut<ProtocolStats>, m: Pick<EventMeta, "timestamp" | "block">): void {
   s.externalWallets = s.wallets - s.ourWallets;
-  s.ourMakerShareBps = shareBps(BigInt(s.fillCountOurMaker), BigInt(s.fillCount));
-  s.ourMakerVolumeShareBps = shareBps(s.volumeOurMaker, s.volume);
+  // Among fills whose maker is known: a Kuru v2 swap does not name its makers.
+  s.ourMakerShareBps = shareBps(BigInt(s.fillCountOurMaker), BigInt(s.fillCount - s.fillCountMakerUnknown));
+  s.ourMakerVolumeShareBps = shareBps(s.volumeOurMaker, s.volume - s.volumeMakerUnknown);
   s.avgSettlementLatencySeconds = average(s.settlementLatencySecondsTotal, s.settlementsTimed);
   s.avgSettlementLatencyBlocks = average(s.settlementLatencyBlocksTotal, s.settlementsBlockClock);
   s.avgSecondsToFirstRedemption = average(s.firstRedemptionLatencySecondsTotal, s.marketsRedeemed);
@@ -325,9 +347,11 @@ export function emptyStats(m: Pick<EventMeta, "chainId" | "timestamp" | "block">
     fillCountOurMaker: 0,
     fillCountOurTrader: 0,
     fillCountBetweenOthers: 0,
+    fillCountMakerUnknown: 0,
     volume: 0n,
     volumeOurMaker: 0n,
     volumeBetweenOthers: 0n,
+    volumeMakerUnknown: 0n,
     ourMakerShareBps: 0,
     ourMakerVolumeShareBps: 0,
     routerTradeCount: 0,
@@ -415,6 +439,7 @@ export function emptyDaily(m: Pick<EventMeta, "chainId" | "date" | "dayStart">):
     fillCount: 0,
     fillCountOurMaker: 0,
     fillCountBetweenOthers: 0,
+    fillCountMakerUnknown: 0,
     volume: 0n,
     volumeOurMaker: 0n,
     routerTradeCount: 0,
@@ -511,14 +536,45 @@ export function emptyStaker(market: string, wallet: string, m: Pick<EventMeta, "
 }
 
 /** A market skeleton. MarketRegistered (vault) creates it; MarketCreated (factory) fills in the terms. */
+/** A Kuru book's record, from the Graduator's event (or the market's Graduated, if that never came). */
+export function emptyBook(
+  id: string,
+  market: string,
+  b: { source: Enum<"BookSource">; registrar: string | undefined; kuruVersion: number },
+  m: Pick<EventMeta, "timestamp" | "block" | "tx">,
+): Book {
+  return {
+    id: addr(id),
+    market_id: addr(market),
+    source: b.source,
+    registrar: b.registrar ? addr(b.registrar) : undefined,
+    kuruVersion: b.kuruVersion,
+    fillCount: 0,
+    fillCountOurMaker: 0,
+    fillCountMakerUnknown: 0,
+    volume: 0n,
+    volumeOurMaker: 0n,
+    lastPriceE6: undefined,
+    orderCount: 0,
+    orderCountOurMaker: 0,
+    block: m.block,
+    timestamp: m.timestamp,
+    tx: m.tx,
+  };
+}
+
+/** A market's skeleton, on the stack of the contract that emitted `m` (its vault or its factory). */
 export function emptyMarket(
   id: string,
   tokens: { yes: string; no: string; creator: string },
-  m: Pick<EventMeta, "chainId" | "timestamp" | "block" | "tx">,
+  m: Pick<EventMeta, "chainId" | "timestamp" | "block" | "tx" | "src">,
 ): Market {
+  const stack = stackOfContract(m.chainId, m.src) ?? stackNamed(m.chainId, "primary");
   return {
     id: addr(id),
     number: 0,
+    stack: stack.name,
+    kuruVersion: stack.kuruVersion,
     template_id: "",
     templateId: 0n,
     key: "",
@@ -569,6 +625,7 @@ export function emptyMarket(
     redemptionFeeDenominator: undefined,
     fillCount: 0,
     fillCountOurMaker: 0,
+    fillCountMakerUnknown: 0,
     volume: 0n,
     volumeOurMaker: 0n,
     lastPriceE6: undefined,

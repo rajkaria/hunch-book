@@ -1,7 +1,7 @@
 // MerkleDistributor (docs/PERIPHERY.md): reward epochs (referral shares and maker rewards), the claims
 // against them, sweeps of what was left after the deadline, and the funder role.
 import { indexer } from "envio";
-import { addr } from "../lib/network.js";
+import { addr, scopedId } from "../lib/network.js";
 import { Unit } from "../lib/store.js";
 
 function tokenOf(u: Unit, token: string) {
@@ -19,7 +19,8 @@ function tokenOf(u: Unit, token: string) {
 indexer.onEvent({ contract: "MerkleDistributor", event: "EpochCreated" }, async ({ event, context }) => {
   const u = new Unit(context, event);
   const { epoch, root, total, claimDeadline } = event.params;
-  const id = epoch.toString();
+  // Each stack's distributor numbers its own epochs.
+  const id = scopedId(u.m.chainId, u.m.src, epoch.toString());
   if (await u.exists("RewardEpoch", id)) return;
   const token = addr(event.params.token);
   u.create("RewardEpoch", {
@@ -56,11 +57,12 @@ indexer.onEvent({ contract: "MerkleDistributor", event: "Claimed" }, async ({ ev
   const account = addr(event.params.account);
   const caller = addr(event.params.caller);
   // One claim per account per epoch, onchain: the pair is the record's id and its guard.
-  const id = `${epoch}-${account}`;
+  const epochId = scopedId(u.m.chainId, u.m.src, epoch.toString());
+  const id = `${epochId}-${account}`;
   if (await u.exists("RewardClaim", id)) return;
   u.create("RewardClaim", {
     id,
-    epoch_id: epoch.toString(),
+    epoch_id: epochId,
     account,
     accountIsOurs: await u.isOurs(account),
     amount,
@@ -70,7 +72,7 @@ indexer.onEvent({ contract: "MerkleDistributor", event: "Claimed" }, async ({ ev
     timestamp: u.m.timestamp,
     tx: u.m.tx,
   });
-  const e = await u.find("RewardEpoch", epoch.toString());
+  const e = await u.find("RewardEpoch", epochId);
   if (e) {
     e.claimed += amount;
     e.claimCount += 1;
@@ -86,7 +88,7 @@ indexer.onEvent({ contract: "MerkleDistributor", event: "Claimed" }, async ({ ev
 indexer.onEvent({ contract: "MerkleDistributor", event: "Swept" }, async ({ event, context }) => {
   const u = new Unit(context, event);
   const { epoch, amount } = event.params;
-  const e = await u.find("RewardEpoch", epoch.toString());
+  const e = await u.find("RewardEpoch", scopedId(u.m.chainId, u.m.src, epoch.toString()));
   if (!e || e.swept) return; // unknown, or swept before (once per epoch onchain)
   e.swept = true;
   e.sweptAmount = amount;

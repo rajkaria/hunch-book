@@ -204,7 +204,7 @@ function TradesPanel({ data }: { data: ProofModel }) {
       </Panel>
     );
   }
-  const others = t.fills - t.fillsOurMaker;
+  const others = t.fills - t.fillsOurMaker - t.fillsMakerUnknown;
   return (
     <Panel title="Trades and volume" labelledBy="proof-trades">
       <div className={s.grid}>
@@ -246,6 +246,9 @@ function TradesPanel({ data }: { data: ProofModel }) {
           <>
             <span className={s.splitOurs} style={{ flexGrow: t.fillsOurMaker }} />
             <span className={s.splitOthers} style={{ flexGrow: others }} />
+            {t.fillsMakerUnknown > 0 ? (
+              <span className={s.splitUnknown} style={{ flexGrow: t.fillsMakerUnknown }} />
+            ) : null}
           </>
         ) : null}
       </div>
@@ -256,6 +259,14 @@ function TradesPanel({ data }: { data: ProofModel }) {
             value: `${formatCount(t.fillsOurMaker, "fill")}, ${formatUsdc(t.volumeOurMaker)} USDC`,
           },
           { label: "Our wallets taking", value: formatCount(t.fillsOurTrader, "fill") },
+          ...(t.fillsMakerUnknown > 0
+            ? [
+                {
+                  label: "Kuru v2 swaps, maker unknown",
+                  value: `${formatCount(t.fillsMakerUnknown, "fill")}, ${formatUsdc(t.volumeMakerUnknown)} USDC: counted neither as ours nor as between others`,
+                },
+              ]
+            : []),
           {
             label: "Router trades",
             value: `${formatInt(t.routerTrades)}, ${formatUsdc(t.routerVolume)} USDC`,

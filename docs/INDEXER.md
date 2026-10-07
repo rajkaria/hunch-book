@@ -25,18 +25,45 @@ timelock queue.
 | Collateral token (test USDC on testnet, Circle USDC on mainnet) | address in the deployments file; only transfers into or out of the vault | `Transfer` |
 | `Market` (one clone per question) | registered from the vault's `MarketRegistered` and the factory's `MarketCreated` | `Staked`, `Graduated`, `TokensClaimed`, `Settled`, `Voided`, `PoolClaimed`, `DustSwept` |
 | `OutcomeToken` (YES and NO) | registered from the vault's `MarketRegistered` | `Transfer` |
-| Kuru order book (one per graduated market) | registered from the Graduator's `BookCreated` and `BookRegistered` | `Trade`, `OrderCreated`, `OrderCanceled`, `OrdersCanceled` |
+| Kuru v1 order book (one per graduated market), `KuruOrderBook` in the config | registered from the Graduator's `BookCreated` and `BookRegistered` | `Trade`, `OrderCreated`, `OrderCanceled`, `OrdersCanceled` |
+| Kuru v2 order book (one per graduated market of a Kuru v2 stack), `KuruSpotBook` | registered from the same events of a Kuru v2 stack's graduator | `SpotSwap` |
 | `SnapshotResolver` (template 7) | `hunchBook.resolvers.snapshot` in the deployments file | `SnapshotTaken` |
 | `AutoRedeemer` | `hunchBook.periphery.autoRedeemer` | `OptInSet`, `MarketOptOutSet`, `AutoRedeemed`, `RedeemFailed` |
 | `ConditionalOrders` | `hunchBook.periphery.conditionalOrders` | `OrderPlaced`, `OrderCancelled`, `OrderExecuted` |
 | `ReferralRegistry` | `hunchBook.periphery.referralRegistry` | `Bound` |
 | `MerkleDistributor` | `hunchBook.periphery.merkleDistributor` | `EpochCreated`, `Claimed`, `Swept`, `FunderTransferStarted`, `FunderTransferred` |
 | `ImpliedProbabilityOracle` | `hunchBook.periphery.impliedProbabilityOracle` | `Poked` |
-| `OutcomeTokenPriceAdapterFactory` (named `PriceAdapterFactory` in the config) | `hunchBook.periphery.priceAdapterFactory` | `AdapterCreated` |
+| `OutcomeTokenPriceAdapterFactory` (named `PriceAdapterFactory` in the config) | `hunchBook.periphery.priceAdapterFactory`, and on a Kuru v2 stack also `periphery.kuruFeedFactory` | `AdapterCreated` |
 | `TemplateTimelock` | `hunchBook.periphery.templateTimelock` | `OperationQueued`, `OperationExecuted`, `OperationCancelled`, `CreationPauseSet`, `GraduationPauseSet`, `GuardianAccepted` |
 
 Kuru's events have no indexed fields, so the indexer cannot filter them by topic. It reads them only
 from the book addresses the Graduator registered, never from other Kuru markets.
+
+### Stacks
+
+A network can have more than one stack of Hunch Book contracts ([PROTOCOL.md §8.1](./PROTOCOL.md#81-kuru)):
+the primary one (`hunchBook` in the deployments file) and extra ones under `stacks`. On testnet the
+primary stack is on Kuru v1 and `stacks.kuruV2` is on Kuru v2. Every contract in the table above is read
+on every stack that has it, with the same handlers, into the same tables:
+
+- `Market.stack` and `Market.kuruVersion` say where a market belongs. Each stack's factory numbers its
+  own markets from 1, so `Market.number` repeats across stacks; `Stack.marketsCreated` keeps each count.
+- A record a contract numbers on its own keeps that number as its id on the primary stack and gets
+  `"<stack>-"` in front on another: `Template`, `ConditionalOrder`, `RewardEpoch` (and its
+  `RewardClaim`s), `TimelockOperation`, `AutoRedeemOptIn` and `AutoRedeemMarketOptOut`. Two stacks'
+  timelocks can queue the same call at the same nonce, which gives the same operation id onchain.
+- A referral binding earns credit only from fees on its own registry's stack (`ReferralLink`).
+- `ProtocolStats` and `DailyStats` add up every stack, every vault's USDC included.
+
+### Kuru v2 swaps
+
+A Kuru v2 book emits one `SpotSwap` per taker swap: the amount in used and the amount out after Kuru's
+fee, with no maker and no price. The indexer records it as one `Trade` at the swap's average price
+(`notional / size`), with `kuruVersion` 2, `makerKnown` false and the zero address as the maker.
+`orderId`, `priceE18` and `makerRemaining` are null. Such a fill is never counted as our maker's or as a
+fill between other parties: it goes to `fillCountMakerUnknown` and `volumeMakerUnknown` instead, and our
+maker's share is computed among fills whose maker is known. A router trade's trader is the transaction's
+sender, as for v1.
 
 Indexing starts at `hunchBook.deployBlock` (67,856,277 on testnet), for every contract. The resolver and
 the periphery were deployed later (the periphery at block 68,046,179) and have no logs before that, so
@@ -58,7 +85,8 @@ copy them by hand: [`indexer/scripts/gen-config.ts`](../indexer/scripts/gen-conf
 A network's config needs the core (factory, vault, router, graduator, collateral and deploy block). Template
 7's resolver and the periphery contracts are listed whether or not that network has them: one it has no
 address for is listed without one, so nothing registers it and it is never read there, and the same
-handlers serve both networks. When the periphery is deployed on mainnet, regenerating the config picks it up.
+handlers serve both networks. When the periphery is deployed on mainnet, regenerating the config picks it up. A contract that
+several stacks have is listed with one address per stack, the primary stack's first.
 
 Event signatures in the config come from the ABIs that `scripts/gen-abis.mjs` generates from the
 contracts (and Kuru's from `packages/shared/src/kuru/abis.ts`), so the config cannot drift from the
@@ -92,8 +120,9 @@ Conventions:
 | `Graduation` | market | totals, opening price, book, staker count, caller |
 | `TokenClaim` | `TokensClaimed` event | side, amount, who pushed the claim |
 | `DustSweep` | `DustSwept` event | rounding dust of tokens sent to the fee recipient |
-| `Book` | Kuru book | market, created or registered, fills, volume, last price, orders |
-| `Trade` | Kuru fill on our books | price, size, USDC notional, side, maker, taker, trader, our-maker flag, block, transaction |
+| `Stack` | one stack of contracts on a chain | name, Kuru version, factory, markets created |
+| `Book` | Kuru book | market, Kuru version, created or registered, fills, volume, last price, orders |
+| `Trade` | Kuru fill on our books (v1), or swap (v2) | price, size, USDC notional, side, maker (when known), taker, trader, our-maker flag, block, transaction |
 | `RouterTrade` | router `Trade` event | kind (buy or sell, YES or NO), amounts in and out, average price, user (an order's owner when ConditionalOrders made the trade, with a link to the order) |
 | `BookOrder` | Kuru limit order on our books | owner, side, price, size, size left, open, filled or cancelled |
 | `Position` | wallet and market | YES and NO balances from transfers, stakes, claims, pool payouts, redemptions, sets minted and merged, USDC spent and received |
@@ -165,8 +194,10 @@ The [referral formula](./PERIPHERY.md#the-referral-formula) needs two inputs: wh
 each moment (the `Bound` events) and every fee each user paid (the vault's `Redeemed`, where the user is
 `to`, and each market's `PoolClaimed`). The indexer joins them as they arrive:
 
-1. On `Bound`, it records the `Referral` and points the user's `Wallet.referral` at it.
-2. On each fee event with a fee above zero, it takes the user's latest binding. If the event's block time
+1. On `Bound`, it records the `Referral` and points the user's `Wallet.referral` and the
+   `ReferralLink` of the registry's stack at it.
+2. On each fee event with a fee above zero, it takes the user's latest binding on the market's stack. If
+   the event's block time
    `t` has `boundAt <= t < expiresAt`, the fee is credited: a `ReferralFee` row, and the same amounts
    added to the `Referral`, `Referrer`, `ReferredUser` and that day's `ReferralCredit`.
 3. Each fee's `protocolShare` is `fee - floor(fee * 2500 / 10000)`, the 75% the protocol keeps, exactly as
@@ -283,7 +314,10 @@ instead of showing an estimate. After a failure the app leaves the indexer alone
   parlay (template 6) with such a leg has no `settleDeadline` either, since the resolver takes the latest
   of its legs' deadlines.
 - **Kuru fill notional** is size times price, rounded down, before any Kuru fee. Router trades carry
-  the exact USDC the user paid or received.
+  the exact USDC the user paid or received. A Kuru v2 swap's notional is its USDC side: paid on a buy,
+  received after Kuru's fee on a sell.
+- **Kuru v2 makers** are not in the swap event, so v2 fills are counted apart (`fillCountMakerUnknown`)
+  and never as ours or as between others. Our maker bot's v2 quotes are not indexed as `BookOrder`s.
 - **Positions** count tokens in wallets. Tokens a maker has resting in Kuru's margin account show up on
   the margin account's position, not on the maker's. The market, vault and router only pass tokens
   through and get no position.
@@ -346,9 +380,10 @@ Every number comes from indexed events (ROADMAP.md, How we measure progress).
 |---|---|---|
 | Markets created, graduated, settled, voided | `ProtocolStats.marketsCreated`, `marketsGraduatedTotal`, `marketsSettled`, `marketsVoided` | one per `MarketCreated`, `Graduated`, `Settled`, `Voided`. `marketsPool` and `marketsGraduated` count markets in each stage now. |
 | Distinct wallets that staked or traded | `wallets`, with `ourWallets` and `externalWallets` | an address counts once, the first time it stakes, trades through the router, or is either side of a fill on our books. Receiving tokens does not count. |
-| Trades and volume | `fillCount`, `volume` | Kuru fills on our books; volume is the fills' USDC notional |
-| Fills against our maker | `fillCountOurMaker`, `volumeOurMaker`, `ourMakerShareBps`, `ourMakerVolumeShareBps` | the maker side is `wallets.maker` from the deployments file; shares are in basis points |
-| Fills between other parties | `fillCountBetweenOthers`, `volumeBetweenOthers` | neither the maker nor the trader is one of our wallets |
+| Trades and volume | `fillCount`, `volume` | Kuru fills on our books (a Kuru v2 swap counts as one); volume is the fills' USDC notional |
+| Fills against our maker | `fillCountOurMaker`, `volumeOurMaker`, `ourMakerShareBps`, `ourMakerVolumeShareBps` | the maker side is `wallets.maker` from the deployments file; shares are in basis points, among fills whose maker is known |
+| Fills between other parties | `fillCountBetweenOthers`, `volumeBetweenOthers` | the maker is known and neither it nor the trader is one of our wallets |
+| Fills with an unknown maker | `fillCountMakerUnknown`, `volumeMakerUnknown` | Kuru v2 swaps, which do not name their makers |
 | Window end to settlement | `avgSettlementLatencySeconds` (price markets), `avgSettlementLatencyBlocks` (Perpl markets) | settlement time minus close, in the market's own clock; touch markets settled early are counted in `earlySettlements` and left out of the averages |
 | Settlement to redemption | `avgSecondsToFirstRedemption`, `Redemption.secondsAfterSettlement` | first redemption in a market minus its settlement (or void) time |
 | Solvency margin per market | `Market.solvencyMargin` | USDC in (stakes, mints) minus USDC out (payouts, merges, redemptions) minus what the market still owes (pool, sets) minus its fees. Zero when every event is accounted for. |
@@ -372,7 +407,8 @@ counted. The indexer labels a wallet as ours when it is
 - `wallets.maker` (role `Maker`), `wallets.keeper` (`Keeper`), `hunchBook.guardian` (`Guardian`),
   `hunchBook.feeRecipient` (`FeeRecipient`), `hunchBook.periphery.distributorFunder`
   (`DistributorFunder`) or `hunchBook.periphery.timelockProposer` (`TimelockProposer`) in the
-  deployments file (on testnet the last four are one address), or
+  deployments file (on testnet the last four are one address), or the same roles of any stack under
+  `stacks`, or
 - an address one of those wallets paid a stake for (`Seeded`). On testnet these are the ten stakers
   the seed script derived from the deployer key (`contracts/script/SeedTestnetMarket.s.sol`).
 

@@ -5,7 +5,7 @@ import { outcomeOf, sideOf } from "../lib/enums.js";
 import { redeemFeePerTokenE6 } from "../lib/math.js";
 import { addr } from "../lib/network.js";
 import { creditReferral } from "../lib/referrals.js";
-import { pairId, Unit } from "../lib/store.js";
+import { emptyBook, pairId, Unit } from "../lib/store.js";
 
 indexer.onEvent({ contract: "Market", event: "Staked" }, async ({ event, context }) => {
   const u = await Unit.start(context, event, "Stake");
@@ -95,22 +95,14 @@ indexer.onEvent({ contract: "Market", event: "Graduated" }, async ({ event, cont
   (await u.daily()).marketsGraduated += 1;
 
   // The Graduator's BookCreated or BookRegistered came first; this only covers a book we never saw.
-  await u.load("Book", book, () => ({
-    id: book,
-    market_id: market.id,
-    source: "Created",
-    registrar: undefined,
-    fillCount: 0,
-    fillCountOurMaker: 0,
-    volume: 0n,
-    volumeOurMaker: 0n,
-    lastPriceE6: undefined,
-    orderCount: 0,
-    orderCountOurMaker: 0,
-    block: u.m.block,
-    timestamp: u.m.timestamp,
-    tx: u.m.tx,
-  }));
+  await u.load("Book", book, () =>
+    emptyBook(
+      book,
+      market.id,
+      { source: "Created", registrar: undefined, kuruVersion: market.kuruVersion },
+      u.m,
+    ),
+  );
 
   u.create("Graduation", {
     id: market.id,

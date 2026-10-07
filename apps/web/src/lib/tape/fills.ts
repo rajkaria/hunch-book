@@ -10,6 +10,8 @@ import { ourAddresses } from "../chain/landing";
 import { address, big, hash } from "../indexer/parse";
 import type { TradeRow } from "../indexer/queries";
 
+const ZERO_ADDRESS: Address = "0x0000000000000000000000000000000000000000";
+
 // Fills on Hunch Book's Kuru books, for the trade tape. Two sources: the indexer's Trade entity, or
 // Kuru's events read straight from recent blocks. Kuru v1's Trade event (as the indexer reads it,
 // indexer/src/handlers/kuru.ts): isBuy is the taker's side (true when the taker bought YES from a
@@ -34,11 +36,14 @@ export interface Fill {
   priceE6: bigint;
   /** YES base units filled. */
   size: bigint;
-  /** USDC base units: size times price, rounded down, before any Kuru fee. */
+  /** USDC base units: size times price, rounded down, before any Kuru fee (v2: the swap's USDC side). */
   notional: bigint;
   /** The taker bought YES (lifted an ask); false when the taker sold YES (hit a bid). */
   takerBuysYes: boolean;
+  /** The zero address when the maker is unknown. */
   maker: Address;
+  /** False for a Kuru v2 swap: it does not name its makers, so it is never counted as ours or as others'. */
+  makerKnown: boolean;
   /** The wallet on the taking side: the transaction's sender for router trades. */
   trader: Address;
   viaRouter: boolean;
@@ -134,7 +139,8 @@ export function fillFromSwapLog(
     size,
     notional,
     takerBuysYes: a.isBuy,
-    maker: "0x0000000000000000000000000000000000000000",
+    maker: ZERO_ADDRESS,
+    makerKnown: false,
     trader: getAddress(trader),
     viaRouter,
     makerIsOurMaker: false,
@@ -143,9 +149,9 @@ export function fillFromSwapLog(
   };
 }
 
-/** Neither side is one of our wallets. */
-export const isBetweenOthers = (f: Pick<Fill, "makerIsOurs" | "traderIsOurs">): boolean =>
-  !f.makerIsOurs && !f.traderIsOurs;
+/** Neither side is one of our wallets. Never true when the maker is unknown (Kuru v2 swaps). */
+export const isBetweenOthers = (f: Pick<Fill, "makerKnown" | "makerIsOurs" | "traderIsOurs">): boolean =>
+  f.makerKnown && !f.makerIsOurs && !f.traderIsOurs;
 
 export function fillFromRow(row: TradeRow): Fill {
   return {
@@ -163,6 +169,7 @@ export function fillFromRow(row: TradeRow): Fill {
     notional: big(row.notional),
     takerBuysYes: row.takerBuysYes,
     maker: address(row.maker),
+    makerKnown: row.makerKnown ?? !isAddressEqual(address(row.maker), ZERO_ADDRESS),
     trader: address(row.trader),
     viaRouter: row.viaRouter,
     makerIsOurMaker: row.isOurMaker,
@@ -230,6 +237,7 @@ export function fillFromLog(
     notional: (a.filledSize * a.price) / PRICE_SCALE,
     takerBuysYes: a.isBuy,
     maker: getAddress(a.makerAddress),
+    makerKnown: true,
     trader: getAddress(trader),
     viaRouter,
     makerIsOurMaker: isAddressEqual(a.makerAddress, deployment.wallets.maker),
@@ -424,9 +432,11 @@ export interface TapeStats {
   fills: number;
   ourMakerFills: number;
   betweenOthers: number;
+  /** Kuru v2 swaps, whose makers are unknown. */
+  makerUnknown: number;
   volume: bigint;
   ourMakerVolume: bigint;
-  /** Our maker's share of fills, basis points; null with no fills. */
+  /** Our maker's share of the fills whose maker is known, basis points; null with none. */
   ourMakerShareBps: number | null;
 }
 
@@ -434,6 +444,7 @@ export interface TapeStats {
 export function tapeStats(fills: readonly Fill[]): TapeStats {
   let ourMakerFills = 0;
   let betweenOthers = 0;
+  let makerUnknown = 0;
   let volume = 0n;
   let ourMakerVolume = 0n;
   for (const f of fills) {
@@ -443,13 +454,16 @@ export function tapeStats(fills: readonly Fill[]): TapeStats {
       ourMakerVolume += f.notional;
     }
     if (isBetweenOthers(f)) betweenOthers++;
+    if (!f.makerKnown) makerUnknown++;
   }
+  const known = fills.length - makerUnknown;
   return {
     fills: fills.length,
     ourMakerFills,
     betweenOthers,
+    makerUnknown,
     volume,
     ourMakerVolume,
-    ourMakerShareBps: fills.length === 0 ? null : Math.floor((ourMakerFills * 10_000) / fills.length),
+    ourMakerShareBps: known === 0 ? null : Math.floor((ourMakerFills * 10_000) / known),
   };
 }

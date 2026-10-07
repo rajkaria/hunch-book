@@ -133,7 +133,13 @@ export function FillTable({
                 <td className={`${s.num} mono`}>{formatUsdc(f.size)}</td>
                 <td className={`${s.num} ${s.wide} mono`}>{formatUsdc(f.notional)}</td>
                 <td>
-                  <Party who={f.maker} ourMaker={f.makerIsOurMaker} ours={f.makerIsOurs} you={youMaker} />
+                  {f.makerKnown ? (
+                    <Party who={f.maker} ourMaker={f.makerIsOurMaker} ours={f.makerIsOurs} you={youMaker} />
+                  ) : (
+                    <span className={s.subtle} title="A Kuru v2 swap does not name the orders it filled.">
+                      unknown (Kuru v2 swap)
+                    </span>
+                  )}
                 </td>
                 <td className={s.wide}>
                   <Party

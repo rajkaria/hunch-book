@@ -43,3 +43,10 @@ export const vaultOf = (
 
 /** True for a market whose book is (or will be) on Kuru v2. */
 export const onKuruV2 = (m: Pick<MarketView, "kuruVersion">): boolean => m.kuruVersion === 2;
+
+/**
+ * "#3", or "#3 · Kuru v2" for a market of a Kuru v2 stack: each stack's factory numbers its markets
+ * from 1, so the label keeps two markets with the same number apart.
+ */
+export const marketTag = (m: Pick<MarketView, "marketId" | "kuruVersion">): string =>
+  `#${m.marketId.toString()}${onKuruV2(m) ? " · Kuru v2" : ""}`;

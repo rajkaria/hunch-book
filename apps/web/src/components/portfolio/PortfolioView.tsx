@@ -17,7 +17,7 @@ import {
   portfolioTotals,
 } from "@/lib/market/portfolio";
 import type { PortfolioEntry } from "@/lib/market/types";
-import { vaultOf } from "@/lib/stacks";
+import { marketTag, vaultOf } from "@/lib/stacks";
 import { useAtomicBatch } from "@/lib/wallet/batch";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, type TxStep, useTxRunner } from "@/lib/wallet/useTxRunner";
@@ -169,7 +169,7 @@ export function PortfolioRows({ entries }: { entries: PortfolioEntry[] }) {
             <li className={ms.card} key={e.market.address}>
               <div className={ms.meta}>
                 <Badge tone={phaseTone(e.market.phase)}>{phaseLabel(e.market.phase)}</Badge>
-                <span className="mono">#{e.market.marketId.toString()}</span>
+                <span className="mono">{marketTag(e.market)}</span>
               </div>
               <h2 className={ms.title}>
                 <Link className={ms.titleLink} href={`/m/${e.market.address}`}>

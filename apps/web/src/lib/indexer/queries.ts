@@ -29,9 +29,11 @@ export const PROOF_QUERY = /* GraphQL */ `
       fillCountOurMaker
       fillCountOurTrader
       fillCountBetweenOthers
+      fillCountMakerUnknown
       volume
       volumeOurMaker
       volumeBetweenOthers
+      volumeMakerUnknown
       ourMakerShareBps
       ourMakerVolumeShareBps
       routerTradeCount
@@ -128,9 +130,13 @@ export interface ProofStatsRow {
   fillCountOurMaker: number;
   fillCountOurTrader: number;
   fillCountBetweenOthers: number;
+  /** Kuru v2 swaps, whose makers are unknown. */
+  fillCountMakerUnknown: number;
   volume: BigIntString;
   volumeOurMaker: BigIntString;
   volumeBetweenOthers: BigIntString;
+  volumeMakerUnknown: BigIntString;
+  /** Among fills whose maker is known. */
   ourMakerShareBps: number;
   ourMakerVolumeShareBps: number;
   routerTradeCount: number;
@@ -230,6 +236,7 @@ export const TAPE_QUERY = /* GraphQL */ `
       notional
       takerBuysYes
       maker
+      makerKnown
       taker
       trader
       viaRouter
@@ -260,6 +267,8 @@ export interface TradeRow {
   notional: BigIntString;
   takerBuysYes: boolean;
   maker: string;
+  /** False on Kuru v2 swaps (maker is then the zero address). Absent from indexers older than the field. */
+  makerKnown?: boolean;
   taker: string;
   trader: string;
   viaRouter: boolean;

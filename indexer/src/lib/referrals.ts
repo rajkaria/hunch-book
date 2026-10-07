@@ -20,9 +20,10 @@ export function referralCredit(protocolShare: bigint, referralShareBps: bigint):
 }
 
 /**
- * Credits one fee-paying event to the user's referrer, if the user's latest binding was active at this
- * event's block time. Called from the handlers of the vault's Redeemed (user = `to`) and a market's
- * PoolClaimed (user = the claimer), which are themselves guarded against running twice.
+ * Credits one fee-paying event to the user's referrer, if the user's latest binding on the market's
+ * stack was active at this event's block time. Called from the handlers of the vault's Redeemed
+ * (user = `to`) and a market's PoolClaimed (user = the claimer), which are themselves guarded against
+ * running twice.
  */
 export async function creditReferral(
   u: Unit,
@@ -30,9 +31,11 @@ export async function creditReferral(
 ): Promise<void> {
   if (e.fee === 0n) return;
   const user = addr(e.user);
-  const wallet = await u.find("Wallet", user);
-  if (!wallet?.referral_id) return;
-  const referral = await u.find("Referral", wallet.referral_id);
+  // A binding counts for the markets of its own registry's stack (docs/PROTOCOL.md section 8.1).
+  const stack = (await u.market(e.market))?.stack ?? "primary";
+  const link = await u.find("ReferralLink", `${stack}-${user}`);
+  if (!link) return;
+  const referral = await u.find("Referral", link.referral_id);
   if (!referral) return;
   const t = u.m.timestamp;
   if (t < referral.boundAt || t >= referral.expiresAt) return;

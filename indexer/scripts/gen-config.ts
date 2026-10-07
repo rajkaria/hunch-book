@@ -26,7 +26,8 @@ import {
   templateTimelockAbi,
 } from "../../packages/shared/src/abis/generated.js";
 import { kuruOrderBookAbi } from "../../packages/shared/src/kuru/abis.js";
-import type { NetworkConstants } from "../src/lib/network.js";
+import { kuruV2OrderBookAbi } from "../../packages/shared/src/kuru/v2abis.js";
+import type { NetworkConstants, StackConstants } from "../src/lib/network.js";
 
 export const INDEXER_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = join(INDEXER_DIR, "..");
@@ -42,43 +43,71 @@ export const NETWORKS_JSON = "src/networks.generated.json";
 /** Public Monad RPCs answer eth_getLogs for at most 100 blocks per request. */
 export const RPC_BLOCK_RANGE = 100;
 
+/** One stack of Hunch Book contracts: `hunchBook` (the primary one) or an entry under `stacks`. */
+interface StackSection {
+  factory?: string;
+  vault?: string;
+  router?: string;
+  graduator?: string;
+  usdc?: string;
+  marketImplementation?: string;
+  guardian?: string;
+  feeRecipient?: string;
+  deployBlock?: number;
+  /** 1 when absent (the primary testnet stack predates the field). */
+  kuruVersion?: number;
+  resolvers?: Record<string, string>;
+  periphery?: {
+    autoRedeemer?: string;
+    conditionalOrders?: string;
+    referralRegistry?: string;
+    merkleDistributor?: string;
+    impliedProbabilityOracle?: string;
+    priceAdapterFactory?: string;
+    kuruFeedFactory?: string;
+    templateTimelock?: string;
+    timelockProposer?: string;
+    distributorFunder?: string;
+    deployBlock?: number;
+  };
+}
+
 interface DeploymentFile {
   network: string;
   chainId: number;
   rpc: string;
   explorer: string;
-  hunchBook: {
-    factory?: string;
-    vault?: string;
-    router?: string;
-    graduator?: string;
-    usdc?: string;
-    marketImplementation?: string;
-    guardian?: string;
-    feeRecipient?: string;
-    deployBlock?: number;
-    resolvers?: Record<string, string>;
-    periphery?: {
-      autoRedeemer?: string;
-      conditionalOrders?: string;
-      referralRegistry?: string;
-      merkleDistributor?: string;
-      impliedProbabilityOracle?: string;
-      priceAdapterFactory?: string;
-      templateTimelock?: string;
-      timelockProposer?: string;
-      distributorFunder?: string;
-      deployBlock?: number;
-    };
-  };
+  hunchBook: StackSection;
+  /** Extra stacks by name (testnet: `kuruV2`, next to the Kuru v1 primary stack). */
+  stacks?: Record<string, StackSection>;
   wallets: { maker: string; keeper: string };
   external: {
     usdc?: string;
     kuru: { router: string; marginAccount: string };
+    kuruV2?: { accountCore: string; spotRouter: string };
     perpl: { exchange: string; perps: Record<string, number> };
     chainlink: Record<string, string>;
     pyth: { contract: string; ids: Record<string, string> };
   };
+}
+
+/** A stack with its name: "primary" for `hunchBook`, else its key under `stacks`. */
+interface NamedStack {
+  name: string;
+  primary: boolean;
+  s: StackSection;
+}
+
+/**
+ * Every stack the indexer reads, the primary first. An extra stack counts once its core is deployed
+ * (factory, vault, router and graduator); until then it is left out, as a network is before its deploy.
+ */
+export function stacksOf(d: DeploymentFile): NamedStack[] {
+  const out: NamedStack[] = [{ name: "primary", primary: true, s: d.hunchBook }];
+  for (const [name, s] of Object.entries(d.stacks ?? {})) {
+    if (s.factory && s.vault && s.router && s.graduator) out.push({ name, primary: false, s });
+  }
+  return out;
 }
 
 // ---- events -------------------------------------------------------------------------------
@@ -153,6 +182,7 @@ export function contractEvents(): { name: string; dynamic: boolean; events: stri
       ]),
     },
     { name: "OutcomeToken", dynamic: true, events: [ERC20_TRANSFER] },
+    // Kuru v1 books (the primary testnet stack): every fill names its maker.
     {
       name: "KuruOrderBook",
       dynamic: true,
@@ -162,6 +192,12 @@ export function contractEvents(): { name: string; dynamic: boolean; events: stri
         "OrderCanceled",
         "OrdersCanceled",
       ]),
+    },
+    // Kuru v2 books (docs/PROTOCOL.md section 8.1): one SpotSwap per taker swap, without its makers.
+    {
+      name: "KuruSpotBook",
+      dynamic: true,
+      events: pick(kuruV2OrderBookAbi as unknown as readonly AbiItem[], ["SpotSwap"]),
     },
     // Template 7's resolver keeps the snapshots it takes.
     { name: "SnapshotResolver", dynamic: false, events: pick(snapshotResolverAbi, ["SnapshotTaken"]) },
@@ -217,29 +253,43 @@ export function contractEvents(): { name: string; dynamic: boolean; events: stri
 export const CORE_CONTRACTS = ["HunchBookFactory", "CollateralVault", "HunchRouter", "Graduator", "Usdc"];
 
 /**
- * Where each static contract is on a network. A contract the deployments file has no address for is
- * listed without one, so nothing registers it and it is never read there (the same handlers serve every
- * network). Every static contract is read from the core's deploy block, including those deployed later
- * (template 7's resolver, the periphery): they have no logs before their deployment, and Envio 3.12
- * cannot resume a test indexer past a contract start block later than the chain's.
+ * Where each static contract is on a network: one address per stack that has it, the primary stack's
+ * first, without repeats (the stacks share the collateral token). A contract the deployments file has
+ * no address for gets an empty list, so nothing registers it and it is never read there (the same
+ * handlers serve every network). Every static contract is read from the primary deploy block,
+ * including those deployed later (another stack, template 7's resolver, the periphery): they have no
+ * logs before their deployment, and Envio 3.12 cannot resume a test indexer past a contract start
+ * block later than the chain's.
  */
-export function staticContracts(d: DeploymentFile): Record<string, string | undefined> {
-  const h = d.hunchBook;
-  const p = h.periphery ?? {};
+export function staticContracts(d: DeploymentFile): Record<string, string[]> {
+  const stacks = stacksOf(d);
+  const each = (pick: (s: StackSection) => string | undefined): string[] => {
+    const out: string[] = [];
+    for (const { s } of stacks) {
+      const a = pick(s);
+      if (a && !out.some((b) => b.toLowerCase() === a.toLowerCase())) out.push(a);
+    }
+    return out;
+  };
   return {
-    HunchBookFactory: h.factory,
-    CollateralVault: h.vault,
-    HunchRouter: h.router,
-    Graduator: h.graduator,
-    Usdc: collateralOf(d),
-    SnapshotResolver: h.resolvers?.snapshot,
-    AutoRedeemer: p.autoRedeemer,
-    ConditionalOrders: p.conditionalOrders,
-    ReferralRegistry: p.referralRegistry,
-    MerkleDistributor: p.merkleDistributor,
-    ImpliedProbabilityOracle: p.impliedProbabilityOracle,
-    PriceAdapterFactory: p.priceAdapterFactory,
-    TemplateTimelock: p.templateTimelock,
+    HunchBookFactory: each((s) => s.factory),
+    CollateralVault: each((s) => s.vault),
+    HunchRouter: each((s) => s.router),
+    Graduator: each((s) => s.graduator),
+    Usdc: each((s) => s.usdc ?? collateralOf(d)),
+    SnapshotResolver: each((s) => s.resolvers?.snapshot),
+    AutoRedeemer: each((s) => s.periphery?.autoRedeemer),
+    ConditionalOrders: each((s) => s.periphery?.conditionalOrders),
+    ReferralRegistry: each((s) => s.periphery?.referralRegistry),
+    MerkleDistributor: each((s) => s.periphery?.merkleDistributor),
+    ImpliedProbabilityOracle: each((s) => s.periphery?.impliedProbabilityOracle),
+    // Both kinds of adapter factory emit AdapterCreated: the lending one and, on a Kuru v2 stack, the
+    // one whose adapters are Kuru's price feeds for YES and NO (oracle.ts tells them apart).
+    PriceAdapterFactory: [
+      ...each((s) => s.periphery?.priceAdapterFactory),
+      ...each((s) => s.periphery?.kuruFeedFactory),
+    ],
+    TemplateTimelock: each((s) => s.periphery?.templateTimelock),
   };
 }
 
@@ -266,6 +316,38 @@ export function collateralOf(d: DeploymentFile): string | undefined {
 export function isDeployed(d: DeploymentFile): boolean {
   const h = d.hunchBook;
   return Boolean(h.factory && h.vault && h.router && h.graduator && collateralOf(d) && h.deployBlock);
+}
+
+/** One stack's constants, addresses lowercase. */
+export function stackConstants(stack: NamedStack): StackConstants {
+  const { s } = stack;
+  const p = s.periphery ?? {};
+  return {
+    name: stack.name,
+    primary: stack.primary,
+    kuruVersion: s.kuruVersion === 2 ? 2 : 1,
+    factory: lower(s.factory),
+    vault: lower(s.vault),
+    router: lower(s.router),
+    graduator: lower(s.graduator),
+    guardian: lower(s.guardian),
+    feeRecipient: lower(s.feeRecipient),
+    resolvers: Object.fromEntries(
+      Object.entries(s.resolvers ?? {}).map(([name, address]) => [name, address.toLowerCase()]),
+    ),
+    periphery: {
+      autoRedeemer: lower(p.autoRedeemer),
+      conditionalOrders: lower(p.conditionalOrders),
+      referralRegistry: lower(p.referralRegistry),
+      merkleDistributor: lower(p.merkleDistributor),
+      impliedProbabilityOracle: lower(p.impliedProbabilityOracle),
+      priceAdapterFactory: lower(p.priceAdapterFactory),
+      kuruFeedFactory: lower(p.kuruFeedFactory),
+      templateTimelock: lower(p.templateTimelock),
+      distributorFunder: lower(p.distributorFunder),
+      timelockProposer: lower(p.timelockProposer),
+    },
+  };
 }
 
 export function networkConstants(d: DeploymentFile): NetworkConstants {
@@ -317,6 +399,13 @@ export function networkConstants(d: DeploymentFile): NetworkConstants {
       router: d.external.kuru.router.toLowerCase(),
       marginAccount: d.external.kuru.marginAccount.toLowerCase(),
     },
+    kuruV2: d.external.kuruV2
+      ? {
+          accountCore: d.external.kuruV2.accountCore.toLowerCase(),
+          spotRouter: d.external.kuruV2.spotRouter.toLowerCase(),
+        }
+      : null,
+    stacks: isDeployed(d) ? stacksOf(d).map(stackConstants) : [],
     perps: invert(d.external.perpl.perps, false),
     chainlinkFeeds: invert(d.external.chainlink, true),
     pythIds: invert(d.external.pyth.ids, true),
@@ -366,9 +455,13 @@ export function renderConfig(d: DeploymentFile, rpcEnv: string): string {
     lines.push(`      - name: ${c.name}`);
     if (c.dynamic) continue;
     if (!(c.name in addresses)) throw new Error(`static contract ${c.name} has no entry in staticContracts`);
-    const address = addresses[c.name];
-    if (address) lines.push(`        address: "${address}"`);
-    else if (CORE_CONTRACTS.includes(c.name)) throw new Error(`no address for ${c.name} on ${d.network}`);
+    const list = addresses[c.name] ?? [];
+    if (list.length === 1) lines.push(`        address: "${list[0]}"`);
+    else if (list.length > 1) {
+      // One address per stack (docs/PROTOCOL.md section 8.1): the same handlers read every stack.
+      lines.push("        address:");
+      for (const a of list) lines.push(`          - "${a}"`);
+    } else if (CORE_CONTRACTS.includes(c.name)) throw new Error(`no address for ${c.name} on ${d.network}`);
   }
   return `${lines.join("\n")}\n`;
 }

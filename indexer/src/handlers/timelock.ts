@@ -2,14 +2,15 @@
 // public review of a new template or limit is visible from the moment it is queued; and the actions
 // that take effect at once (pauses, accepting the guardian role).
 import { type Enum, indexer } from "envio";
-import { addr } from "../lib/network.js";
+import { addr, scopedId } from "../lib/network.js";
 import { Unit } from "../lib/store.js";
 import { decodeTimelockCall, TIMELOCK_GRACE_PERIOD_SECONDS } from "../lib/timelock.js";
 
 indexer.onEvent({ contract: "TemplateTimelock", event: "OperationQueued" }, async ({ event, context }) => {
   const u = new Unit(context, event);
   const { nonce, data, readyAt } = event.params;
-  const id = event.params.id.toLowerCase();
+  // Two stacks' timelocks can queue the same call at the same nonce, so the same operation id.
+  const id = scopedId(u.m.chainId, u.m.src, event.params.id.toLowerCase());
   if (await u.exists("TimelockOperation", id)) return;
   const call = decodeTimelockCall(data);
   u.create("TimelockOperation", {
@@ -54,7 +55,7 @@ indexer.onEvent({ contract: "TemplateTimelock", event: "OperationQueued" }, asyn
 
 /** The queued operation an event ends, or undefined if it is unknown or already ended (seen already). */
 async function queuedOperation(u: Unit, id: string) {
-  const op = await u.find("TimelockOperation", id.toLowerCase());
+  const op = await u.find("TimelockOperation", scopedId(u.m.chainId, u.m.src, id.toLowerCase()));
   if (!op) {
     u.log.warn("event for a timelock operation the indexer has not seen", { id, event: u.m.id });
     return undefined;

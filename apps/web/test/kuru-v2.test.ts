@@ -9,7 +9,7 @@ import { listMarkets, readMarket } from "../src/lib/chain/reads";
 import { lifecycleActions } from "../src/lib/market/actions";
 import type { MarketView } from "../src/lib/market/types";
 import { routerOf, stackOf, vaultOf } from "../src/lib/stacks";
-import { fillFromSwapLog, routersOf } from "../src/lib/tape/fills";
+import { type Fill, fillFromSwapLog, isBetweenOthers, routersOf, tapeStats } from "../src/lib/tape/fills";
 import { deployed, marketAddr, marketHandlers, stubClient } from "./chain";
 
 // The app on a deployment with a Kuru v2 stack next to the primary one (docs/PROTOCOL.md §8.1).
@@ -147,7 +147,16 @@ describe("v2 fills for the tape", () => {
       viaRouter: true,
       trader,
       maker: zeroAddress,
+      makerKnown: false,
       makerIsOurMaker: false,
+    });
+    // An unknown maker is never counted as between others, even when the trader is not ours.
+    expect(isBetweenOthers(fill as Fill)).toBe(false);
+    expect(tapeStats([fill as Fill])).toMatchObject({
+      fills: 1,
+      makerUnknown: 1,
+      betweenOthers: 0,
+      ourMakerShareBps: null,
     });
   });
 

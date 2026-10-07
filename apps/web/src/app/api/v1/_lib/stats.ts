@@ -12,8 +12,8 @@ import { allMarkets, PHASE_NAMES } from "./markets";
 const ACTIVITY_QUERY = `query Stats($id: String!) {
   ProtocolStats_by_pk(id: $id) {
     wallets ourWallets externalWallets stakeCount stakedUsdc stakeCountOurs stakedUsdcOurs
-    fillCount fillCountOurMaker fillCountBetweenOthers volume volumeOurMaker volumeBetweenOthers
-    ourMakerShareBps ourMakerVolumeShareBps routerTradeCount routerVolume redemptionCount redeemedUsdc
+    fillCount fillCountOurMaker fillCountBetweenOthers fillCountMakerUnknown volume volumeOurMaker
+    volumeBetweenOthers volumeMakerUnknown ourMakerShareBps ourMakerVolumeShareBps routerTradeCount routerVolume redemptionCount redeemedUsdc
     updatedAtBlock
   }
 }`;
@@ -49,12 +49,15 @@ function activityJson(a: Activity) {
       count: Number(a.fillCount),
       againstOurMaker: Number(a.fillCountOurMaker),
       betweenOthers: Number(a.fillCountBetweenOthers),
+      // Kuru v2 swaps do not name their makers: counted neither as ours nor as between others.
+      makerUnknown: Number(a.fillCountMakerUnknown ?? 0),
       ourMakerShare: formatBps(Number(a.ourMakerShareBps)),
     },
     volume: {
       usdc: usdc(a.volume),
       againstOurMakerUsdc: usdc(a.volumeOurMaker),
       betweenOthersUsdc: usdc(a.volumeBetweenOthers),
+      makerUnknownUsdc: usdc(a.volumeMakerUnknown ?? 0),
       ourMakerShare: formatBps(Number(a.ourMakerVolumeShareBps)),
     },
     routerTrades: { count: Number(a.routerTradeCount), usdc: usdc(a.routerVolume) },

@@ -72,6 +72,11 @@
   background: var(--accent);
 }
 
+/* Kuru v2 swaps: the maker is unknown, so neither ours nor others'. */
+.splitUnknown {
+  background: var(--muted);
+}
+
 .scroll {
   width: 100%;
   margin-top: var(--space-3);

@@ -39,6 +39,41 @@ export const ADDR = {
   timelock: must(n.periphery.templateTimelock),
 };
 
+/** One stack's addresses, for the Protocol model (docs/PROTOCOL.md section 8.1). */
+export interface StackAddr {
+  name: string;
+  factory: string;
+  vault: string;
+  router: string;
+  graduator: string;
+  /** Where Kuru keeps traders' tokens: v1's margin account, v2's AccountCore. */
+  custody: string;
+}
+
+export const PRIMARY: StackAddr = {
+  name: "primary",
+  factory: ADDR.factory,
+  vault: ADDR.vault,
+  router: ADDR.router,
+  graduator: ADDR.graduator,
+  custody: ADDR.marginAccount,
+};
+
+const v2Stack = n.stacks.find((s) => s.kuruVersion === 2);
+
+/** The testnet Kuru v2 stack (`stacks.kuruV2`), once deployments/monad-testnet.json has it. */
+export const KURU_V2: StackAddr | undefined =
+  v2Stack && n.kuruV2
+    ? {
+        name: v2Stack.name,
+        factory: must(v2Stack.factory),
+        vault: must(v2Stack.vault),
+        router: must(v2Stack.router),
+        graduator: must(v2Stack.graduator),
+        custody: n.kuruV2.accountCore,
+      }
+    : undefined;
+
 /** The block the periphery was deployed at on testnet: tests emit periphery logs after it. */
 export const PERIPHERY_BLOCK = n.periphery.deployBlock ?? 0;
 
@@ -211,11 +246,21 @@ interface MarketState {
 export class Protocol {
   readonly s: Script;
   readonly indexer: TestIndexer;
+  /** The stack the actions run on: its factory, vault, router, graduator and Kuru's custody contract. */
+  readonly k: StackAddr;
   private readonly markets = new Map<string, MarketState>();
 
-  constructor(script = new Script()) {
+  constructor(script = new Script(), stack: StackAddr = PRIMARY) {
     this.s = script;
+    this.k = stack;
     this.indexer = createTestIndexer();
+  }
+
+  /** The same script and indexer, acting on another stack. */
+  on(stack: StackAddr): Protocol {
+    const p = Object.create(Protocol.prototype) as Protocol;
+    Object.assign(p, this, { k: stack });
+    return p;
   }
 
   run() {
@@ -238,16 +283,18 @@ export class Protocol {
 
   addTemplates(): void {
     const rule = { minPool: USDC(500), minStakers: 10n, minChanceBps: 300n, maxChanceBps: 9700n };
-    this.s.emit("HunchBookFactory", "TemplateAdded", {
-      templateId: 1n,
-      resolver: ADDR.zero.replace(/0$/, "1"),
-      rule,
-    });
-    this.s.emit("HunchBookFactory", "TemplateAdded", {
-      templateId: 2n,
-      resolver: ADDR.zero.replace(/0$/, "2"),
-      rule,
-    });
+    this.s.emit(
+      "HunchBookFactory",
+      "TemplateAdded",
+      { templateId: 1n, resolver: ADDR.zero.replace(/0$/, "1"), rule },
+      this.k.factory,
+    );
+    this.s.emit(
+      "HunchBookFactory",
+      "TemplateAdded",
+      { templateId: 2n, resolver: ADDR.zero.replace(/0$/, "2"), rule },
+      this.k.factory,
+    );
   }
 
   /** HunchBookFactory.createMarket: register (vault), first stake (market + vault), MarketCreated. */
@@ -269,7 +316,7 @@ export class Protocol {
       "CollateralVault",
       "MarketRegistered",
       { market: p.market, yes: p.yes, no: p.no, creator: p.creator },
-      ADDR.vault,
+      this.k.vault,
     );
     this.stakeLogs(p.market, p.creator, side, amount, p.creator);
     this.s.emit(
@@ -282,7 +329,7 @@ export class Protocol {
         creator: p.creator,
         params: p.params ?? SEED.params,
       },
-      ADDR.factory,
+      this.k.factory,
     );
   }
 
@@ -298,12 +345,12 @@ export class Protocol {
     if (p.relayed) {
       this.recordStake(p.market, p.user, p.side, p.amount);
       this.s.emit("Usdc", "Transfer", { from: p.user, to: p.market, value: p.amount }, ADDR.usdc);
-      this.usdc(p.market, ADDR.vault, p.amount);
+      this.usdc(p.market, this.k.vault, p.amount);
       this.s.emit(
         "CollateralVault",
         "PoolDeposited",
         { market: p.market, from: p.market, amount: p.amount },
-        ADDR.vault,
+        this.k.vault,
       );
       return;
     }
@@ -326,8 +373,8 @@ export class Protocol {
 
   private stakeLogs(market: string, user: string, side: bigint, amount: bigint, payer: string): void {
     this.recordStake(market, user, side, amount);
-    this.usdc(payer, ADDR.vault, amount);
-    this.s.emit("CollateralVault", "PoolDeposited", { market, from: payer, amount }, ADDR.vault);
+    this.usdc(payer, this.k.vault, amount);
+    this.s.emit("CollateralVault", "PoolDeposited", { market, from: payer, amount }, this.k.vault);
   }
 
   /** Market.graduate on testnet: the Graduator creates the book, the vault mints T sets to the market. */
@@ -335,10 +382,10 @@ export class Protocol {
     const m = this.state(p.market);
     const total = m.yesTotal + m.noTotal;
     if (!p.registered)
-      this.s.emit("Graduator", "BookCreated", { market: p.market, book: p.book }, ADDR.graduator);
+      this.s.emit("Graduator", "BookCreated", { market: p.market, book: p.book }, this.k.graduator);
     this.token(m.yes, ADDR.zero, p.market, total);
     this.token(m.no, ADDR.zero, p.market, total);
-    this.s.emit("CollateralVault", "PoolGraduated", { market: p.market, sets: total }, ADDR.vault);
+    this.s.emit("CollateralVault", "PoolGraduated", { market: p.market, sets: total }, this.k.vault);
     this.s.emit(
       "Market",
       "Graduated",
@@ -354,7 +401,7 @@ export class Protocol {
   }
 
   registerBook(p: { market: string; book: string; registrar: string }): void {
-    this.s.emit("Graduator", "BookRegistered", p, ADDR.graduator);
+    this.s.emit("Graduator", "BookRegistered", p, this.k.graduator);
   }
 
   /** Market.claimTokensFor(users): ⌊T · s / sideTotal⌋ per side; dust to the fee recipient after the last claim. */
@@ -450,13 +497,13 @@ export class Protocol {
   }): void {
     const m = this.state(p.market);
     const usdc = p.usdc ?? (p.size * p.price) / 10n ** 18n;
-    this.fill({ ...p, taker: ADDR.router, txOrigin: p.user, takerBuysYes: p.buy });
+    this.fill({ ...p, taker: this.k.router, txOrigin: p.user, takerBuysYes: p.buy });
     if (p.buy) {
-      this.token(m.yes, ADDR.marginAccount, ADDR.router, p.size);
-      this.token(m.yes, ADDR.router, p.user, p.size);
+      this.token(m.yes, this.k.custody, this.k.router, p.size);
+      this.token(m.yes, this.k.router, p.user, p.size);
     } else {
-      this.token(m.yes, p.user, ADDR.router, p.size);
-      this.token(m.yes, ADDR.router, ADDR.marginAccount, p.size);
+      this.token(m.yes, p.user, this.k.router, p.size);
+      this.token(m.yes, this.k.router, this.k.custody, p.size);
     }
     this.s.emit(
       "HunchRouter",
@@ -469,24 +516,97 @@ export class Protocol {
         amountOut: p.buy ? p.size : usdc,
         book: p.book,
       },
-      ADDR.router,
+      this.k.router,
+    );
+  }
+
+  /** A Kuru v2 book's SpotSwap: one taker swap, amount in used and amount out after the fee. */
+  swap(p: {
+    book: string;
+    executor: string;
+    isBuy: boolean;
+    amountIn: bigint;
+    amountOut: bigint;
+    userId?: bigint;
+  }): void {
+    this.s.emit(
+      "KuruSpotBook",
+      "SpotSwap",
+      {
+        userId: p.userId ?? 7n,
+        executor: p.executor,
+        isBuy: p.isBuy,
+        amountInUsed: p.amountIn,
+        amountOut: p.amountOut,
+        minAmountOut: p.amountOut,
+      },
+      p.book,
+    );
+  }
+
+  /**
+   * HunchRouterV2.buyYes / sellYes (contracts/src/core/HunchRouterV2.sol): the router deposits into
+   * AccountCore, swaps, withdraws all of both tokens, pays the user, then emits Trade.
+   */
+  routerSwapV2(p: {
+    market: string;
+    book: string;
+    user: string;
+    buy: boolean;
+    usdc: bigint;
+    tokens: bigint;
+  }): void {
+    const m = this.state(p.market);
+    if (p.buy) {
+      this.s.emit("Usdc", "Transfer", { from: p.user, to: this.k.router, value: p.usdc }, ADDR.usdc);
+      this.s.emit("Usdc", "Transfer", { from: this.k.router, to: this.k.custody, value: p.usdc }, ADDR.usdc);
+    } else {
+      this.token(m.yes, p.user, this.k.router, p.tokens);
+      this.token(m.yes, this.k.router, this.k.custody, p.tokens);
+    }
+    this.swap({
+      book: p.book,
+      executor: this.k.router,
+      isBuy: p.buy,
+      amountIn: p.buy ? p.usdc : p.tokens,
+      amountOut: p.buy ? p.tokens : p.usdc,
+    });
+    if (p.buy) {
+      this.token(m.yes, this.k.custody, this.k.router, p.tokens);
+      this.token(m.yes, this.k.router, p.user, p.tokens);
+    } else {
+      this.s.emit("Usdc", "Transfer", { from: this.k.custody, to: this.k.router, value: p.usdc }, ADDR.usdc);
+      this.s.emit("Usdc", "Transfer", { from: this.k.router, to: p.user, value: p.usdc }, ADDR.usdc);
+    }
+    this.s.emit(
+      "HunchRouter",
+      "Trade",
+      {
+        market: p.market,
+        user: p.user,
+        kind: p.buy ? Kind.BuyYes : Kind.SellYes,
+        amountIn: p.buy ? p.usdc : p.tokens,
+        amountOut: p.buy ? p.tokens : p.usdc,
+        book: p.book,
+      },
+      this.k.router,
     );
   }
 
   mintSets(p: { market: string; payer: string; to: string; amount: bigint }): void {
     const m = this.state(p.market);
-    this.usdc(p.payer, ADDR.vault, p.amount);
+    this.usdc(p.payer, this.k.vault, p.amount);
     this.token(m.yes, ADDR.zero, p.to, p.amount);
     this.token(m.no, ADDR.zero, p.to, p.amount);
-    this.s.emit("CollateralVault", "SetsMinted", p, ADDR.vault);
+    this.s.emit("CollateralVault", "SetsMinted", p, this.k.vault);
   }
 
   mergeSets(p: { market: string; holder: string; to: string; amount: bigint }): void {
     const m = this.state(p.market);
     this.token(m.yes, p.holder, ADDR.zero, p.amount);
     this.token(m.no, p.holder, ADDR.zero, p.amount);
-    this.usdc(ADDR.vault, p.to, p.amount);
-    this.s.emit("CollateralVault", "SetsMerged", p, ADDR.vault);
+    this.usdc(this.k.vault, p.to, p.amount);
+    this.s.emit("CollateralVault", "SetsMerged", p, this.k.vault);
   }
 
   /** Market.settle on a graduated market: the vault finalizes with the fee, then the market emits Settled. */
@@ -498,7 +618,7 @@ export class Protocol {
       "CollateralVault",
       "Finalized",
       { market: p.market, outcome: p.outcome, feeNumerator: 200n * losing, feeDenominator: 10_000n * total },
-      ADDR.vault,
+      this.k.vault,
     );
     this.s.emit(
       "Market",
@@ -514,7 +634,7 @@ export class Protocol {
       "CollateralVault",
       "Finalized",
       { market: p.market, outcome: p.outcome, feeNumerator: 0n, feeDenominator: 1n },
-      ADDR.vault,
+      this.k.vault,
     );
     this.s.emit(
       "Market",
@@ -525,7 +645,7 @@ export class Protocol {
   }
 
   voidMarket(p: { market: string }): void {
-    this.s.emit("CollateralVault", "MarketVoided", { market: p.market }, ADDR.vault);
+    this.s.emit("CollateralVault", "MarketVoided", { market: p.market }, this.k.vault);
     this.s.emit("Market", "Voided", {}, p.market);
   }
 
@@ -554,9 +674,9 @@ export class Protocol {
         paid: p.paid,
         fee: p.fee,
       },
-      ADDR.vault,
+      this.k.vault,
     );
-    if (p.paid > 0n) this.usdc(ADDR.vault, p.holder, p.paid);
+    if (p.paid > 0n) this.usdc(this.k.vault, p.holder, p.paid);
   }
 
   feesAccrued(market: string, fee: bigint, creator: string): void {
@@ -565,19 +685,19 @@ export class Protocol {
       "CollateralVault",
       "FeesAccrued",
       { market, protocolShare: fee - creatorShare, creator, creatorShare },
-      ADDR.vault,
+      this.k.vault,
     );
   }
 
   /** Market.claimPool: vault pays (fee accrued first), then the market's PoolClaimed. */
   claimPool(p: { market: string; user: string; paid: bigint; fee: bigint; creator: string }): void {
     if (p.fee > 0n) this.feesAccrued(p.market, p.fee, p.creator);
-    this.usdc(ADDR.vault, p.user, p.paid);
+    this.usdc(this.k.vault, p.user, p.paid);
     this.s.emit(
       "CollateralVault",
       "PoolPaid",
       { market: p.market, to: p.user, paid: p.paid, fee: p.fee },
-      ADDR.vault,
+      this.k.vault,
     );
     this.s.emit("Market", "PoolClaimed", { user: p.user, paid: p.paid, fee: p.fee }, p.market);
   }
@@ -589,18 +709,18 @@ export class Protocol {
       "CollateralVault",
       "PoolPaid",
       { market: p.market, to: ADDR.zero, paid: 0n, fee: p.dust },
-      ADDR.vault,
+      this.k.vault,
     );
   }
 
   flashLoan(p: { receiver: string; amount: bigint }): void {
-    this.usdc(ADDR.vault, p.receiver, p.amount);
-    this.usdc(p.receiver, ADDR.vault, p.amount);
+    this.usdc(this.k.vault, p.receiver, p.amount);
+    this.usdc(p.receiver, this.k.vault, p.amount);
     this.s.emit(
       "CollateralVault",
       "FlashLoan",
       { receiver: p.receiver, initiator: p.receiver, amount: p.amount },
-      ADDR.vault,
+      this.k.vault,
     );
   }
 
@@ -615,7 +735,7 @@ export class Protocol {
         resolver: ADDR.snapshotResolver,
         rule: { minPool: USDC(500), minStakers: 10n, minChanceBps: 300n, maxChanceBps: 9700n },
       },
-      ADDR.factory,
+      this.k.factory,
     );
   }
 
@@ -685,9 +805,9 @@ export class Protocol {
         paid: p.paid,
         fee: p.fee,
       },
-      ADDR.vault,
+      this.k.vault,
     );
-    if (p.paid > 0n) this.usdc(ADDR.vault, p.holder, p.paid);
+    if (p.paid > 0n) this.usdc(this.k.vault, p.holder, p.paid);
     this.s.emit(
       "AutoRedeemer",
       "AutoRedeemed",
@@ -763,12 +883,12 @@ export class Protocol {
     }
     // The router's trade.
     if (p.buy) this.s.skipLogs(1);
-    else this.token(m.yes, co, ADDR.router, p.size);
+    else this.token(m.yes, co, this.k.router, p.size);
     this.fill({
       book: p.book,
       orderId: p.kuruOrderId,
       maker: p.maker,
-      taker: ADDR.router,
+      taker: this.k.router,
       txOrigin: p.executor,
       takerBuysYes: p.buy,
       price: p.price,
@@ -776,10 +896,10 @@ export class Protocol {
       remaining: p.remaining,
     });
     if (p.buy) {
-      this.token(m.yes, ADDR.marginAccount, ADDR.router, p.size);
-      this.token(m.yes, ADDR.router, co, p.size);
+      this.token(m.yes, this.k.custody, this.k.router, p.size);
+      this.token(m.yes, this.k.router, co, p.size);
     } else {
-      this.token(m.yes, ADDR.router, ADDR.marginAccount, p.size);
+      this.token(m.yes, this.k.router, this.k.custody, p.size);
       this.s.skipLogs(1);
     }
     this.s.emit(
@@ -793,7 +913,7 @@ export class Protocol {
         amountOut: p.buy ? p.size : usdc,
         book: p.book,
       },
-      ADDR.router,
+      this.k.router,
     );
     // Reset the approval, pay the owner and the executor.
     this.s.skipLogs(1);

@@ -12,6 +12,7 @@ import { phaseLabel, phaseTone } from "@/lib/market/logic";
 import { templateLabel } from "@/lib/market/params";
 import { titleDiffersFromRule } from "@/lib/market/title";
 import type { ChainClock, MarketView } from "@/lib/market/types";
+import { marketTag } from "@/lib/stacks";
 import { HealthPanel } from "../health/Health";
 import { Countdown, marketHeadline } from "../markets/MarketCard";
 import { OrdersPanel } from "../orders/OrdersPanel";
@@ -64,7 +65,7 @@ export function MarketBody({
             {phaseLabel(m.phase)}
           </Badge>
           <span>{templateLabel(m.templateId)}</span>
-          <span className="mono">Market #{m.marketId.toString()}</span>
+          <span className="mono">Market {marketTag(m)}</span>
           <span className="mono">
             <Countdown m={m} clock={clock} now={now} />
           </span>

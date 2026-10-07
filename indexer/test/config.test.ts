@@ -10,7 +10,9 @@ import {
   networkConstants,
   renderAll,
   renderConfig,
+  stacksOf,
   staleFiles,
+  staticContracts,
 } from "../scripts/gen-config.js";
 
 const deployment = (network: string) =>
@@ -128,6 +130,75 @@ describe("generated config", () => {
     expect(mainnet.resolvers).toEqual({});
   });
 
+  it("reads every stack: one address per stack, the primary first, and each stack's constants", () => {
+    const testnet = deployment("monad-testnet");
+    const a = (n: number) => `0x${n.toString(16).padStart(40, "0")}`;
+    const v2 = {
+      factory: a(0xf1),
+      vault: a(0xf2),
+      router: a(0xf3),
+      graduator: a(0xf4),
+      usdc: testnet.hunchBook.usdc,
+      kuruVersion: 2,
+      guardian: a(0xf5),
+      resolvers: { priceAtTime: a(0xf6) },
+      periphery: {
+        conditionalOrders: a(0xf7),
+        priceAdapterFactory: a(0xf8),
+        kuruFeedFactory: a(0xf9),
+        distributorFunder: a(0xfa),
+      },
+      deployBlock: testnet.hunchBook.deployBlock + 1_000,
+    };
+    const both = { ...testnet, stacks: { kuruV2: v2, halfDone: { factory: a(0xfb) } } };
+
+    // A stack counts once its core is deployed.
+    expect(stacksOf(both).map((s) => s.name)).toEqual(["primary", "kuruV2"]);
+    const statics = staticContracts(both);
+    expect(statics.HunchBookFactory).toEqual([testnet.hunchBook.factory, v2.factory]);
+    expect(statics.Graduator).toEqual([testnet.hunchBook.graduator, v2.graduator]);
+    // The stacks share the collateral token: listed once.
+    expect(statics.Usdc).toEqual([testnet.hunchBook.usdc]);
+    // Both kinds of adapter factory, and a contract only the primary stack has.
+    expect(statics.PriceAdapterFactory).toEqual([
+      testnet.hunchBook.periphery.priceAdapterFactory,
+      v2.periphery.priceAdapterFactory,
+      v2.periphery.kuruFeedFactory,
+    ]);
+    expect(statics.AutoRedeemer).toEqual([testnet.hunchBook.periphery.autoRedeemer]);
+
+    const config = renderConfig(both, "ENVIO_MONAD_TESTNET_RPC");
+    expect(config).toContain(
+      `      - name: HunchBookFactory\n        address:\n          - "${testnet.hunchBook.factory}"\n          - "${v2.factory}"\n`,
+    );
+    expect(config).toContain(`      - name: Usdc\n        address: "${testnet.hunchBook.usdc}"\n`);
+    // Kuru v2 books are a dynamic contract of their own, read for SpotSwap.
+    expect(config).toContain("      - name: KuruSpotBook\n");
+    expect(config).toMatch(
+      /- name: KuruSpotBook\n {4}events:\n {6}- event: SpotSwap\(uint40 userId, address executor, bool isBuy/,
+    );
+    // Still read from the primary deploy block.
+    expect(config).toContain(`start_block: ${testnet.hunchBook.deployBlock}\n`);
+
+    const n = networkConstants(both);
+    expect(n.stacks.map((s) => [s.name, s.primary, s.kuruVersion])).toEqual([
+      ["primary", true, 1],
+      ["kuruV2", false, 2],
+    ]);
+    expect(n.stacks[1]).toMatchObject({
+      factory: v2.factory,
+      graduator: v2.graduator,
+      guardian: v2.guardian,
+      resolvers: { priceAtTime: v2.resolvers.priceAtTime },
+      periphery: { kuruFeedFactory: v2.periphery.kuruFeedFactory, autoRedeemer: null },
+    });
+    // The primary stack's constants stay where the handlers have always read them.
+    expect(n.contracts.factory).toBe(testnet.hunchBook.factory.toLowerCase());
+    expect(n.kuruV2?.spotRouter).toBe(testnet.external.kuruV2.spotRouter.toLowerCase());
+    // A network that is not deployed lists no stacks.
+    expect(networkConstants(deployment("monad-mainnet")).stacks).toEqual([]);
+  });
+
   it("writes event signatures Envio can read, from the contracts' ABIs", () => {
     expect(
       eventSignature(
@@ -179,6 +250,9 @@ describe("generated config", () => {
       ["CollateralVault", "MarketRegistered", "OutcomeToken"],
       ["Graduator", "BookCreated", "KuruOrderBook"],
       ["Graduator", "BookRegistered", "KuruOrderBook"],
+      // A Kuru v2 stack's graduator registers its books as KuruSpotBook.
+      ["Graduator", "BookCreated", "KuruSpotBook"],
+      ["Graduator", "BookRegistered", "KuruSpotBook"],
     ]) {
       const register = new RegExp(
         `contractRegister\\(\\s*\\{\\s*contract: "${contract}",\\s*event: "${event}"\\s*\\}[^]*?context\\.chain\\.${target}\\.add`,

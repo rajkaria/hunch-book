@@ -1,8 +1,14 @@
 // Graduator: each market's Kuru YES/USDC book. Kuru's events carry no indexed fields, so the indexer
-// reads Kuru only from the books registered here (kuru.ts).
+// reads Kuru only from the books registered here (kuru.ts): a Kuru v1 book as KuruOrderBook, a book of
+// a Kuru v2 stack's graduator as KuruSpotBook.
 import { type Enum, indexer } from "envio";
-import { addr } from "../lib/network.js";
-import { Unit } from "../lib/store.js";
+import { addr, stackOfContract } from "../lib/network.js";
+import { emptyBook, Unit } from "../lib/store.js";
+
+/** The Kuru version of the books a graduator registers: its stack's (1 for an unknown graduator). */
+function kuruVersionOf(chainId: number, graduator: string): number {
+  return stackOfContract(chainId, graduator)?.kuruVersion ?? 1;
+}
 
 async function recordBook(
   u: Unit,
@@ -15,31 +21,19 @@ async function recordBook(
   if (await u.exists("Book", book)) return;
   const market = await u.market(marketId);
   if (market && market.book_id === undefined) market.book_id = book;
-  u.create("Book", {
-    id: book,
-    market_id: addr(marketId),
-    source,
-    registrar: registrar ? addr(registrar) : undefined,
-    fillCount: 0,
-    fillCountOurMaker: 0,
-    volume: 0n,
-    volumeOurMaker: 0n,
-    lastPriceE6: undefined,
-    orderCount: 0,
-    orderCountOurMaker: 0,
-    block: u.m.block,
-    timestamp: u.m.timestamp,
-    tx: u.m.tx,
-  });
+  const kuruVersion = kuruVersionOf(u.m.chainId, u.m.src);
+  u.create("Book", emptyBook(book, marketId, { source, registrar, kuruVersion }, u.m));
   u.flush();
 }
 
 indexer.contractRegister({ contract: "Graduator", event: "BookCreated" }, async ({ event, context }) => {
-  context.chain.KuruOrderBook.add(event.params.book);
+  if (kuruVersionOf(event.chainId, event.srcAddress) === 2) context.chain.KuruSpotBook.add(event.params.book);
+  else context.chain.KuruOrderBook.add(event.params.book);
 });
 
 indexer.contractRegister({ contract: "Graduator", event: "BookRegistered" }, async ({ event, context }) => {
-  context.chain.KuruOrderBook.add(event.params.book);
+  if (kuruVersionOf(event.chainId, event.srcAddress) === 2) context.chain.KuruSpotBook.add(event.params.book);
+  else context.chain.KuruOrderBook.add(event.params.book);
 });
 
 indexer.onEvent({ contract: "Graduator", event: "BookCreated" }, async ({ event, context }) => {

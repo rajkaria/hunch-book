@@ -12,6 +12,7 @@ import {
 import { templateLabel } from "@/lib/market/params";
 import { marketTitle, type TitleClock } from "@/lib/market/title";
 import type { ChainClock, MarketView } from "@/lib/market/types";
+import { marketTag } from "@/lib/stacks";
 import { CardHealth } from "../health/Health";
 import { Badge, ChanceBar } from "../ui";
 import s from "./markets.module.css";
@@ -56,7 +57,7 @@ export function MarketCard({
       <div className={s.meta}>
         <Badge tone={phaseTone(m.phase)}>{phaseLabel(m.phase)}</Badge>
         <span>{templateLabel(m.templateId)}</span>
-        <span className="mono">#{m.marketId.toString()}</span>
+        <span className="mono">{marketTag(m)}</span>
         <span className={s.metaRight}>
           <CardHealth m={m} clock={clock} now={now} />
           <Countdown m={m} clock={clock} now={now} />

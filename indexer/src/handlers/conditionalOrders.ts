@@ -3,7 +3,7 @@
 // user; OrderExecuted, the transaction's last event, hands that trade and its USDC to the order's owner.
 import { indexer } from "envio";
 import { conditionOf, isBuyKind, routerKindOf } from "../lib/enums.js";
-import { addr, networkOf } from "../lib/network.js";
+import { addr, scopedId } from "../lib/network.js";
 import { Unit } from "../lib/store.js";
 
 /**
@@ -15,13 +15,15 @@ const ROUTER_TRADE_LOOKBACK = 16;
 indexer.onEvent({ contract: "ConditionalOrders", event: "OrderPlaced" }, async ({ event, context }) => {
   const u = new Unit(context, event);
   const p = event.params;
-  const id = p.orderId.toString();
+  // Each stack's ConditionalOrders numbers its own orders.
+  const id = scopedId(u.m.chainId, u.m.src, p.orderId.toString());
   if (await u.exists("ConditionalOrder", id)) return;
   const owner = await u.wallet(p.owner);
   const marketId = addr(p.market);
   u.create("ConditionalOrder", {
     id,
     orderId: p.orderId,
+    stack: u.stackConstants().name,
     owner_id: owner.id,
     ownerIsOurs: owner.isOurs,
     market_id: marketId,
@@ -64,7 +66,7 @@ indexer.onEvent({ contract: "ConditionalOrders", event: "OrderPlaced" }, async (
 
 /** The open order an event closes, or undefined if it is unknown or was closed before (seen already). */
 async function openOrder(u: Unit, orderId: bigint) {
-  const order = await u.find("ConditionalOrder", orderId.toString());
+  const order = await u.find("ConditionalOrder", scopedId(u.m.chainId, u.m.src, orderId.toString()));
   if (!order) {
     u.log.warn("event for an order the indexer has not seen", { order: orderId.toString(), event: u.m.id });
     return undefined;
@@ -110,7 +112,8 @@ indexer.onEvent({ contract: "ConditionalOrders", event: "OrderExecuted" }, async
 
   // The owner traded: the router trade moves to the owner, who counts as a trader.
   const owner = await u.wallet(order.owner_id);
-  const contract = networkOf(u.m.chainId).periphery.conditionalOrders;
+  // The router's user was this ConditionalOrders contract.
+  const contract = u.m.src;
   const trade = await u.findBack(
     "RouterTrade",
     ROUTER_TRADE_LOOKBACK,

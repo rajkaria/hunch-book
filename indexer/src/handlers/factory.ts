@@ -1,17 +1,19 @@
-// HunchBookFactory: templates and market creation.
+// HunchBookFactory: templates and market creation, on every stack's factory.
 import { indexer } from "envio";
-import { addr, networkOf } from "../lib/network.js";
+import { addr, networkOf, scopedId } from "../lib/network.js";
 import { marketTerms, parlayDetails, snapshotId } from "../lib/params.js";
 import { emptyMarket, Unit } from "../lib/store.js";
 
 indexer.onEvent({ contract: "HunchBookFactory", event: "TemplateAdded" }, async ({ event, context }) => {
   const u = new Unit(context, event);
-  const id = event.params.templateId.toString();
+  // Each stack's factory numbers its own templates.
+  const id = scopedId(u.m.chainId, u.m.src, event.params.templateId.toString());
   if (await u.exists("Template", id)) return;
   const { rule } = event.params;
   u.create("Template", {
     id,
     templateId: event.params.templateId,
+    stack: u.stackConstants().name,
     resolver: addr(event.params.resolver),
     minPool: rule.minPool,
     minStakers: rule.minStakers,
@@ -47,19 +49,25 @@ indexer.onEvent({ contract: "HunchBookFactory", event: "MarketCreated" }, async 
   s.marketsCreated += 1;
   s.marketsPool += 1;
   (await u.daily()).marketsCreated += 1;
+  // The factory's own number for the market: each stack's factory counts from 1.
+  const stackConstants = u.stackConstants();
+  const stack = await u.stack(stackConstants.name);
+  stack.marketsCreated += 1;
 
   Object.assign(market, marketTerms(templateId, params, networkOf(u.m.chainId)));
-  market.number = s.marketsCreated;
-  market.template_id = templateId.toString();
+  market.number = stack.marketsCreated;
+  market.stack = stackConstants.name;
+  market.kuruVersion = stackConstants.kuruVersion;
+  market.template_id = scopedId(u.m.chainId, u.m.src, templateId.toString());
   market.templateId = templateId;
   market.key = key;
   market.params = params;
 
-  const template = await u.find("Template", templateId.toString());
+  const template = await u.find("Template", market.template_id);
   if (template) template.marketCount += 1;
   // Template 7: link the snapshot the market answers from. It exists once someone takes it.
   if (market.snapshotKey) {
-    const resolver = template?.resolver ?? networkOf(u.m.chainId).resolvers.snapshot;
+    const resolver = template?.resolver ?? stackConstants.resolvers.snapshot;
     if (resolver) market.snapshot_id = snapshotId(resolver, market.snapshotKey);
   }
   // Template 6: name the legs by their market numbers, and take the deadline from theirs.

@@ -6,6 +6,7 @@ import type { Address, Hex } from "viem";
 import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
 import { formatUsdc, formatUtc, shortAddress } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
+import { marketTag } from "@/lib/stacks";
 import {
   checkService,
   duration,
@@ -209,7 +210,7 @@ function MarketsTable({ snapshot }: { snapshot: StatusSnapshot }) {
             return (
               <tr key={m.address}>
                 <td>
-                  <Link href={`/m/${m.address}`}>#{m.marketId.toString()}</Link>{" "}
+                  <Link href={`/m/${m.address}`}>{marketTag(m)}</Link>{" "}
                   <a
                     className="subtle"
                     href={addressUrl(appDeployment, m.address)}

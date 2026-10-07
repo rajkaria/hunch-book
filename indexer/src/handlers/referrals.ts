@@ -1,5 +1,6 @@
 // ReferralRegistry (docs/PERIPHERY.md): who referred whom, for how long. The credit each binding earns
-// is counted from the fee events while it is active (lib/referrals.ts, called from vault.ts and market.ts).
+// is counted from the fee events while it is active (lib/referrals.ts, called from vault.ts and market.ts),
+// and only from the markets of the registry's own stack.
 import { indexer } from "envio";
 import { addr } from "../lib/network.js";
 import { Unit } from "../lib/store.js";
@@ -55,8 +56,10 @@ indexer.onEvent({ contract: "ReferralRegistry", event: "Bound" }, async ({ event
   pair.bindingCount += 1;
   pair.expiresAt = expiresAt;
 
+  const stack = u.stackConstants().name;
   u.create("Referral", {
     id: u.m.id,
+    stack,
     user_id: user.id,
     userIsOurs: user.isOurs,
     referrer_id: referrerId,
@@ -73,6 +76,14 @@ indexer.onEvent({ contract: "ReferralRegistry", event: "Bound" }, async ({ event
     tx: u.m.tx,
   });
   user.referral_id = u.m.id;
+  const linkId = `${stack}-${user.id}`;
+  const link = await u.load("ReferralLink", linkId, () => ({
+    id: linkId,
+    stack,
+    user: user.id,
+    referral_id: u.m.id,
+  }));
+  link.referral_id = u.m.id;
 
   s.referralBindings += 1;
   if (relayed && relayerIsOurs) s.referralBindingsRelayedByUs += 1;

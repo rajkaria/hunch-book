@@ -2,7 +2,7 @@
 // chance of YES as poked onchain, its checkpoint history, and the price adapters made for its tokens.
 import { indexer } from "envio";
 import { sideOf } from "../lib/enums.js";
-import { addr } from "../lib/network.js";
+import { addr, isKuruFeedFactory } from "../lib/network.js";
 import { Unit } from "../lib/store.js";
 
 indexer.onEvent({ contract: "ImpliedProbabilityOracle", event: "Poked" }, async ({ event, context }) => {
@@ -76,6 +76,7 @@ indexer.onEvent({ contract: "PriceAdapterFactory", event: "AdapterCreated" }, as
   u.create("PriceAdapter", {
     id,
     factory: u.m.src,
+    kuruFeed: isKuruFeedFactory(u.m.chainId, u.m.src),
     market_id: addr(event.params.market),
     side: sideOf(event.params.side),
     creator: u.m.from,

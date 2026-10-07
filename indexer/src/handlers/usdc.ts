@@ -1,7 +1,7 @@
-// The collateral token, only its transfers into and out of the vault: they add up to the vault's USDC
-// balance, which ProtocolStats compares with what the vault owes (the solvency margin).
+// The collateral token, only its transfers into and out of every stack's vault: they add up to the
+// vaults' USDC balance, which ProtocolStats compares with what the vaults owe (the solvency margin).
 import { type Address, indexer } from "envio";
-import { addr, networkOf } from "../lib/network.js";
+import { addr, isVault, vaultsOf } from "../lib/network.js";
 import { Unit } from "../lib/store.js";
 
 indexer.onEvent(
@@ -9,21 +9,21 @@ indexer.onEvent(
     contract: "Usdc",
     event: "Transfer",
     where: ({ chain }) => {
-      const vault = networkOf(chain.id).contracts.vault as Address | null;
-      if (!vault) return false;
-      return { params: [{ from: vault }, { to: vault }] };
+      const vaults = vaultsOf(chain.id) as Address[];
+      if (vaults.length === 0) return false;
+      return { params: [{ from: vaults }, { to: vaults }] };
     },
   },
   async ({ event, context }) => {
     const u = await Unit.start(context, event, "VaultEvent");
     if (!u) return;
-    const vault = networkOf(u.m.chainId).contracts.vault;
     const from = addr(event.params.from);
     const to = addr(event.params.to);
     const { value } = event.params;
-    const into = to === vault;
-    const out = from === vault;
-    if (into === out) return; // neither (filtered out upstream) or a self-transfer: no change
+    const into = isVault(u.m.chainId, to);
+    const out = isVault(u.m.chainId, from);
+    // Neither (filtered out upstream), or between vaults: the vaults' total does not change.
+    if (into === out) return;
     u.create("VaultEvent", {
       id: u.m.id,
       kind: into ? "UsdcIn" : "UsdcOut",

@@ -65,7 +65,11 @@ function TapeStats({ fills }: { fills: readonly Fill[] }) {
       <Stat
         label="Between other parties"
         value={formatInt(stats.betweenOthers)}
-        hint="neither side is ours"
+        hint={
+          stats.makerUnknown > 0
+            ? `neither side is ours; ${formatInt(stats.makerUnknown)} Kuru v2 swaps have no named maker`
+            : "neither side is ours"
+        }
       />
       <Stat label="Volume listed" value={formatUsdc(stats.volume)} hint="USDC" />
     </div>

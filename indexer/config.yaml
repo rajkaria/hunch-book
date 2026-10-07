@@ -58,6 +58,9 @@ contracts:
       - event: OrderCreated(uint40 orderId, address owner, uint96 size, uint32 price, bool isBuy)
       - event: OrderCanceled(uint40 orderId, address owner, uint32 price, uint96 size, bool isBuy)
       - event: OrdersCanceled(uint40[] orderId, address owner)
+  - name: KuruSpotBook
+    events:
+      - event: SpotSwap(uint40 userId, address executor, bool isBuy, uint128 amountInUsed, uint128 amountOut, uint128 minAmountOut)
   - name: SnapshotResolver
     events:
       - event: SnapshotTaken(bytes32 indexed key, uint16 indexed sourceId, address indexed caller, uint64 closeTime, uint32 snapshotWindow, int256 value, uint64 blockNumber, uint64 timestamp)
@@ -122,6 +125,7 @@ chains:
       - name: Market
       - name: OutcomeToken
       - name: KuruOrderBook
+      - name: KuruSpotBook
       - name: SnapshotResolver
         address: "0x1E62C389D7c035acfDD971C7E6b7157C1D34D632"
       - name: AutoRedeemer

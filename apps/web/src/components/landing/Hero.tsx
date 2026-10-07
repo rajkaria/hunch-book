@@ -7,6 +7,7 @@ import { formatInt, formatUsdc, shortAddress } from "@/lib/format";
 import { chanceDisplay, lifecycleStages, marketChance, type StageState } from "@/lib/market/logic";
 import { marketTitle, type TitleClock } from "@/lib/market/title";
 import type { MarketView } from "@/lib/market/types";
+import { marketTag } from "@/lib/stacks";
 import { AddressLink, Badge, ButtonLink, ChanceBar, LiveDot, PhasePill } from "../ui";
 import s from "./landing.module.css";
 import { priceWords, usdcWords } from "./words";
@@ -119,10 +120,7 @@ function LiveMarketCard({ m, clock }: { m: MarketView; clock: TitleClock | null 
   const headline = marketTitle(m, appDeployment, clock);
   const href = `/m/${m.address}`;
   return (
-    <CardShell
-      label="Most active market, live"
-      top={<span className="mono">Market #{m.marketId.toString()}</span>}
-    >
+    <CardShell label="Most active market, live" top={<span className="mono">Market {marketTag(m)}</span>}>
       <div className={s.cardBadges}>
         <PhasePill phase={m.phase} outcome={m.outcome} />
         {seeded ? <Badge tone="warn">Seeded by Hunch Book</Badge> : null}
