@@ -465,6 +465,7 @@ describe("with contracts deployed", () => {
               notional: USDC(6.2),
               takerBuysYes: true,
               maker: "0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A",
+              makerKnown: true,
               trader: "0x1111111111111111111111111111111111111111",
               viaRouter: true,
               makerIsOurMaker: true,
