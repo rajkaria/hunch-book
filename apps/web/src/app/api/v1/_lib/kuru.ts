@@ -8,7 +8,7 @@ import {
   Phase,
   stackNamed,
 } from "@hunch-book/shared";
-import type { Address } from "viem";
+import type { Address, ContractFunctionParameters } from "viem";
 import { cached } from "./cache";
 import type { ApiDeps } from "./deps";
 import { CACHE, json, problem } from "./http";
@@ -68,101 +68,100 @@ export interface KuruRequest {
 const ZERO = "0x0000000000000000000000000000000000000000";
 const usdcText = (x: bigint) => (Number(x) / 1e6).toFixed(2);
 
+/**
+ * One market's request, in three round trips (public Monad RPCs allow 15 requests a second): one multicall
+ * for the graduator and the feed factory, the book address's code, and one multicall for Kuru's records
+ * of both tokens (and the book's problem, once it exists).
+ */
 async function requestFor(deps: ApiDeps, m: MarketInfo): Promise<KuruRequest | null> {
   const stack = stackNamed(deps.deployment, m.stack ?? "primary");
   const kuru = deps.deployment.external.kuruV2;
   const graduator = stack?.contracts.graduator;
   if (!stack || !kuru || !graduator) return null;
   const client = deps.sdk.context.publicClient;
+  const multicallAddress = deps.sdk.context.multicallAddress;
   const feeds = stack.contracts.periphery?.kuruFeedFactory;
-  const [request, expected, registered] = await Promise.all([
-    client.readContract({
-      address: graduator,
-      abi: graduatorV2Abi,
-      functionName: "bookRequest",
-      args: [m.address],
-    }),
-    client.readContract({
-      address: graduator,
-      abi: graduatorV2Abi,
-      functionName: "predictedBook",
-      args: [m.address],
-    }),
-    client.readContract({
-      address: graduator,
-      abi: graduatorV2Abi,
-      functionName: "bookOf",
-      args: [m.address],
-    }),
-  ]);
+  const g = { address: graduator, abi: graduatorV2Abi } as const;
+  const [request, expected, registered, predictedFeed, existingFeed] = await client.multicall({
+    allowFailure: false,
+    multicallAddress,
+    contracts: [
+      { ...g, functionName: "bookRequest", args: [m.address] },
+      { ...g, functionName: "predictedBook", args: [m.address] },
+      { ...g, functionName: "bookOf", args: [m.address] },
+      // Without a feed factory these two read the graduator's bookOf again and are ignored.
+      feeds
+        ? {
+            address: feeds,
+            abi: outcomeTokenPriceAdapterFactoryAbi,
+            functionName: "predictAdapter",
+            args: [m.address, 0],
+          }
+        : { ...g, functionName: "bookOf", args: [m.address] },
+      feeds
+        ? {
+            address: feeds,
+            abi: outcomeTokenPriceAdapterFactoryAbi,
+            functionName: "adapterOf",
+            args: [m.address, 0],
+          }
+        : { ...g, functionName: "bookOf", args: [m.address] },
+    ],
+  });
   if (registered !== ZERO) return null;
   const code = await client.getCode({ address: expected });
   const deployed = code !== undefined && code !== "0x";
-  const problemCode = deployed
-    ? await client.readContract({
-        address: graduator,
-        abi: graduatorV2Abi,
-        functionName: "bookProblem",
-        args: [m.address, expected],
-      })
-    : null;
   const limiter = kuru.withdrawalLimiter;
-  const setup = async (token: Address, feed: Address | null, created: boolean): Promise<TokenSetup> => {
-    const [config, whitelisted, source] = await Promise.all([
-      client.readContract({
+  const tokenCalls = (token: Address) =>
+    [
+      {
         address: kuru.accountCore,
         abi: kuruV2AccountCoreAbi,
         functionName: "spotTokenConfigs",
         args: [token],
-      }),
-      client.readContract({
+      },
+      {
         address: kuru.spotRouter,
         abi: kuruV2SpotRouterAbi,
         functionName: "whitelistedSpotTokens",
         args: [token],
-      }),
+      },
       limiter
-        ? client.readContract({
-            address: limiter,
-            abi: kuruV2WithdrawalLimiterAbi,
-            functionName: "priceSource",
+        ? { address: limiter, abi: kuruV2WithdrawalLimiterAbi, functionName: "priceSource", args: [token] }
+        : {
+            address: kuru.spotRouter,
+            abi: kuruV2SpotRouterAbi,
+            functionName: "whitelistedSpotTokens",
             args: [token],
-          })
-        : Promise.resolve(ZERO as Address),
-    ]);
+          },
+    ] as const;
+  // Mixed contracts in one batch: viem cannot type the tuple, so the results are read by position.
+  const contracts = [
+    ...tokenCalls(request.baseToken),
+    ...tokenCalls(request.quoteToken),
+    ...(deployed ? [{ ...g, functionName: "bookProblem", args: [m.address, expected] } as const] : []),
+  ] as unknown as ContractFunctionParameters[];
+  const results = (await client.multicall({ allowFailure: false, multicallAddress, contracts })) as unknown[];
+  const setup = (at: number, token: Address, feed: Address | null, created: boolean): TokenSetup => {
+    const config = results[at] as readonly [number, boolean, ...unknown[]];
+    const source = limiter ? (results[at + 2] as Address) : ZERO;
     return {
       token,
       priceFeed: feed,
       priceFeedCreated: created,
       enabledInAccountCore: config[1],
-      whitelistedInSpotRouter: whitelisted,
+      whitelistedInSpotRouter: results[at + 1] as boolean,
       priceSource: source === ZERO ? null : source,
     };
   };
-  let yesFeed: Address | null = null;
-  let yesFeedCreated = false;
-  if (feeds) {
-    const [predicted, existing] = await Promise.all([
-      client.readContract({
-        address: feeds,
-        abi: outcomeTokenPriceAdapterFactoryAbi,
-        functionName: "predictAdapter",
-        args: [m.address, 0],
-      }),
-      client.readContract({
-        address: feeds,
-        abi: outcomeTokenPriceAdapterFactoryAbi,
-        functionName: "adapterOf",
-        args: [m.address, 0],
-      }),
-    ]);
-    yesFeed = predicted;
-    yesFeedCreated = existing !== ZERO;
-  }
-  const [yes, usdc] = await Promise.all([
-    setup(request.baseToken, yesFeed, yesFeedCreated),
-    setup(request.quoteToken, null, false),
-  ]);
+  const yes = setup(
+    0,
+    request.baseToken,
+    feeds ? (predictedFeed as Address) : null,
+    feeds ? existingFeed !== ZERO : false,
+  );
+  const usdc = setup(3, request.quoteToken, null, false);
+  const problemCode = deployed ? Number(results[6]) : null;
   const tokensReady = (t: TokenSetup) =>
     t.enabledInAccountCore && t.whitelistedInSpotRouter && t.priceSource !== null;
   const status: RequestStatus =
@@ -208,9 +207,12 @@ export async function kuruRequests(deps: ApiDeps): Promise<{ network: string; re
     30_000,
     async () => {
       const markets = (await allMarkets(deps)).filter((m) => m.kuruVersion === 2 && m.phase === Phase.Pool);
-      const requests = (await Promise.all(markets.map((m) => requestFor(deps, m)))).flatMap((r) =>
-        r ? [r] : [],
-      );
+      // One market at a time, to stay under the public RPC's request rate.
+      const requests: KuruRequest[] = [];
+      for (const m of markets) {
+        const r = await requestFor(deps, m);
+        if (r) requests.push(r);
+      }
       return { network: deps.network, requests: requests.sort((a, b) => a.marketNumber - b.marketNumber) };
     },
     deps.now(),

@@ -262,12 +262,17 @@ describe("GET /api/v1/kuru/requests", () => {
       adapterOf: FEED,
       whitelistedSpotTokens: true,
     };
+    const read = (c: { functionName: string; args?: readonly unknown[] }) => {
+      if (c.functionName === "spotTokenConfigs") return [6, c.args?.[0] === USDC];
+      if (c.functionName === "priceSource") return c.args?.[0] === USDC ? FEED : zeroAddress;
+      return answers[c.functionName];
+    };
     const publicClient = {
-      readContract: vi.fn(async (c: { functionName: string; args?: readonly unknown[] }) => {
-        if (c.functionName === "spotTokenConfigs") return [6, c.args?.[0] === USDC];
-        if (c.functionName === "priceSource") return c.args?.[0] === USDC ? FEED : zeroAddress;
-        return answers[c.functionName];
-      }),
+      // Every read goes through Multicall3, a few round trips per market (public RPCs cap requests).
+      multicall: vi.fn(
+        async ({ contracts }: { contracts: { functionName: string; args?: readonly unknown[] }[] }) =>
+          contracts.map(read),
+      ),
       getCode: vi.fn(async () => undefined),
     };
     const stackDeployment: Deployment = {
@@ -292,7 +297,10 @@ describe("GET /api/v1/kuru/requests", () => {
       network: "monad-testnet",
       deployment: stackDeployment,
       now: () => 1_000,
-      sdk: { context: { publicClient }, markets: { all: vi.fn(async () => [market]) } },
+      sdk: {
+        context: { publicClient, multicallAddress: "0xcA11bde05977b3631167028862bE2a173976CA11" },
+        markets: { all: vi.fn(async () => [market]) },
+      },
     } as unknown as ApiDeps;
     const res = await getKuruRequests(new Request("https://x/api/v1/kuru/requests"), deps);
     expect(res.status).toBe(200);
@@ -315,6 +323,41 @@ describe("GET /api/v1/kuru/requests", () => {
         },
         usdc: { token: USDC, enabledInAccountCore: true, priceSource: FEED },
       },
+    });
+    // Two batched reads and one code read for the market: no burst of single calls.
+    expect(publicClient.multicall).toHaveBeenCalledTimes(2);
+    expect(publicClient.getCode).toHaveBeenCalledTimes(1);
+
+    // Once Kuru has set both tokens up and deployed the book where predicted, it is ready to register.
+    answers.bookProblem = 0;
+    const ready = {
+      ...publicClient,
+      multicall: vi.fn(
+        async ({ contracts }: { contracts: { functionName: string; args?: readonly unknown[] }[] }) =>
+          contracts.map((c) =>
+            c.functionName === "spotTokenConfigs"
+              ? [6, true]
+              : c.functionName === "priceSource"
+                ? FEED
+                : read(c),
+          ),
+      ),
+      getCode: vi.fn(async () => "0x6080" as const),
+    };
+    const later = {
+      ...deps,
+      now: () => 10_000_000,
+      sdk: { ...(deps.sdk as object), context: { ...(deps.sdk.context as object), publicClient: ready } },
+    } as unknown as ApiDeps;
+    const second = (await (
+      await getKuruRequests(new Request("https://x/api/v1/kuru/requests"), later)
+    ).json()) as {
+      requests: Record<string, unknown>[];
+    };
+    expect(second.requests[0]).toMatchObject({
+      status: "ready-to-register",
+      bookDeployed: true,
+      bookProblem: "none",
     });
   });
 });
