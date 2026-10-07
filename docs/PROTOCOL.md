@@ -319,6 +319,26 @@ deployProxy(uint8 _type, address base, address quote, uint96 sizePrecision, uint
 
 **Reading the book.** `getL2Book()` and `bestBidAsk()` onchain are the source of truth; an empty bid reads as `type(uint256).max` and an empty ask as 0.
 
+#### Kuru v2
+
+Kuru is moving new markets to its v2 exchange (AccountCore, SpotRouter, one OrderBook per market; ABI of Kuru's "auditFixes" commit). Status: **building**. The v2 contracts below are written and tested against a mock of the exchange and against Kuru's live v2 testnet contracts; no Hunch Book market trades on a v2 book yet. Kuru expects v2 on mainnet in the week of 2026-10-06.
+
+What changes, and how Hunch Book handles it:
+
+| v2 behaviour | Hunch Book |
+|---|---|
+| Only Kuru governance creates books (`SpotRouter.deploySpotMarket`), on testnet too | `GraduatorV2` never creates a book. It publishes what to create (`bookRequest(market)`: YES/USDC, both precisions 1e6, tick 1,000, passive spread 10 ticks, min order 1 USDC, max order = pool cap, fees) and where it would land (`predictedBook`). Anyone calls `registerBook` once Kuru has deployed it. A market graduates only after its book is registered; a market whose book never arrives locks and settles as a pool. |
+| Each token needs Kuru setup first (whitelist, enable in AccountCore, a price source in the WithdrawalLimiter), 1 to 2 days per market for now | The keeper requests setup when a market is created, not when it fills. YES tokens exist from creation. |
+| Balances live in AccountCore under account ids; no wallet path | `HunchRouterV2` owns one Kuru account. Each trade deposits, calls `swap`, and withdraws everything in the same transaction, so the router and its account end every call empty. Same calls and events as `HunchRouter`. |
+| `swap` is exact-in only, no fill-or-kill | Selling NO needs an exact amount of YES: the router searches Kuru's own `estimateSwap` for the least USDC that buys it (`quoteSellNo`). Buying NO: YES the bids cannot take goes back to the buyer, and `maxUsdcIn` bounds the cost. |
+| Prices are uint32 in `pricePrecision` units, fees in parts per 10^7 | Hunch books use 1e6 precisions, so a price is USDC base units per YES. The periphery (ConditionalOrders, ImpliedProbabilityOracle) takes the stack's Kuru version at deploy. |
+| A protocol-wide WithdrawalLimiter values every withdrawal through one price source per token | Each YES and NO token gets a Chainlink-shaped feed (`OutcomeTokenPriceAdapter` from the stack's `kuruFeedFactory`: 30-minute average of the book mid, pool odds before graduation, no haircut, the exact payout after settlement). Kuru wraps it in its own price-source contract with a maximum age; the keeper pokes the oracle from market creation so the feed is never older than that. |
+| Kuru can pause a book (state 1 soft, 2 hard), pause the protocol or freeze withdrawals | Rule 3 is unchanged: none of this touches settlement or redemption, which never call Kuru. A paused or frozen Kuru makes router trades revert whole; nothing is left in Kuru. We ask Kuru for state 1 at close, never state 2, so makers can still cancel and withdraw. |
+
+`GraduatorV2.registerBook` accepts a book only if Kuru's SpotRouter deployed it and AccountCore registered it (with this market's YES token and the protocol's USDC in AccountCore's own records), the book reports the same AccountCore and tokens, both precisions are exact, the tick, fees (maker at most taker) and minimum order are within the limits fixed at deploy, both tokens are enabled in AccountCore and both have a price source in the WithdrawalLimiter. `bookProblem(market, book)` returns the first reason a book would be refused. Registration is permanent; Kuru's books are upgradeable, so the router checks every fill on its own balance changes.
+
+Testnet runs two stacks: the original v1 stack (Kuru v1 books, permissionless) and a v2 stack (`stacks.kuruV2` in `deployments/monad-testnet.json`). Mainnet runs one v2 stack.
+
 ### 8.2 Perpl
 
 | Item | Mainnet | Testnet |

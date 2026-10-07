@@ -20,7 +20,7 @@ contract ImpliedProbabilityOracleTest is PeripheryBase {
 
     function setUp() public override {
         super.setUp();
-        oracle = new ImpliedProbabilityOracle(IHunchBookFactory(address(factory)));
+        oracle = new ImpliedProbabilityOracle(IHunchBookFactory(address(factory)), 1);
         (m, book) = _graduatedWithBook();
     }
 
@@ -49,7 +49,7 @@ contract ImpliedProbabilityOracleTest is PeripheryBase {
         assertEq(oracle.MIN_SPACING(), 30);
         assertEq(oracle.maxWindow(), 255 * 30);
         vm.expectRevert(IImpliedProbabilityOracle.ZeroAddress.selector);
-        new ImpliedProbabilityOracle(IHunchBookFactory(address(0)));
+        new ImpliedProbabilityOracle(IHunchBookFactory(address(0)), 1);
     }
 
     function test_unknownMarket() public {

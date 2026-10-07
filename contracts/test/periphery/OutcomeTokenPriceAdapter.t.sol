@@ -29,7 +29,7 @@ contract OutcomeTokenPriceAdapterTest is PeripheryBase {
 
     function setUp() public override {
         super.setUp();
-        oracle = new ImpliedProbabilityOracle(IHunchBookFactory(address(factory)));
+        oracle = new ImpliedProbabilityOracle(IHunchBookFactory(address(factory)), 1);
         adapters = new OutcomeTokenPriceAdapterFactory(oracle, _params());
         (m, book) = _graduatedWithBook(_longWindow());
         yesFeed = OutcomeTokenPriceAdapter(adapters.createAdapter(address(m), Side.Yes));

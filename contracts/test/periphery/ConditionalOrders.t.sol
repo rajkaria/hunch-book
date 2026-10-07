@@ -23,7 +23,7 @@ abstract contract ConditionalOrdersBase is PeripheryBase {
 
     function setUp() public virtual override {
         super.setUp();
-        orders = new ConditionalOrders(IHunchBookFactory(address(factory)), address(router));
+        orders = new ConditionalOrders(IHunchBookFactory(address(factory)), address(router), 1);
         (m, book) = _graduatedWithBook();
         yes = _yes(m);
         no = _no(m);
@@ -99,9 +99,9 @@ contract ConditionalOrdersTest is ConditionalOrdersBase {
 
     function test_constructor_revertsOnZero() public {
         vm.expectRevert(IConditionalOrders.ZeroAddress.selector);
-        new ConditionalOrders(IHunchBookFactory(address(0)), address(router));
+        new ConditionalOrders(IHunchBookFactory(address(0)), address(router), 1);
         vm.expectRevert(IConditionalOrders.ZeroAddress.selector);
-        new ConditionalOrders(IHunchBookFactory(address(factory)), address(0));
+        new ConditionalOrders(IHunchBookFactory(address(factory)), address(0), 1);
     }
 
     // ---------------------------------------------------------------- place and cancel

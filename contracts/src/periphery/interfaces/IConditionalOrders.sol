@@ -95,6 +95,7 @@ interface IConditionalOrders {
     error Slippage();
     error Reentrancy();
     error ZeroAddress();
+    error BadKuruVersion();
 
     /// Places an order owned by the caller. Moves no funds. Returns the order id (ids start at 1).
     function place(OrderRequest calldata request) external returns (uint256 orderId);
@@ -123,5 +124,7 @@ interface IConditionalOrders {
     function factory() external view returns (address);
     function router() external view returns (address);
     function usdc() external view returns (address);
+    /// Kuru version of the stack's books (1 or 2): how `currentPrice` reads them.
+    function kuruVersion() external view returns (uint8);
     function MAX_TIP_BPS() external view returns (uint256);
 }

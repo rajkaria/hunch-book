@@ -32,6 +32,8 @@ contract ConditionalOrders is IConditionalOrders {
     address public immutable router;
     /// @inheritdoc IConditionalOrders
     address public immutable usdc;
+    /// @inheritdoc IConditionalOrders
+    uint8 public immutable kuruVersion;
 
     /// @inheritdoc IConditionalOrders
     uint256 public orderCount;
@@ -59,13 +61,16 @@ contract ConditionalOrders is IConditionalOrders {
 
     /// @param factory_ The Hunch Book factory whose markets orders can trade.
     /// @param router_ The HunchRouter for that factory.
-    constructor(IHunchBookFactory factory_, address router_) {
+    /// @param kuruVersion_ The Kuru version of the stack's books (1 or 2), which sets how prices are read.
+    constructor(IHunchBookFactory factory_, address router_, uint8 kuruVersion_) {
         if (address(factory_) == address(0) || router_ == address(0)) revert ZeroAddress();
+        if (kuruVersion_ != 1 && kuruVersion_ != 2) revert BadKuruVersion();
         address usdc_ = factory_.usdc();
         if (usdc_ == address(0)) revert ZeroAddress();
         factory = address(factory_);
         router = router_;
         usdc = usdc_;
+        kuruVersion = kuruVersion_;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -235,7 +240,7 @@ contract ConditionalOrders is IConditionalOrders {
 
     /// The trigger-side price for `kind`, from the market's book (see BookPrice for NO prices).
     function _price(address market, IHunchRouter.Kind kind) internal view returns (bool available, uint256 priceE6) {
-        BookPrice.Quote memory q = BookPrice.yesQuote(IMarket(market).book());
+        BookPrice.Quote memory q = BookPrice.yesQuote(IMarket(market).book(), kuruVersion);
         if (kind == IHunchRouter.Kind.BuyYes) return (q.hasAsk, q.ask);
         if (kind == IHunchRouter.Kind.SellYes) return (q.hasBid, q.bid);
         if (kind == IHunchRouter.Kind.BuyNo) return (q.hasBid, BookPrice.complement(q.bid));

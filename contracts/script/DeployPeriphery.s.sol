@@ -14,8 +14,10 @@ import {TemplateTimelock} from "../src/periphery/TemplateTimelock.sol";
 import {IOutcomeTokenPriceAdapterFactory} from "../src/periphery/interfaces/IOutcomeTokenPriceAdapterFactory.sol";
 
 /// Deploys the periphery contracts (docs/PERIPHERY.md) against a network's deployed core, read from
-/// deployments/<network>.json, and writes their addresses under `.hunchBook.periphery`. Only a
-/// broadcast run writes the file; a dry run prints what it would write.
+/// deployments/<network>.json, and writes their addresses under `<stack>.periphery`. The stack is the
+/// primary one (`.hunchBook`) unless STACK names an extra one (`.stacks.<STACK>`, e.g. STACK=kuruV2).
+/// ConditionalOrders and the oracle read books for the stack's Kuru version (`<stack>.kuruVersion`,
+/// absent = 1). Only a broadcast run writes the file; a dry run prints what it would write.
 ///
 ///   Dry run (no key needed):
 ///     forge script script/DeployPeriphery.s.sol --rpc-url <rpc> --sender <deployer address>
@@ -33,6 +35,7 @@ import {IOutcomeTokenPriceAdapterFactory} from "../src/periphery/interfaces/IOut
 ///                       and must not be the deployer.
 ///   TIMELOCK_DELAY      seconds; default 2 days (the minimum).
 ///   DISTRIBUTOR_FUNDER  the MerkleDistributor's funder; default the protocol fee recipient.
+///   STACK               an extra stack's name under `.stacks`; default the primary stack.
 contract DeployPeriphery is Script {
     uint256 internal constant TESTNET = 10_143;
     uint256 internal constant MAINNET = 143;
@@ -47,6 +50,7 @@ contract DeployPeriphery is Script {
         address proposer;
         address funder;
         uint256 timelockDelay;
+        uint8 kuruVersion;
     }
 
     struct Deployed {
@@ -56,6 +60,7 @@ contract DeployPeriphery is Script {
         address merkleDistributor;
         address impliedProbabilityOracle;
         address priceAdapterFactory;
+        address kuruFeedFactory;
         address templateTimelock;
         address timelockProposer;
         uint256 timelockDelay;
@@ -66,8 +71,9 @@ contract DeployPeriphery is Script {
 
     function run() external {
         string memory json = vm.readFile(_deploymentPath());
-        require(vm.keyExistsJson(json, ".hunchBook.factory"), "core is not deployed on this network");
-        require(!vm.keyExistsJson(json, ".hunchBook.periphery"), "periphery already deployed on this network");
+        string memory stack = stackPath();
+        require(vm.keyExistsJson(json, string.concat(stack, ".factory")), "core is not deployed on this stack");
+        require(!vm.keyExistsJson(json, string.concat(stack, ".periphery")), "periphery already deployed on this stack");
 
         uint256 key = vm.envOr("DEPLOYER_PRIVATE_KEY", uint256(0));
         address deployer = key != 0 ? vm.addr(key) : msg.sender;
@@ -78,15 +84,19 @@ contract DeployPeriphery is Script {
 
     /// The configuration for this network: the core addresses from `json` and the env overrides.
     function config(string memory json, address deployer) public view returns (Config memory c) {
-        c.factory = vm.parseJsonAddress(json, ".hunchBook.factory");
-        c.router = vm.parseJsonAddress(json, ".hunchBook.router");
+        string memory stack = stackPath();
+        c.factory = vm.parseJsonAddress(json, string.concat(stack, ".factory"));
+        c.router = vm.parseJsonAddress(json, string.concat(stack, ".router"));
         c.timelockDelay = vm.envOr("TIMELOCK_DELAY", DEFAULT_TIMELOCK_DELAY);
-        c.funder = vm.envOr("DISTRIBUTOR_FUNDER", vm.parseJsonAddress(json, ".hunchBook.feeRecipient"));
+        c.funder = vm.envOr("DISTRIBUTOR_FUNDER", vm.parseJsonAddress(json, string.concat(stack, ".feeRecipient")));
+        string memory versionKey = string.concat(stack, ".kuruVersion");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        c.kuruVersion = vm.keyExistsJson(json, versionKey) ? uint8(vm.parseJsonUint(json, versionKey)) : 1;
         if (block.chainid == MAINNET) {
             c.proposer = vm.envAddress("TIMELOCK_PROPOSER");
             require(c.proposer != deployer, "mainnet timelock proposer must be a multisig, not the deployer");
         } else {
-            c.proposer = vm.envOr("TIMELOCK_PROPOSER", vm.parseJsonAddress(json, ".hunchBook.guardian"));
+            c.proposer = vm.envOr("TIMELOCK_PROPOSER", vm.parseJsonAddress(json, string.concat(stack, ".guardian")));
         }
     }
 
@@ -104,12 +114,13 @@ contract DeployPeriphery is Script {
         if (key != 0) vm.startBroadcast(key);
         else vm.startBroadcast();
         d.autoRedeemer = address(new AutoRedeemer(factory));
-        d.conditionalOrders = address(new ConditionalOrders(factory, c.router));
+        d.conditionalOrders = address(new ConditionalOrders(factory, c.router, c.kuruVersion));
         d.referralRegistry = address(new ReferralRegistry(REFERRAL_DURATION));
         d.merkleDistributor = address(new MerkleDistributor(c.funder));
-        ImpliedProbabilityOracle oracle = new ImpliedProbabilityOracle(factory);
+        ImpliedProbabilityOracle oracle = new ImpliedProbabilityOracle(factory, c.kuruVersion);
         d.impliedProbabilityOracle = address(oracle);
         d.priceAdapterFactory = address(new OutcomeTokenPriceAdapterFactory(oracle, adapterParams()));
+        d.kuruFeedFactory = address(new OutcomeTokenPriceAdapterFactory(oracle, kuruFeedParams()));
         d.templateTimelock = address(new TemplateTimelock(factory, c.proposer, c.timelockDelay));
         vm.stopBroadcast();
     }
@@ -129,6 +140,28 @@ contract DeployPeriphery is Script {
         });
     }
 
+    /// Parameters for the feeds Kuru's WithdrawalLimiter prices YES and NO with (PROTOCOL.md §8.1, Kuru v2): the
+    /// 30-minute average of the book mid (pool odds before graduation), with no haircut, capped at the
+    /// winning payout, and the exact payout once settled. The limiter values deposits and withdrawals
+    /// with the same price, so it needs the fair value, not the lending adapters' low one.
+    function kuruFeedParams() public pure returns (IOutcomeTokenPriceAdapterFactory.AdapterParams memory) {
+        return IOutcomeTokenPriceAdapterFactory.AdapterParams({
+            twapWindow: 30 minutes,
+            baseHaircutBps: 0,
+            closeHaircutBps: 0,
+            rampSeconds: 1,
+            spreadMultiplierBps: 0,
+            maxSpreadHaircutBps: 0,
+            blockTimeMs: 400
+        });
+    }
+
+    /// `.hunchBook`, or `.stacks.<STACK>` when STACK is set.
+    function stackPath() public view returns (string memory) {
+        string memory stack = vm.envOr("STACK", string(""));
+        return bytes(stack).length == 0 ? ".hunchBook" : string.concat(".stacks.", stack);
+    }
+
     // ---- output ----
 
     function _write(Deployed memory d) internal {
@@ -139,6 +172,7 @@ contract DeployPeriphery is Script {
         vm.serializeAddress(k, "merkleDistributor", d.merkleDistributor);
         vm.serializeAddress(k, "impliedProbabilityOracle", d.impliedProbabilityOracle);
         vm.serializeAddress(k, "priceAdapterFactory", d.priceAdapterFactory);
+        vm.serializeAddress(k, "kuruFeedFactory", d.kuruFeedFactory);
         vm.serializeAddress(k, "templateTimelock", d.templateTimelock);
         vm.serializeAddress(k, "timelockProposer", d.timelockProposer);
         vm.serializeUint(k, "timelockDelay", d.timelockDelay);
@@ -147,7 +181,7 @@ contract DeployPeriphery is Script {
         string memory out = vm.serializeUint(k, "deployBlock", d.deployBlock);
 
         if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
-            vm.writeJson(out, _deploymentPath(), ".hunchBook.periphery");
+            vm.writeJson(out, _deploymentPath(), string.concat(stackPath(), ".periphery"));
         } else {
             console2.log("dry run: deployments file not written");
         }
@@ -155,41 +189,50 @@ contract DeployPeriphery is Script {
     }
 
     /// After a broadcast run: reads each contract's creation transaction from forge's broadcast log,
-    /// checks it created the address recorded under `.hunchBook.periphery`, and writes the hashes
-    /// under `.hunchBook.periphery.deployTxs`. Sends nothing.
+    /// checks it created the address recorded under `<stack>.periphery`, and writes the hashes under
+    /// `<stack>.periphery.deployTxs`. Sends nothing.
     function recordTxs() external {
         string memory path = _deploymentPath();
         string memory json = vm.readFile(path);
-        require(vm.keyExistsJson(json, ".hunchBook.periphery"), "periphery is not deployed on this network");
+        string memory periphery = string.concat(stackPath(), ".periphery");
+        require(vm.keyExistsJson(json, periphery), "periphery is not deployed on this stack");
 
-        string[7] memory names = [
+        string[8] memory names = [
             "AutoRedeemer",
             "ConditionalOrders",
             "ReferralRegistry",
             "MerkleDistributor",
             "ImpliedProbabilityOracle",
             "OutcomeTokenPriceAdapterFactory",
+            "OutcomeTokenPriceAdapterFactory",
             "TemplateTimelock"
         ];
-        string[7] memory keys = [
+        string[8] memory keys = [
             "autoRedeemer",
             "conditionalOrders",
             "referralRegistry",
             "merkleDistributor",
             "impliedProbabilityOracle",
             "priceAdapterFactory",
+            "kuruFeedFactory",
             "templateTimelock"
         ];
         string memory k = "deployTxs";
         string memory out;
         for (uint256 i; i < names.length; ++i) {
-            VmSafe.BroadcastTxSummary memory s =
-                vm.getBroadcast(names[i], uint64(block.chainid), VmSafe.BroadcastTxType.Create);
-            address recorded = vm.parseJsonAddress(json, string.concat(".hunchBook.periphery.", keys[i]));
-            require(s.success && s.contractAddress == recorded, string.concat("broadcast log mismatch: ", names[i]));
-            out = vm.serializeBytes32(k, keys[i], s.txHash);
+            string memory key = string.concat(periphery, ".", keys[i]);
+            if (!vm.keyExistsJson(json, key)) continue;
+            address recorded = vm.parseJsonAddress(json, key);
+            VmSafe.BroadcastTxSummary[] memory all =
+                vm.getBroadcasts(names[i], uint64(block.chainid), VmSafe.BroadcastTxType.Create);
+            bytes32 hash;
+            for (uint256 j; j < all.length; ++j) {
+                if (all[j].success && all[j].contractAddress == recorded) hash = all[j].txHash;
+            }
+            require(hash != bytes32(0), string.concat("broadcast log mismatch: ", keys[i]));
+            out = vm.serializeBytes32(k, keys[i], hash);
         }
-        vm.writeJson(out, path, ".hunchBook.periphery.deployTxs");
+        vm.writeJson(out, path, string.concat(periphery, ".deployTxs"));
         console2.log(out);
     }
 

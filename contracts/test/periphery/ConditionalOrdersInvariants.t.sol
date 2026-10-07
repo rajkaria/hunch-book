@@ -213,7 +213,7 @@ contract ConditionalOrdersInvariantsTest is PeripheryBase {
 
     function setUp() public override {
         super.setUp();
-        orders = new ConditionalOrders(IHunchBookFactory(address(factory)), address(router));
+        orders = new ConditionalOrders(IHunchBookFactory(address(factory)), address(router), 1);
         (m, book) = _graduatedWithBook();
         _ask(m, book, 450_000, 100e6);
         _ask(m, book, 500_000, 100e6);

@@ -49,6 +49,7 @@ interface IImpliedProbabilityOracle {
 
     error UnknownMarket();
     error ZeroAddress();
+    error BadKuruVersion();
     error ZeroPeriod();
     error NoObservations();
     error InsufficientHistory(uint256 oldestTimestamp);
@@ -90,6 +91,8 @@ interface IImpliedProbabilityOracle {
     function maxWindow() external view returns (uint256);
 
     function factory() external view returns (address);
+    /// Kuru version of the stack's books (1 or 2): how graduated markets' books are read.
+    function kuruVersion() external view returns (uint8);
     function CAPACITY() external view returns (uint256);
     function MIN_SPACING() external view returns (uint256);
 }

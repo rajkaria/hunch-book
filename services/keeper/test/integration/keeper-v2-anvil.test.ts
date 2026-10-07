@@ -168,8 +168,8 @@ beforeAll(async () => {
   await send(core.factory, "factory", "setGraduator", [a.graduator]);
   a.router = await chain.deploy(deployer, "router", [core.factory]);
   a.redeemer = await chain.deploy(deployer, "autoRedeemer", [core.factory]);
-  a.orders = await chain.deploy(deployer, "conditionalOrders", [core.factory, a.router]);
-  a.oracle = await chain.deploy(deployer, "oracle", [core.factory]);
+  a.orders = await chain.deploy(deployer, "conditionalOrders", [core.factory, a.router, 1]);
+  a.oracle = await chain.deploy(deployer, "oracle", [core.factory, 1]);
   const peripheryBlock = Number(await chain.client.getBlockNumber());
 
   T = (await chain.client.getBlock()).timestamp;

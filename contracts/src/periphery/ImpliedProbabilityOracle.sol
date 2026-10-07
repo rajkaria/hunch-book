@@ -18,7 +18,8 @@ import {BookPrice} from "./libraries/BookPrice.sol";
 /// only until the next poke, which anyone can make in the next block. `consult` never reads the
 /// book: between pokes it extends the head's last recorded value.
 ///
-/// No owner and no parameters: the oracle only reads the factory, the markets and their books.
+/// No owner; one parameter fixed at deploy (the Kuru version of the stack's books). The oracle only
+/// reads the factory, the markets and their books.
 contract ImpliedProbabilityOracle is IImpliedProbabilityOracle {
     using SafeCastLib for uint256;
 
@@ -30,6 +31,8 @@ contract ImpliedProbabilityOracle is IImpliedProbabilityOracle {
 
     /// @inheritdoc IImpliedProbabilityOracle
     address public immutable factory;
+    /// @inheritdoc IImpliedProbabilityOracle
+    uint8 public immutable kuruVersion;
 
     struct Ring {
         uint64 lastBlock; // block of the latest poke
@@ -41,9 +44,12 @@ contract ImpliedProbabilityOracle is IImpliedProbabilityOracle {
     mapping(address market => Ring) internal _rings;
     mapping(address market => Observation[CAPACITY]) internal _checkpoints;
 
-    constructor(IHunchBookFactory factory_) {
+    /// @param kuruVersion_ The Kuru version of the stack's books (1 or 2).
+    constructor(IHunchBookFactory factory_, uint8 kuruVersion_) {
         if (address(factory_) == address(0)) revert ZeroAddress();
+        if (kuruVersion_ != 1 && kuruVersion_ != 2) revert BadKuruVersion();
         factory = address(factory_);
+        kuruVersion = kuruVersion_;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -156,7 +162,7 @@ contract ImpliedProbabilityOracle is IImpliedProbabilityOracle {
             q.spreadE6 = ONE;
         } else {
             // Graduated or Closed: the book.
-            BookPrice.Quote memory b = BookPrice.yesQuote(m.book());
+            BookPrice.Quote memory b = BookPrice.yesQuote(m.book(), kuruVersion);
             (q.hasBid, q.hasAsk, q.bidE6, q.askE6) = (b.hasBid, b.hasAsk, b.bid, b.ask);
             uint256 bid = BookPrice.capped(b.bid);
             uint256 ask = BookPrice.capped(b.ask);
