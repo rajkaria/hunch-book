@@ -109,5 +109,59 @@
     },
     "circleUsdc": "0x534b2f3A21130d7a60830c2Df862319e593943A3"
   },
-  "notes": "Testnet collateral is Hunch Book's own mintable test USDC (deployed with the protocol), because Kuru's testnet USDC cannot be minted. Kuru market creation is permissionless on testnet."
+  "notes": "Testnet collateral is Hunch Book's own mintable test USDC (deployed with the protocol), because Kuru's testnet USDC cannot be minted. Kuru market creation is permissionless on testnet.",
+  "stacks": {
+    "kuruV2": {
+      "deployBlock": 68935420,
+      "factory": "0xd6994DD479d845F1ea039b6322fBE00c12Ea125A",
+      "feeRecipient": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+      "graduator": "0x8D626Ec2E85Fbe71f1AF9E5c5e55EF4bDE68A919",
+      "guardian": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+      "kuruVersion": 2,
+      "marketImplementation": "0x8575e13FC1B4b53F34C8c911bE9edF2B8aCbB9bA",
+      "resolvers": {
+        "perplFunding": "0xBEA916714Ae85FE09eBD1483D0045184e3077A56",
+        "priceAtTime": "0xC22D54602704eF9FC9486123b6956Ece7784d811"
+      },
+      "router": "0x5B08c1344728bBaC1851A75dbc8B9dB7D1c81556",
+      "usdc": "0x13c5B2e982F437566991c4d9aC0a30F9f9aC15Ed",
+      "vault": "0x1749333EeC149a75133F19D0fc6eF4cFC7f7E481",
+      "deployTxs": {
+        "addTemplate1": "0x84815aef1785a1f1febd8f871a36d49b681ce4534089f87388d94cc026113748",
+        "addTemplate2": "0xe01ce51f355bfa40e324705d15e1f9ba9e92a38d83ccb21da388735a3d894518",
+        "factory": "0xd234b05cda557a6f9b8577190d1b228f2ef96b0ca35a4063c03cf73336d9865a",
+        "graduator": "0x31fbe471b8596bd27d8c11129c4621ac9213fee3e6d4be8c49307bceeb8e1fab",
+        "marketImplementation": "0x74784912b0881ba8bb0fa484574eb199a1fa5a83f7ed50acbb61d0e36bd216b3",
+        "perplFunding": "0x57a975700c279f25952e51ce715075894885ea52951b8c5485d466116fb8b3d1",
+        "priceAtTime": "0x932a51c545da40294d29dbbe8a79fea5a86a4729c913cc3cf35c8f53d2701235",
+        "router": "0x9713bdb6d7b392fcdd72196b5ac667b15dd485ee59480b4d5ddff753e90f55f5",
+        "setGraduator": "0x1dc6bc85939bc71222a6732ec8c1a3beab9408ad7d8134dacd03dd020ba59e66"
+      },
+      "periphery": {
+        "autoRedeemer": "0xF07F0FAA71349Ee9579e3c3257a73F727ef4f05E",
+        "conditionalOrders": "0x161329FE354C419F3bf002f717E04A82E7FD5ea0",
+        "deployBlock": 68935813,
+        "distributorFunder": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+        "impliedProbabilityOracle": "0xE8e1CfCee906D12a610d25CB836D4E18baDf7638",
+        "kuruFeedFactory": "0x122C3FF1a585639b3a67064efe63A23d6e03117A",
+        "merkleDistributor": "0x866a4764eCF770b3Fb23FB6E6E47E595B870fB3C",
+        "priceAdapterFactory": "0x9F0DFD2e13397A64eEd0fBa8D9F9FbBe10Cd60C7",
+        "referralDuration": 15552000,
+        "referralRegistry": "0x1B6664bB6fEB06aCb7aC0dB6EaC547DEFbe3DD57",
+        "templateTimelock": "0x7f6150A5f7117bA929ff3bd1A26Ec5a76931b4A5",
+        "timelockDelay": 172800,
+        "timelockProposer": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+        "deployTxs": {
+          "autoRedeemer": "0xa358af175cd641f0b9d8408557a65b61eca2c971a211ceee2d9a3bd3eb991fe4",
+          "conditionalOrders": "0xd7b3b20c1509e1b64b693ee98af50846903386e1ee27aa9b733df37aaee1fe75",
+          "impliedProbabilityOracle": "0x04a36a33ac4f4c984e817d550a58e6f3f46c7455b398b30c68bfef2f8d334374",
+          "kuruFeedFactory": "0x52e5df051f2a85159893f07e7c2da8784a37acf6214f1dbe6135123f9ded466a",
+          "merkleDistributor": "0x1d21567b6235ddfc1c12ea05ac6dd941a405a6f2df44406f10ba2e24af309678",
+          "priceAdapterFactory": "0x67fbc01e7fc3a4b0a6e4b60e272b0167be3478a39c25b2ee285223afb264563b",
+          "referralRegistry": "0xef50a42ea0be17a0ebcf366d4a7750763cb89702fb8d074bb0e6714940863962",
+          "templateTimelock": "0xa6572567da7a699d8eacd1ec954a97c38b1928e77e4e4725b0f20656b8023b31"
+        }
+      }
+    }
+  }
 }

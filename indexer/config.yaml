@@ -113,13 +113,21 @@ chains:
     # not deployed on this network yet and are never read.
     contracts:
       - name: HunchBookFactory
-        address: "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A"
+        address:
+          - "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A"
+          - "0xd6994DD479d845F1ea039b6322fBE00c12Ea125A"
       - name: CollateralVault
-        address: "0x81b04B3567dcaDaE6a859394248C47ddc403ba37"
+        address:
+          - "0x81b04B3567dcaDaE6a859394248C47ddc403ba37"
+          - "0x1749333EeC149a75133F19D0fc6eF4cFC7f7E481"
       - name: HunchRouter
-        address: "0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6"
+        address:
+          - "0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6"
+          - "0x5B08c1344728bBaC1851A75dbc8B9dB7D1c81556"
       - name: Graduator
-        address: "0x7DC80DB34762A996aae6Ce516F562B2e6142fFE3"
+        address:
+          - "0x7DC80DB34762A996aae6Ce516F562B2e6142fFE3"
+          - "0x8D626Ec2E85Fbe71f1AF9E5c5e55EF4bDE68A919"
       - name: Usdc
         address: "0x13c5B2e982F437566991c4d9aC0a30F9f9aC15Ed"
       - name: Market
@@ -129,16 +137,31 @@ chains:
       - name: SnapshotResolver
         address: "0x1E62C389D7c035acfDD971C7E6b7157C1D34D632"
       - name: AutoRedeemer
-        address: "0x26EFB3D0d50DCBB97FBb369471fcc59a2677A534"
+        address:
+          - "0x26EFB3D0d50DCBB97FBb369471fcc59a2677A534"
+          - "0xF07F0FAA71349Ee9579e3c3257a73F727ef4f05E"
       - name: ConditionalOrders
-        address: "0xDf733F2AD02Fcd3eA1a02d319D720c94d67c7eB6"
+        address:
+          - "0xDf733F2AD02Fcd3eA1a02d319D720c94d67c7eB6"
+          - "0x161329FE354C419F3bf002f717E04A82E7FD5ea0"
       - name: ReferralRegistry
-        address: "0x063713eb539f2c9458d4836341ce3a74CF948569"
+        address:
+          - "0x063713eb539f2c9458d4836341ce3a74CF948569"
+          - "0x1B6664bB6fEB06aCb7aC0dB6EaC547DEFbe3DD57"
       - name: MerkleDistributor
-        address: "0x1872C4AaD2941410F81778467864e113b74Cc2D9"
+        address:
+          - "0x1872C4AaD2941410F81778467864e113b74Cc2D9"
+          - "0x866a4764eCF770b3Fb23FB6E6E47E595B870fB3C"
       - name: ImpliedProbabilityOracle
-        address: "0xEc0fCfD5ee0fC6Dd8938B72810697f7BbfdA9134"
+        address:
+          - "0xEc0fCfD5ee0fC6Dd8938B72810697f7BbfdA9134"
+          - "0xE8e1CfCee906D12a610d25CB836D4E18baDf7638"
       - name: PriceAdapterFactory
-        address: "0x348476c0602C3BEfd1064d54636DD791240B508B"
+        address:
+          - "0x348476c0602C3BEfd1064d54636DD791240B508B"
+          - "0x9F0DFD2e13397A64eEd0fBa8D9F9FbBe10Cd60C7"
+          - "0x122C3FF1a585639b3a67064efe63A23d6e03117A"
       - name: TemplateTimelock
-        address: "0xCe858DF2C95851275ed97e9Ba764b22d6394290b"
+        address:
+          - "0xCe858DF2C95851275ed97e9Ba764b22d6394290b"
+          - "0x7f6150A5f7117bA929ff3bd1A26Ec5a76931b4A5"

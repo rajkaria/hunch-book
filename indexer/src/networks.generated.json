@@ -138,6 +138,33 @@
           "distributorFunder": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
           "timelockProposer": "0xd183a7daecf3d539683f37e1111558e3dfc210a8"
         }
+      },
+      {
+        "name": "kuruV2",
+        "primary": false,
+        "kuruVersion": 2,
+        "factory": "0xd6994dd479d845f1ea039b6322fbe00c12ea125a",
+        "vault": "0x1749333eec149a75133f19d0fc6ef4cfc7f7e481",
+        "router": "0x5b08c1344728bbac1851a75dbc8b9db7d1c81556",
+        "graduator": "0x8d626ec2e85fbe71f1af9e5c5e55ef4bde68a919",
+        "guardian": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+        "feeRecipient": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+        "resolvers": {
+          "perplFunding": "0xbea916714ae85fe09ebd1483d0045184e3077a56",
+          "priceAtTime": "0xc22d54602704ef9fc9486123b6956ece7784d811"
+        },
+        "periphery": {
+          "autoRedeemer": "0xf07f0faa71349ee9579e3c3257a73f727ef4f05e",
+          "conditionalOrders": "0x161329fe354c419f3bf002f717e04a82e7fd5ea0",
+          "referralRegistry": "0x1b6664bb6feb06acb7ac0db6eac547defbe3dd57",
+          "merkleDistributor": "0x866a4764ecf770b3fb23fb6e6e47e595b870fb3c",
+          "impliedProbabilityOracle": "0xe8e1cfcee906d12a610d25cb836d4e18badf7638",
+          "priceAdapterFactory": "0x9f0dfd2e13397a64eed0fba8d9f9fbbe10cd60c7",
+          "kuruFeedFactory": "0x122c3ff1a585639b3a67064efe63a23d6e03117a",
+          "templateTimelock": "0x7f6150a5f7117ba929ff3bd1a26ec5a76931b4a5",
+          "distributorFunder": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+          "timelockProposer": "0xd183a7daecf3d539683f37e1111558e3dfc210a8"
+        }
       }
     ],
     "perps": {
