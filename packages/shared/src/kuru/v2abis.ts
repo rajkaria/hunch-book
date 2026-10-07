@@ -275,6 +275,19 @@ export const kuruV2AccountCoreAbi = [
     outputs: [{ name: "", type: "uint40" }],
   },
   {
+    // Deposit by owner: creates the owner's root account on first use (only books may call
+    // ensureRootAccount).
+    type: "function",
+    name: "deposit",
+    stateMutability: "payable",
+    inputs: [
+      { name: "rootOwner", type: "address" },
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
     type: "function",
     name: "deposit",
     stateMutability: "payable",

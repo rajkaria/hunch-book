@@ -10,6 +10,8 @@ export interface BookInfo extends BookSpec {
   quote: Address;
   takerFeeBps: bigint;
   makerFeeBps: bigint;
+  /** Kuru v2 books: the taker fee in parts per 10^7 (takerFeeBps is then rounded, for display). */
+  takerFeePps?: bigint;
 }
 
 /** Kuru's MarketState: 0 active, 1 soft-paused (cancels only), 2 hard-paused. */

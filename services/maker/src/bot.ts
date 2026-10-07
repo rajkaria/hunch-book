@@ -43,6 +43,16 @@ import { PaperDesk } from "./paperDesk.js";
 import { widenFactor } from "./quotes.js";
 import { rateLimitedFetch } from "./rpc.js";
 import { accountAddress, sendTx, type TxContext } from "./tx.js";
+import {
+  cancelBookV2,
+  cancelMarketV2,
+  createRuntimeV2,
+  quoteMarketV2,
+  readBookInfoV2,
+  unwindMarketV2,
+  type V2Deps,
+  type V2Runtime,
+} from "./v2.js";
 
 // The long-running bot: discovers markets, prices them, quotes graduated ones, and leaves each market
 // before close. Everything it sends goes through sendTx, which honours the kill switch.
@@ -58,6 +68,12 @@ export class Maker {
   private readonly fair: FairValues;
   private readonly directory: MarketDirectory | undefined;
   private readonly runtimes = new Map<Address, MarketRuntime>();
+  /** Kuru v2 stacks: per-market state of the v2 maker (src/v2.ts). */
+  private readonly runtimesV2 = new Map<Address, V2Runtime>();
+  /** Kuru v2 stacks: AccountCore and the v2 maker's settings. Undefined on a v1 stack. */
+  readonly depsV2: V2Deps | undefined;
+  /** "primary", or the name of the extra stack this bot quotes on. */
+  readonly stackName: string;
   private readonly settledChecked = new Set<Address>();
   /** Markets not quoted, and why, logged once each. */
   private readonly skipped = new Set<string>();
@@ -67,12 +83,17 @@ export class Maker {
   private blockSeconds = 0.4;
   private blockSecondsAt = 0;
 
-  /** `deployment` defaults to deployments/<network>.json; tests pass one with their own addresses. */
+  /**
+   * `deployment` defaults to deployments/<network>.json; tests pass one with their own addresses. With
+   * several stacks, main.ts builds one bot per stack on a one-stack view (deploymentForStack).
+   */
   constructor(
     readonly config: MakerConfig,
     deployment: Deployment = loadDeployment(config.network),
+    stack: { name: string } = { name: "primary" },
   ) {
     this.deployment = deployment;
+    this.stackName = stack.name;
     const chain = chainsByNetwork[config.network];
     const transport = http(config.rpcUrl, {
       retryCount: 5,
@@ -104,6 +125,19 @@ export class Maker {
       heartbeatSeconds: config.heartbeatSeconds,
       dustTokens: config.dustTokens,
     };
+    if (this.kuruVersion === 2) {
+      const accountCore = this.deployment.external.kuruV2?.accountCore;
+      if (!accountCore)
+        throw new Error(`stack ${this.stackName} is on Kuru v2 but external.kuruV2.accountCore is not set`);
+      this.depsV2 = {
+        tx: this.tx,
+        accountCore,
+        quote: config.quote,
+        requoteThreshold: config.requoteThreshold,
+        heartbeatSeconds: config.heartbeatSeconds,
+        dustTokens: config.dustTokens,
+      };
+    }
     this.fair = new FairValues(this.client, this.deployment);
     this.paper =
       config.mode === "paper" ? new PaperDesk(this.client, this.deps, config.paperUsdc) : undefined;
@@ -114,7 +148,52 @@ export class Maker {
       maker: accountAddress(this.tx),
       enabled: config.enabled,
       mode: config.mode,
+      stack: this.stackName,
+      kuruVersion: this.kuruVersion,
     });
+  }
+
+  /** This stack's Kuru version (deployments file `kuruVersion`; absent = 1). */
+  get kuruVersion(): 1 | 2 {
+    return this.deployment.hunchBook.kuruVersion === 2 ? 2 : 1;
+  }
+
+  private marketHealth() {
+    return [...this.runtimes.values(), ...this.runtimesV2.values()].map((rt) => rt.health);
+  }
+
+  /** Kuru v2: the runtime for a graduated market, after checking the book is this market's YES/USDC book. */
+  private async runtimeForV2(market: MarketView): Promise<V2Runtime | undefined> {
+    const existing = this.runtimesV2.get(market.address);
+    if (existing) return existing;
+    const info = await readBookInfoV2(this.client, market.book);
+    const vaultUsdc = await this.client.readContract({
+      address: market.vault,
+      abi: collateralVaultAbi,
+      functionName: "usdc",
+    });
+    if (!isAddressEqual(info.base, market.yes) || !isAddressEqual(info.quote, vaultUsdc)) {
+      log(
+        "book-mismatch",
+        { market: market.address, book: market.book, base: info.base, quote: info.quote },
+        "error",
+      );
+      return undefined;
+    }
+    if (info.baseDecimals !== info.quoteDecimals) {
+      log("book-mismatch", { market: market.address, reason: "YES and USDC decimals differ" }, "error");
+      return undefined;
+    }
+    const ceiling = BigInt(Math.ceil(this.config.quote.inventoryCap * 2)) * 10n ** BigInt(info.quoteDecimals);
+    const rt = createRuntimeV2({
+      market: market.address,
+      book: market.book,
+      info,
+      no: market.no,
+      sets: vaultSetOps(this.tx, market.vault, market.address, info.quote, ceiling),
+    });
+    this.runtimesV2.set(market.address, rt);
+    return rt;
   }
 
   get maker(): Address {
@@ -225,7 +304,7 @@ export class Maker {
       }
       this.health.update({
         lastCycleAt: new Date().toISOString(),
-        markets: [...this.runtimes.values()].map((rt) => rt.health),
+        markets: this.marketHealth(),
         paper: {
           usdc: report.usdc.toString(),
           value: report.value.toString(),
@@ -242,7 +321,7 @@ export class Maker {
     this.health.update({
       lastCycleAt: new Date().toISOString(),
       monBalance: formatEther(mon),
-      markets: [...this.runtimes.values()].map((rt) => rt.health),
+      markets: this.marketHealth(),
     });
   }
 
@@ -255,6 +334,7 @@ export class Maker {
   }
 
   private async handle(market: MarketView, now: ChainNow, wall: number): Promise<void> {
+    if (this.depsV2) return this.handleV2(this.depsV2, market, now, wall);
     if (market.phase === Phase.Settled || market.phase === Phase.Voided) {
       if (this.paper) {
         await this.paper.settle(market);
@@ -309,6 +389,48 @@ export class Maker {
     await quoteMarket(this.deps, rt, { fair: fair.p, widen, now: wall, detail });
   }
 
+  /** `handle` on a Kuru v2 stack: the same decisions, with the v2 maker (src/v2.ts). Paper mode is v1 only. */
+  private async handleV2(deps: V2Deps, market: MarketView, now: ChainNow, wall: number): Promise<void> {
+    if (this.paper) return this.skipOnce(market, "paper-v1-only", "paper mode simulates Kuru v1 books only");
+    if (market.phase === Phase.Settled || market.phase === Phase.Voided) {
+      const rt = this.runtimesV2.get(market.address);
+      if (rt) await cancelMarketV2(deps, rt, PHASE_LABEL[market.phase]);
+      await this.redeemLeftovers(market);
+      return;
+    }
+    if (market.phase !== Phase.Graduated && market.phase !== Phase.Closed) return;
+    if (this.config.templates && !this.config.templates.includes(market.templateId)) {
+      return this.skipOnce(market, "template-off", `template ${market.templateId} is not in MAKER_TEMPLATES`);
+    }
+    if (!PRICED_TEMPLATES.includes(market.templateId)) {
+      return this.skipOnce(market, "no-model", `template ${market.templateId} has no pricing model`);
+    }
+    const rt = await this.runtimeForV2(market);
+    if (!rt) return;
+    const closeIn = secondsToClose(market.window, now, this.blockSeconds);
+    if (market.phase === Phase.Closed || closeIn <= this.config.closeBufferSeconds) {
+      if (!rt.unwound) await unwindMarketV2(deps, rt, { reason: "close", merge: true });
+      rt.health.status = "closed";
+      return;
+    }
+    let fair: FairResult;
+    try {
+      fair = await this.fair.forMarket(market.templateId, market.params, now);
+    } catch (error) {
+      if (!(error instanceof NoModelError)) throw error;
+      return this.skipOnce(market, "no-model", error.message);
+    }
+    if (fair.decided) {
+      if (!rt.unwound) await unwindMarketV2(deps, rt, { reason: "answer-known", merge: true });
+      rt.health = { ...rt.health, status: "answer-known", fair: fair.p, detail: fair.detail };
+      return;
+    }
+    rt.unwound = false;
+    const widen = widenFactor(closeIn, this.config.widenSeconds, this.config.widenMax);
+    const detail = { ...fair.detail, secondsToClose: Math.round(closeIn), template: market.templateId };
+    await quoteMarketV2(deps, rt, { fair: fair.p, widen, now: wall, detail });
+  }
+
   /** After settlement, redeem the winning side; after a void, merge pairs and redeem the rest at 0.50. */
   private async redeemLeftovers(market: MarketView): Promise<void> {
     if (this.settledChecked.has(market.address)) return;
@@ -356,10 +478,13 @@ export class Maker {
       }
     }
     for (const rt of this.runtimes.values()) books.set(rt.book, true);
+    for (const rt of this.runtimesV2.values()) books.set(rt.book, true);
     for (const book of extraBooks) books.set(book, true);
     for (const book of books.keys()) {
       try {
-        await cancelBook(this.deps, book, await readBookInfo(this.client, book), reason);
+        if (this.depsV2)
+          await cancelBookV2(this.depsV2, book, await readBookInfoV2(this.client, book), reason);
+        else await cancelBook(this.deps, book, await readBookInfo(this.client, book), reason);
       } catch (error) {
         log("cancel-error", { book, error: errorMessage(error) }, "error");
       }
@@ -368,6 +493,10 @@ export class Maker {
       rt.synced = false;
       rt.health = { ...rt.health, status: reason, bids: [], asks: [], openOrders: 0 };
     }
-    this.health.update({ markets: [...this.runtimes.values()].map((rt) => rt.health) });
+    for (const rt of this.runtimesV2.values()) {
+      rt.placed = { bids: [], asks: [] };
+      rt.health = { ...rt.health, status: reason, bids: [], asks: [], openOrders: 0 };
+    }
+    this.health.update({ markets: this.marketHealth() });
   }
 }

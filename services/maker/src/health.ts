@@ -10,6 +10,9 @@ import type { MarketHealth } from "./maker.js";
 export interface HealthSnapshot {
   updatedAt: string;
   network: string;
+  /** The stack this bot quotes on ("primary" or a name under `stacks`) and its Kuru version. */
+  stack?: string;
+  kuruVersion?: number;
   maker: string;
   enabled: boolean;
   monBalance?: string;
@@ -40,7 +43,14 @@ export class Health {
 
   constructor(
     private readonly file: string,
-    base: { network: string; maker: string; enabled: boolean; mode: string },
+    base: {
+      network: string;
+      maker: string;
+      enabled: boolean;
+      mode: string;
+      stack?: string;
+      kuruVersion?: number;
+    },
   ) {
     this.snapshot = { ...base, updatedAt: new Date().toISOString(), openOrders: 0, markets: [] };
   }
@@ -64,11 +74,13 @@ export class Health {
     return this.snapshot;
   }
 
-  serve(port: number): void {
+  /** GET /health: this snapshot. GET /health/<name>: the snapshot of another stack's bot. */
+  serve(port: number, others: Record<string, Health> = {}): void {
     this.server = createServer((req, res) => {
-      if (req.url === "/health" || req.url === "/") {
+      const other = req.url?.startsWith("/health/") ? others[req.url.slice("/health/".length)] : undefined;
+      if (req.url === "/health" || req.url === "/" || other) {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(json(this.snapshot));
+        res.end(json(other ? other.current() : this.snapshot));
       } else {
         res.writeHead(404).end();
       }

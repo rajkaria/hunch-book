@@ -1,7 +1,8 @@
 import { type Address, getAddress, isAddress } from "viem";
-import { Maker } from "./bot.js";
+import type { Maker } from "./bot.js";
 import { describeConfig, loadEnvFile, parseConfig, REPO_ENV_FILE } from "./config.js";
 import { errorMessage, log } from "./log.js";
+import { buildMakers } from "./stacks.js";
 
 // Usage: tsx src/main.ts <run | once | cancel-all> [--env-file <path>] [--book <address> ...]
 //   run         quote until SIGINT/SIGTERM, then cancel everything and exit
@@ -43,26 +44,37 @@ async function main(): Promise<void> {
   const envFile = args.envFile ?? process.env.MAKER_ENV_FILE ?? REPO_ENV_FILE;
   const loaded = loadEnvFile(envFile);
   const config = parseConfig(process.env);
-  const maker = new Maker(config);
+  const makers = buildMakers(config);
+  const maker = makers[0] as Maker;
   log("start", {
     mode: args.mode,
     envFile,
     envLoaded: loaded,
     maker: maker.maker,
     ...describeConfig(config),
+    stacks: makers.map((m) => ({ stack: m.stackName, kuruVersion: m.kuruVersion })),
   });
   maker.checkPublishedAddress();
 
+  // --book applies to the bot of the stack the books belong to; each bot cancels on its own books too.
+  const each = async (fn: (m: Maker) => Promise<void>) => {
+    for (const m of makers) await fn(m);
+  };
   if (args.mode === "cancel-all") {
-    await maker.cancelEverything("cancel-all", args.books);
+    await each((m) => m.cancelEverything("cancel-all", m.kuruVersion === 1 ? args.books : []));
     return;
   }
   if (args.mode === "once") {
-    await maker.cycle();
+    await each((m) => m.cycle());
     return;
   }
 
-  if (config.healthPort) maker.health.serve(config.healthPort);
+  if (config.healthPort) {
+    maker.health.serve(
+      config.healthPort,
+      Object.fromEntries(makers.slice(1).map((m) => [m.stackName, m.health])),
+    );
+  }
   const stop = new AbortController();
   let signals = 0;
   const onSignal = (signal: string) => {
@@ -78,16 +90,19 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => onSignal("SIGTERM"));
 
   while (!stop.signal.aborted) {
-    try {
-      await maker.cycle();
-    } catch (error) {
-      const message = errorMessage(error);
-      log("cycle-error", { error: message }, "error");
-      maker.health.update({ lastError: message });
+    // One stack after another, so the bot's transactions never race for a nonce.
+    for (const m of makers) {
+      try {
+        await m.cycle();
+      } catch (error) {
+        const message = errorMessage(error);
+        log("cycle-error", { stack: m.stackName, error: message }, "error");
+        m.health.update({ lastError: message });
+      }
     }
     await sleep(config.pollSeconds * 1000, stop.signal);
   }
-  await maker.cancelEverything("shutdown", args.books);
+  await each((m) => m.cancelEverything("shutdown", m.kuruVersion === 1 ? args.books : []));
   maker.health.close();
   log("stopped", {});
 }

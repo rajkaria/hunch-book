@@ -5,6 +5,8 @@ import {
   type BookSpec,
   decideRequote,
   externalTopOfBook,
+  maxSizeAt,
+  minSizeAt,
   planFunding,
   priceLadder,
   type QuoteParams,
@@ -275,5 +277,62 @@ describe("decideRequote", () => {
 
   it("waits for the heartbeat when the change is small", () => {
     expect(decideRequote({ ...base, desired: shifted, fair: 0.4231 })).toBeNull();
+  });
+});
+
+describe("Kuru v2 books: limits by notional", () => {
+  // A v2 Hunch book: no size limits, but every order between 1 and 2,000 USDC of notional.
+  const v2: BookSpec = {
+    ...book,
+    minSize: 1n,
+    maxSize: 2n ** 96n - 1n,
+    minQuoteNotional: USDC,
+    maxQuoteNotional: 2_000n * USDC,
+  };
+
+  it("turns the notional limits into sizes at each price", () => {
+    expect(minSizeAt(500_000, v2)).toBe(2n * USDC); // 2 YES at 0.50 is 1 USDC
+    expect(minSizeAt(30_000, v2)).toBe(33_333_334n); // rounded up so the notional reaches 1 USDC
+    expect(maxSizeAt(500_000, v2)).toBe(4_000n * USDC);
+    expect(minSizeAt(500_000, book)).toBe(book.minSize); // v1: the book's own sizes
+    expect(maxSizeAt(500_000, book)).toBe(book.maxSize);
+  });
+
+  it("drops levels whose notional is below the minimum, even when the size is fine", () => {
+    // 3 YES per level: about 1.5 USDC around 0.50, only 0.09 USDC at 0.03.
+    const small = { ...params, orderSize: 3, levels: 1 };
+    const atHalf = sizeQuotes({
+      ladder: priceLadder({ fair: 0.5, position: 0, widen: 1, params: small, book: v2, external: none }),
+      params: small,
+      book: v2,
+      position: 0,
+      yesAvailable: 100n * USDC,
+      usdcAvailable: 100n * USDC,
+    });
+    expect(atHalf.bids).toHaveLength(1);
+    expect(atHalf.asks).toHaveLength(1);
+    const cheap = sizeQuotes({
+      ladder: { bids: [30_000], asks: [], reservation: 0.04, halfSpread: 0.01 },
+      params: small,
+      book: v2,
+      position: 0,
+      yesAvailable: 0n,
+      usdcAvailable: 100n * USDC,
+    });
+    expect(cheap.bids).toHaveLength(0);
+  });
+
+  it("caps a level at the maximum notional", () => {
+    const tiny: BookSpec = { ...v2, maxQuoteNotional: 5n * USDC };
+    const big = { ...params, orderSize: 100, levels: 1 };
+    const q = sizeQuotes({
+      ladder: { bids: [500_000], asks: [], reservation: 0.51, halfSpread: 0.01 },
+      params: big,
+      book: tiny,
+      position: 0,
+      yesAvailable: 0n,
+      usdcAvailable: 1_000n * USDC,
+    });
+    expect(q.bids[0]?.size).toBe(10n * USDC); // 10 YES at 0.50 = 5 USDC
   });
 });

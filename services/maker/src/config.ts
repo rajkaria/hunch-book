@@ -39,6 +39,8 @@ export interface MakerConfig {
   paperUsdc: bigint;
   /** Quote only markets of these templates when set (MAKER_TEMPLATES). */
   templates: number[] | undefined;
+  /** Quote only on these stacks ("primary" or names under `stacks`); every deployed stack when unset. */
+  stacks: string[] | undefined;
 }
 
 type Env = Record<string, string | undefined>;
@@ -147,6 +149,13 @@ export function parseConfig(env: Env): MakerConfig {
     mode,
     paperUsdc: BigInt(Math.round(num(env, "MAKER_PAPER_USDC", 1_000, positive, "above zero") * 1_000_000)),
     templates: templates && templates.length > 0 ? templates : undefined,
+    stacks: (() => {
+      const items = (env.MAKER_STACKS ?? "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter((x) => x.length > 0);
+      return items.length > 0 ? items : undefined;
+    })(),
   };
 }
 
@@ -197,3 +206,14 @@ export function loadEnvFile(path: string, env: Env = process.env): string[] {
 
 /** The repository root's .env (the checkout this package lives in). */
 export const REPO_ENV_FILE = fileURLToPath(new URL("../../../.env", import.meta.url));
+
+/** The config for the bot of one stack: extra stacks get their own health file (`health.kuruV2.json`). */
+export function configForStack(config: MakerConfig, stack: { name: string; primary: boolean }): MakerConfig {
+  if (stack.primary) return config;
+  const file = config.healthFile;
+  const dot = file.lastIndexOf(".");
+  const slash = file.lastIndexOf("/");
+  const healthFile =
+    dot > slash ? `${file.slice(0, dot)}.${stack.name}${file.slice(dot)}` : `${file}.${stack.name}`;
+  return { ...config, healthFile };
+}

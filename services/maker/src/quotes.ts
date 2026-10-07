@@ -12,6 +12,25 @@ export interface BookSpec {
   maxSize: bigint;
   baseDecimals: number;
   quoteDecimals: number;
+  /** Kuru v2: the smallest and largest order, in quote (pricePrecision units times size / sizePrecision). */
+  minQuoteNotional?: bigint;
+  maxQuoteNotional?: bigint;
+}
+
+const ceilDiv = (a: bigint, b: bigint) => (a === 0n ? 0n : (a - 1n) / b + 1n);
+
+/** The smallest size the book accepts at `price`: v1 minSize, v2 the size whose notional reaches the minimum. */
+export function minSizeAt(price: number, book: BookSpec): bigint {
+  if (book.minQuoteNotional === undefined || price <= 0) return book.minSize;
+  const byNotional = ceilDiv(book.minQuoteNotional * book.sizePrecision, BigInt(price));
+  return byNotional > book.minSize ? byNotional : book.minSize;
+}
+
+/** The largest size the book accepts at `price`: v1 maxSize, v2 the size whose notional stays under the maximum. */
+export function maxSizeAt(price: number, book: BookSpec): bigint {
+  if (book.maxQuoteNotional === undefined || price <= 0) return book.maxSize;
+  const byNotional = (book.maxQuoteNotional * book.sizePrecision) / BigInt(price);
+  return byNotional < book.maxSize ? byNotional : book.maxSize;
 }
 
 export interface QuoteParams {
@@ -143,7 +162,8 @@ const minBig = (...xs: bigint[]) => xs.reduce((m, x) => (x < m ? x : m));
 /**
  * Sizes for each price level. Asks are limited by how far the bot may go short YES (cap + position) and
  * by YES it holds or can mint from USDC; bids by how far it may go long (cap − position) and by the USDC
- * left after minting. Levels below the book's minimum size are dropped.
+ * left after minting. Levels below the book's minimum (size on v1, notional on v2) are dropped, and no
+ * level exceeds its maximum.
  */
 export function sizeQuotes(input: {
   ladder: Ladder;
@@ -165,8 +185,8 @@ export function sizeQuotes(input: {
   let askFunds = yesAvailable + usdcAvailable;
   for (const price of ladder.asks) {
     const fundable = (askFunds * book.sizePrecision) / 10n ** BigInt(book.baseDecimals);
-    const size = minBig(perLevel, askRoom, fundable);
-    if (size < book.minSize || size <= 0n) break;
+    const size = minBig(perLevel, askRoom, fundable, maxSizeAt(price, book));
+    if (size < minSizeAt(price, book) || size <= 0n) break;
     asks.push({ price, size });
     askRoom -= size;
     askFunds -= baseAmount(size, book);
@@ -177,8 +197,8 @@ export function sizeQuotes(input: {
   let bidRoom = tokensToSize(params.inventoryCap - position, book);
   let budget = usdcAvailable - mint;
   for (const price of ladder.bids) {
-    const size = minBig(perLevel, bidRoom, affordableSize(budget, price, book));
-    if (size < book.minSize || size <= 0n) break;
+    const size = minBig(perLevel, bidRoom, affordableSize(budget, price, book), maxSizeAt(price, book));
+    if (size < minSizeAt(price, book) || size <= 0n) break;
     bids.push({ price, size });
     bidRoom -= size;
     budget -= quoteCostToPlace(price, size, book);

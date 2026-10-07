@@ -37,6 +37,25 @@ For each graduated market it:
 It never deposits into the AMM vault Kuru creates next to each book. That vault's curve has no 1 USDC
 cap, which does not fit a token that ends at 0 or 1.
 
+### On Kuru v2 books
+
+A deployments file can hold several stacks; the bot runs one quoter per stack in the same process, one
+after another, each on its stack's Kuru version ([docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-kuru)).
+On a Kuru v2 stack (`kuruVersion: 2`) the same decisions run through [`src/v2.ts`](./src/v2.ts):
+
+- Balances live in Kuru's AccountCore under the bot's account id. The bot's first deposit (to its own
+  address as owner) opens the account; it deposits only what a requote is short of and withdraws what it
+  does not need, as on v1.
+- Orders rest in up to 62 slots per book. Each requote is one `batch` call that cancels every occupied
+  slot and places the new quotes, good-till-cancelled and post-only. The bot reads which slots are
+  occupied, and what Kuru reserves behind them, from the chain each pass: less reserved than last pass
+  means a fill.
+- Kuru v2 limits each order by notional (minimum and maximum quote), not size, so a level whose notional
+  is under the minimum is dropped.
+- Leaving a market is `cancelAllOrders`, then withdrawing the account's YES and USDC. Kuru's soft pause
+  at close still allows both.
+- Paper mode simulates Kuru v1 books only; on a v2 stack it skips markets and says why.
+
 ### The bot is labelled
 
 The bot trades from one published address: `wallets.maker` in
@@ -144,6 +163,7 @@ local state.
 | `MAKER_DUST` | `1` | Tokens. The USDC float kept in the margin account, and the smallest withdraw or merge worth a transaction. |
 | `MAKER_MARKETS` | all | Comma-separated market addresses to quote; all graduated markets when unset. |
 | `MAKER_TEMPLATES` | all priced | Comma-separated template ids to quote; every template with a model (1 to 6) when unset. |
+| `MAKER_STACKS` | all | Comma-separated stacks to quote on (`primary`, or names under `stacks`, such as `kuruV2`); every deployed stack when unset. |
 | `MAKER_HEALTH_FILE` | `services/maker/health.json` | Where the health snapshot is written after every pass. |
 | `MAKER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET http://localhost:<port>/health`. |
 | `MAKER_ENV_FILE` | repository `.env` | The `.env` file to load. |
@@ -210,8 +230,12 @@ pnpm --filter @hunch-book/maker test
   6-decimal tokens, quotes, requotes, takes a fill, unwinds and cancels all. The other runs the whole bot
   loop against stand-ins for Hunch Book's factory, vault and market (same ABI as the frozen interfaces):
   discovery, Perpl pricing from Perpl's real testnet history, minting, quoting, leaving at close, the
-  shutdown cancel, and redeeming after settlement. Both skip, rather than fail, when anvil is not
-  installed or the fork cannot start.
+  shutdown cancel, and redeeming after settlement. A third runs the v2 maker against Kuru's real v2
+  contracts: with Kuru's owner impersonated it sets up a throwaway 6-decimal pair (price sources,
+  enabling, whitelisting) and deploys a book with Hunch Book's parameters; the bot opens its account with
+  its first deposit, rests quotes in slots, requotes in one batch, sees a taker's swap as a fill, and
+  unwinds to an empty account. All skip, rather than fail, when anvil is not installed or the fork cannot
+  start.
 - `pnpm --filter @hunch-book/maker smoke:testnet --market 0x… [--test-usdc 100] [--dry-run]` runs one live
   pass of the bot on Monad testnet for one graduated market, from the maker key: it tops the wallet up
   with Hunch Book's test USDC when asked, mints sets, quotes both sides, checks the orders rest on the
@@ -229,7 +253,8 @@ pnpm --filter @hunch-book/maker test
   questions on one asset). The quote's detail says so.
 - Paper mode cannot know how others would have reacted to its quotes, and counts no fill at a price equal
   to a real trade's, so on a quiet book it may show no fills.
-- The inventory cap is per market. USDC in Kuru's margin account is shared by every book the bot quotes.
+- The inventory cap is per market. USDC in Kuru's margin account (v2: its AccountCore account) is shared by
+  every book the bot quotes.
 - Before close the bot cancels its own orders, but Kuru's book is not Hunch Book's to halt. Orders other
   people leave on the book can still fill after close.
 - After settlement it redeems only what its wallet holds. Tokens it left in Kuru's margin account are
