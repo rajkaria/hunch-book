@@ -221,6 +221,13 @@ STACK=kuruV2 KURU_VERSION=2 DEPLOYER_PRIVATE_KEY=... \
 STACK=kuruV2 DEPLOYER_PRIVATE_KEY=... \
   forge script script/DeployPeriphery.s.sol --rpc-url "$MONAD_TESTNET_RPC" --broadcast --slow
 STACK=kuruV2 forge script script/DeployPeriphery.s.sol --sig "recordTxs()" --rpc-url "$MONAD_TESTNET_RPC"
+# templates 3 to 7 on that stack (the scripts read STACK too)
+STACK=kuruV2 DEPLOYER_PRIVATE_KEY=... \
+  forge script script/DeployTemplatesV2.s.sol --rpc-url "$MONAD_TESTNET_RPC" --broadcast --slow
+STACK=kuruV2 forge script script/DeployTemplatesV2.s.sol --sig "record()" --rpc-url "$MONAD_TESTNET_RPC"
+STACK=kuruV2 DEPLOYER_PRIVATE_KEY=... \
+  forge script script/DeploySnapshotTemplate.s.sol --rpc-url "$MONAD_TESTNET_RPC" --broadcast --slow
+STACK=kuruV2 forge script script/DeploySnapshotTemplate.s.sol --sig "record()" --rpc-url "$MONAD_TESTNET_RPC"
 pnpm exec biome format --write deployments/
 ```
 

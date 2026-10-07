@@ -135,7 +135,9 @@ chains:
       - name: KuruOrderBook
       - name: KuruSpotBook
       - name: SnapshotResolver
-        address: "0x1E62C389D7c035acfDD971C7E6b7157C1D34D632"
+        address:
+          - "0x1E62C389D7c035acfDD971C7E6b7157C1D34D632"
+          - "0x8D795556FbCe44bb3fB943C0c22A34F788c1A24A"
       - name: AutoRedeemer
         address:
           - "0x26EFB3D0d50DCBB97FBb369471fcc59a2677A534"

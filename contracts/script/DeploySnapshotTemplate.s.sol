@@ -141,10 +141,12 @@ contract DeploySnapshotTemplate is Script {
     function run() external {
         string memory path = _deploymentPath();
         string memory json = vm.readFile(path);
-        require(vm.keyExistsJson(json, ".hunchBook.factory"), "Hunch Book is not deployed on this network");
-        require(!vm.keyExistsJson(json, ".hunchBook.resolvers.snapshot"), "template 7 already deployed");
+        require(
+            vm.keyExistsJson(json, string.concat(_stack(), ".factory")), "Hunch Book is not deployed on this network"
+        );
+        require(!vm.keyExistsJson(json, string.concat(_stack(), ".resolvers.snapshot")), "template 7 already deployed");
 
-        IHunchBookFactory factory = IHunchBookFactory(vm.parseJsonAddress(json, ".hunchBook.factory"));
+        IHunchBookFactory factory = IHunchBookFactory(vm.parseJsonAddress(json, string.concat(_stack(), ".factory")));
         require(address(factory.resolverOf(TEMPLATE_SNAPSHOT)) == address(0), "template id 7 is already taken");
         GraduationRule memory rule = factory.templateOf(1).rule;
         require(rule.minPool != 0, "template 1 is not registered: no rule to copy");
@@ -173,15 +175,18 @@ contract DeploySnapshotTemplate is Script {
     /// Rewrites `hunchBook.resolvers` with the existing entries plus `snapshot`.
     function _writeResolver(string memory path, string memory json, address resolver) internal {
         string memory r = "resolvers";
-        string[] memory existing = vm.parseJsonKeys(json, ".hunchBook.resolvers");
+        string[] memory existing = vm.parseJsonKeys(json, string.concat(_stack(), ".resolvers"));
         for (uint256 i = 0; i < existing.length; ++i) {
             vm.serializeAddress(
-                r, existing[i], vm.parseJsonAddress(json, string.concat(".hunchBook.resolvers.", existing[i]))
+                r, existing[i], vm.parseJsonAddress(json, string.concat(_stack(), ".resolvers.", existing[i]))
             );
         }
         string memory out = vm.serializeAddress(r, "snapshot", resolver);
-        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) vm.writeJson(out, path, ".hunchBook.resolvers");
-        else console2.log("dry run: deployments file not written");
+        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+            vm.writeJson(out, path, string.concat(_stack(), ".resolvers"));
+        } else {
+            console2.log("dry run: deployments file not written");
+        }
         console2.log(out);
     }
 
@@ -214,16 +219,16 @@ contract DeploySnapshotTemplate is Script {
     function record() external {
         string memory path = _deploymentPath();
         string memory json = vm.readFile(path);
-        IHunchBookFactory factory = IHunchBookFactory(vm.parseJsonAddress(json, ".hunchBook.factory"));
-        address deployed = vm.parseJsonAddress(json, ".hunchBook.resolvers.snapshot");
+        IHunchBookFactory factory = IHunchBookFactory(vm.parseJsonAddress(json, string.concat(_stack(), ".factory")));
+        address deployed = vm.parseJsonAddress(json, string.concat(_stack(), ".resolvers.snapshot"));
 
         string memory t = "deployTxs";
         string memory out;
-        if (vm.keyExistsJson(json, ".hunchBook.deployTxs")) {
-            string[] memory existing = vm.parseJsonKeys(json, ".hunchBook.deployTxs");
+        if (vm.keyExistsJson(json, string.concat(_stack(), ".deployTxs"))) {
+            string[] memory existing = vm.parseJsonKeys(json, string.concat(_stack(), ".deployTxs"));
             for (uint256 i = 0; i < existing.length; ++i) {
                 out = vm.serializeBytes32(
-                    t, existing[i], vm.parseJsonBytes32(json, string.concat(".hunchBook.deployTxs.", existing[i]))
+                    t, existing[i], vm.parseJsonBytes32(json, string.concat(_stack(), ".deployTxs.", existing[i]))
                 );
             }
         }
@@ -247,7 +252,7 @@ contract DeploySnapshotTemplate is Script {
             console2.log("template 7 not registered yet, skipped");
         }
 
-        vm.writeJson(out, path, ".hunchBook.deployTxs");
+        vm.writeJson(out, path, string.concat(_stack(), ".deployTxs"));
         console2.log(out);
     }
 
@@ -269,6 +274,12 @@ contract DeploySnapshotTemplate is Script {
     }
 
     // ------------------------------------------------------------------------------------------
+
+    /// `.hunchBook`, or `.stacks.<STACK>` when STACK is set (an extra stack, e.g. kuruV2).
+    function _stack() internal view returns (string memory) {
+        string memory stack = vm.envOr("STACK", string(""));
+        return bytes(stack).length == 0 ? ".hunchBook" : string.concat(".stacks.", stack);
+    }
 
     function _deploymentPath() internal view returns (string memory) {
         string memory network;

@@ -68,7 +68,7 @@ All on Monad testnet. Activity by our own wallets (the deployer, the keeper, the
 | Liveness checks | live | the [watchdog](./services/watchdog) runs every 30 minutes on GitHub Actions |
 | Indexer ([indexer](./indexer)) | building | built and tested; hosting waits for an Envio account |
 | SDK and MCP server | building | [docs/SDK.md](./docs/SDK.md), [docs/MCP.md](./docs/MCP.md); packed, installed and imported from their tarballs in CI, not on npm yet ([docs/RELEASE.md](./docs/RELEASE.md)) |
-| Kuru v2 books | building | a second testnet stack on Kuru v2 ([factory 0xd699…125A](https://testnet.monadscan.com/address/0xd6994DD479d845F1ea039b6322fBE00c12Ea125A)): its market #1 ([0x8565…7343](https://testnet.monadscan.com/address/0x85658Be96Ba2663AF6280834B16c7e340c727343)) waits for Kuru to create its book; tested against Kuru's live v2 contracts on a fork ([PROTOCOL.md §8.1](./docs/PROTOCOL.md#81-kuru)) |
+| Kuru v2 books | building | a second testnet stack on Kuru v2 with templates 1 to 7 and the periphery, source verified on Sourcify ([factory 0xd699…125A](https://testnet.monadscan.com/address/0xd6994DD479d845F1ea039b6322fBE00c12Ea125A)): its market #1 ([0x8565…7343](https://testnet.monadscan.com/address/0x85658Be96Ba2663AF6280834B16c7e340c727343)) waits for Kuru to create its book; tested against Kuru's live v2 contracts on a fork ([PROTOCOL.md §8.1](./docs/PROTOCOL.md#81-kuru)) |
 | Contracts on Monad mainnet (Circle USDC) | planned | rehearsed on a mainnet fork ([docs/DEPLOY.md](./docs/DEPLOY.md)); Kuru creates each mainnet book |
 
 ## Known limitations

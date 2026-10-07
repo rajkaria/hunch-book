@@ -150,8 +150,13 @@
         "guardian": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
         "feeRecipient": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
         "resolvers": {
+          "chainlinkTouch": "0xf24df755506e5780bebd5ac2756f15b089996d70",
+          "marketOutcome": "0x2d915ab0bdd7309cf059667ae0fd3fd81bcdb8ab",
           "perplFunding": "0xbea916714ae85fe09ebd1483d0045184e3077a56",
-          "priceAtTime": "0xc22d54602704ef9fc9486123b6956ece7784d811"
+          "perplFundingSpike": "0x3028a9a0c91ffdfe8e20b620939314df3112bef0",
+          "priceAtTime": "0xc22d54602704ef9fc9486123b6956ece7784d811",
+          "priceRange": "0xda0d040b8956bbf25c553c9a3c2e098444d97a1e",
+          "snapshot": "0x8d795556fbce44bb3fb943c0c22a34f788c1a24a"
         },
         "periphery": {
           "autoRedeemer": "0xf07f0faa71349ee9579e3c3257a73f727ef4f05e",

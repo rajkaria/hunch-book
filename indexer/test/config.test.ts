@@ -58,7 +58,9 @@ describe("generated config", () => {
     }
     expect(addressesOf(config, "Usdc")).toEqual([d.hunchBook.usdc]);
     // Template 7's resolver and every periphery contract, each under its own name, on every stack.
-    expect(addressesOf(config, "SnapshotResolver")).toEqual([d.hunchBook.resolvers.snapshot]);
+    expect(addressesOf(config, "SnapshotResolver")).toEqual(
+      [d.hunchBook, ...extra].flatMap((s) => (s.resolvers?.snapshot ? [s.resolvers.snapshot] : [])),
+    );
     for (const [name, key] of [
       ["AutoRedeemer", "autoRedeemer"],
       ["ConditionalOrders", "conditionalOrders"],
