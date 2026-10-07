@@ -68,14 +68,18 @@ All on Monad testnet. Activity by our own wallets (the deployer, the keeper, the
 | Liveness checks | live | the [watchdog](./services/watchdog) runs every 30 minutes on GitHub Actions |
 | Indexer ([indexer](./indexer)) | building | built and tested; hosting waits for an Envio account |
 | SDK and MCP server | building | [docs/SDK.md](./docs/SDK.md), [docs/MCP.md](./docs/MCP.md); packed, installed and imported from their tarballs in CI, not on npm yet ([docs/RELEASE.md](./docs/RELEASE.md)) |
+| Kuru v2 books | building | a second testnet stack on Kuru v2 ([factory 0xd699…125A](https://testnet.monadscan.com/address/0xd6994DD479d845F1ea039b6322fBE00c12Ea125A)): its market #1 ([0x8565…7343](https://testnet.monadscan.com/address/0x85658Be96Ba2663AF6280834B16c7e340c727343)) waits for Kuru to create its book; tested against Kuru's live v2 contracts on a fork ([PROTOCOL.md §8.1](./docs/PROTOCOL.md#81-kuru)) |
 | Contracts on Monad mainnet (Circle USDC) | planned | rehearsed on a mainnet fork ([docs/DEPLOY.md](./docs/DEPLOY.md)); Kuru creates each mainnet book |
 
 ## Known limitations
 
 - **Testnet only.** Nothing is on Monad mainnet yet. The deploy waits for a guardian multisig, and
   graduation on mainnet waits for Kuru to create each book: mainnet book creation is owner-only at Kuru,
-  and Kuru has asked us to use its v2 contracts, which are not on mainnet yet. Until then a mainnet
-  launch would run pools only and say so.
+  and Kuru has asked us to use its v2 contracts, which are not on mainnet yet. Our v2 integration runs on
+  testnet as a second stack, waiting for Kuru to create its first v2 book. Until v2 is on mainnet a
+  mainnet launch would run pools only and say so.
+- **Kuru v2 fills do not name their makers,** so they are counted apart, never as our maker's or as
+  fills between other parties.
 - **Our wallets made the activity.** Every testnet market so far was created and seeded by our own
   wallets (the deployer, the keeper's recurring series, the seed wallets), and our maker bot is the only
   maker. All of it is labelled as ours.

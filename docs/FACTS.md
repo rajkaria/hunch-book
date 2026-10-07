@@ -43,7 +43,8 @@ Opened by our own wallets to show each template working. They count as ours wher
 | [0xc723…114a](https://testnet.monadscan.com/address/0xc72315b8C01702Da99b3d60E39EfA587BC6d114a) | 6, parlay of the touch market and the weekly BTC funding market | deployer, `DemoMarkets.s.sol` | [tx](https://testnet.monadscan.com/tx/0xe8a1da313b69a1081d87912a7e343a8a73d0952c467fbe165c20735792922240) | open |
 | [0x2D17…BF74](https://testnet.monadscan.com/address/0x2D1768F57a2eE76bFD23140EdFeBE29F6b91BF74) | 4, any single MON funding event spikes in the next day | keeper, recurring series | [tx](https://testnet.monadscan.com/tx/0x8143b82a2ab7a81a2d3b840c91076006057192ed96298ab40403424996771462) | settled YES: the keeper proved the funding event at block 68,190,876 (increment 135 against a threshold of 134, [tx](https://testnet.monadscan.com/tx/0x557c5bda0639e0e366affb129f86fe3433539b30638b1d56841da90612265c3e)) |
 | [0x9c50…4CF5](https://testnet.monadscan.com/address/0x9c509488821B90B09139419C925f681AA2D14CF5) | 1, BTC funding this week above the trailing median | keeper, recurring series | [tx](https://testnet.monadscan.com/tx/0x6f9ce824fbf4a8fac6db415316816cdcf2effd632b69fe4a11a968de918f322d) | open |
-| [0x6FFC…D9e](https://testnet.monadscan.com/address/0x6FFC70F919e9B6e20aD76df870854818C310cD9e) | 1, the golden path market: MON longs pay more than -$0.00000031 per MON between blocks 68,713,707 and 68,730,849 | deployer, `GoldenPath.s.sol` | [tx](https://testnet.monadscan.com/tx/0x001f11a404576309bbe7953f20fd1df942bbdeb2779e6baf34b8255315f6417b) | pool open: 240 USDC YES and 240 USDC NO from 8 of our wallets, waiting for two outside wallets ([GOLDEN-PATH.md](./GOLDEN-PATH.md)) |
+| [0x6FFC…D9e](https://testnet.monadscan.com/address/0x6FFC70F919e9B6e20aD76df870854818C310cD9e) | 1, the golden path market: MON longs pay more than -$0.00000031 per MON between blocks 68,713,707 and 68,730,849 | deployer, `GoldenPath.s.sol` | [tx](https://testnet.monadscan.com/tx/0x001f11a404576309bbe7953f20fd1df942bbdeb2779e6baf34b8255315f6417b) | no outside wallet staked before the lock, so it never graduated; settled NO as a pool by the keeper ([tx](https://testnet.monadscan.com/tx/0x5bb2f79e48250d85621971cbe45af2be2ad7200e48bf5639dd3b0a028920e429)), which then paid the pool out ([tx](https://testnet.monadscan.com/tx/0x0f0507eb95f4b651e60d16d9b9c56b47ada1836ec8bae4e28e124c45894bff0e)) |
+| [0x8565…7343](https://testnet.monadscan.com/address/0x85658Be96Ba2663AF6280834B16c7e340c727343) (Kuru v2 stack, its market 1) | 1, MON longs pay more than -$0.00000114 per MON between blocks 70,033,641 and 70,050,783 (lock about 2026-10-11 06:34 UTC) | deployer, `GoldenPath.s.sol` with `STACK=kuruV2` | [tx](https://testnet.monadscan.com/tx/0x0150994a815a5fcefbd1e56f14b2f04fe9e0012ee1436cdf065614f9edda5666) | pool open: 240 USDC YES and 240 USDC NO from 8 of our wallets; its Kuru v2 book waits for Kuru to create it |
 
 ## Protocol parameters (v0)
 
@@ -72,13 +73,13 @@ From [PROTOCOL.md §12](./PROTOCOL.md#12-parameters-v0) and the deploy script; t
 | Testnet gas price | about 100 gwei base fee | `eth_gasPrice`, 2026-10-03 |
 | Kuru mainnet market creation | owner-only (`Unauthorized()` for anyone else) | the mainnet rehearsal fork test |
 
-## Tests (2026-10-06)
+## Tests (2026-10-07)
 
 | Suite | Count | Run |
 |---|---|---|
-| Contracts: unit, fuzz and invariant | 548 | `cd contracts && forge test` |
+| Contracts: unit, fuzz and invariant | 648 | `cd contracts && forge test` |
 | Contracts: fork tests on live Monad testnet and mainnet | 52 | `FOUNDRY_PROFILE=fork forge test` |
-| TypeScript: app, shared, SDK, MCP, keeper, maker, indexer, notifier, watchdog, rewards, examples | 1,474 passing | `pnpm test` |
+| TypeScript: app, shared, SDK, MCP, keeper, maker, indexer, notifier, watchdog, rewards, examples | 1,532 passing | `pnpm test` |
 | npm packages: the four tarballs as published, plus 3 checker tests | 4 packages | `node scripts/check-packages.mjs` (CI adds `--install`) |
 | Local services script: settings, exec, start and stop | 28 checks | `bash scripts/test/run-local-services.test.sh` |
 

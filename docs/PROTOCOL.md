@@ -321,7 +321,7 @@ deployProxy(uint8 _type, address base, address quote, uint96 sizePrecision, uint
 
 #### Kuru v2
 
-Kuru is moving new markets to its v2 exchange (AccountCore, SpotRouter, one OrderBook per market; ABI of Kuru's "auditFixes" commit). Status: **building**. The v2 contracts below are written and tested against a mock of the exchange and against Kuru's live v2 testnet contracts; no Hunch Book market trades on a v2 book yet. Kuru expects v2 on mainnet in the week of 2026-10-06.
+Kuru is moving new markets to its v2 exchange (AccountCore, SpotRouter, one OrderBook per market; ABI of Kuru's "auditFixes" commit). Status: **building**. The v2 contracts below are deployed on Monad testnet as a second stack, `stacks.kuruV2` in the deployments file (factory [0xd699…125A](https://testnet.monadscan.com/address/0xd6994DD479d845F1ea039b6322fBE00c12Ea125A)), next to the Kuru v1 primary stack; the keeper, maker bot, indexer, app and SDK read both stacks. They are tested against a mock of the exchange and against Kuru's live v2 testnet contracts on a fork. No Hunch Book market trades on a v2 book yet: the stack's market #1 ([0x8565…7343](https://testnet.monadscan.com/address/0x85658Be96Ba2663AF6280834B16c7e340c727343)) waits for Kuru to create its book. Kuru expects v2 on mainnet in the week of 2026-10-06.
 
 What changes, and how Hunch Book handles it:
 

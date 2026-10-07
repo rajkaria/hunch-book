@@ -168,7 +168,8 @@ shows mainnet as soon as the file has a factory address.
 Only Kuru can create books on mainnet. On Kuru v2 each market's tokens also need Kuru's setup first
 (a price source in the WithdrawalLimiter, enabled in AccountCore, whitelisted), which takes Kuru 1 to 2
 days for now, so the request goes out when a market is created, not when it fills. Status: the
-scripts below are live; the keeper's v2 steps and the request API are building.
+scripts below, the keeper's v2 steps and the request API are live on testnet, for the `kuruV2` stack;
+mainnet waits for Kuru's v2 mainnet contracts.
 
 1. Create the market's YES and NO feeds (`kuruFeedFactory.createAdapter`) and poke the oracle from
    creation so the feeds have history. Then print the request for Kuru:
