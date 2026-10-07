@@ -1,4 +1,7 @@
-# Written by the running keeper; never committed.
+# Written by the running keeper; never committed. One set per stack (kuruV2: health.kuruV2.json, ...).
 health.json
+health.*.json
 .keeper-state.json
 .keeper-state.json.tmp
+.keeper-state.*.json
+.keeper-state.*.json.tmp

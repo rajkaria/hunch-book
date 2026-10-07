@@ -1,2 +1,3 @@
-# Written by the running bot; never committed.
+# Written by the running bot; never committed. One per stack (kuruV2: health.kuruV2.json).
 health.json
+health.*.json
