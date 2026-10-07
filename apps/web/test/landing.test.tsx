@@ -256,7 +256,11 @@ describe("the most active market", () => {
   });
 
   it("counts graduated, open and settled markets, with ours counted apart", () => {
-    const d = { ...deployments["monad-testnet"], hunchBook: { factory: FACTORY, guardian: GUARDIAN } };
+    const d = {
+      ...deployments["monad-testnet"],
+      stacks: undefined,
+      hunchBook: { factory: FACTORY, guardian: GUARDIAN },
+    };
     const stats = summarize(d, [
       makeMarket({ phase: Phase.Graduated, graduated: true, creator: GUARDIAN }),
       makeMarket({ phase: Phase.Graduated, graduated: true }),
@@ -270,6 +274,7 @@ describe("the most active market", () => {
 describe("our own wallets", () => {
   const d = {
     ...deployments["monad-testnet"],
+    stacks: undefined,
     hunchBook: { factory: FACTORY, guardian: GUARDIAN, feeRecipient: GUARDIAN },
   };
 

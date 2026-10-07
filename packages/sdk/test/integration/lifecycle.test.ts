@@ -252,6 +252,8 @@ beforeAll(async () => {
   deployment = {
     ...testnet,
     rpc: a.url,
+    // One stack: the contracts this test deploys on anvil.
+    stacks: undefined,
     hunchBook: {
       factory,
       vault,

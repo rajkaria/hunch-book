@@ -27,7 +27,8 @@ import {
 import { csvCell, preflight } from "@/app/api/v1/_lib/http";
 import nextConfig from "../next.config";
 
-const testnet = deployments["monad-testnet"];
+// The primary stack only; kuru-v2.test.ts covers extra stacks.
+const testnet = { ...deployments["monad-testnet"], stacks: undefined };
 const NOW = 1_791_100_000_000;
 const HEAD = 68_060_000n;
 const BOOK = "0x0000000000000000000000000000000000003000" as Address;

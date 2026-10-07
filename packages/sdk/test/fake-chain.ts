@@ -293,7 +293,8 @@ export class FakeChain {
       : undefined;
     return createContext({
       network: "monad-testnet",
-      deployment: options.deployment ?? deployments["monad-testnet"],
+      // The primary stack only, unless a test passes a deployment with more.
+      deployment: options.deployment ?? { ...deployments["monad-testnet"], stacks: undefined },
       publicClient: this.publicClient(),
       walletClient,
     });

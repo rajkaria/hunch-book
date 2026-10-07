@@ -28,7 +28,7 @@ import {
 } from "../src/index.js";
 import { addr } from "./fixtures.js";
 
-const testnet = deployments["monad-testnet"];
+const testnet = { ...deployments["monad-testnet"], stacks: undefined };
 const BTC_FEED = testnet.external.chainlink["BTC/USD"] as Address;
 
 describe("units", () => {

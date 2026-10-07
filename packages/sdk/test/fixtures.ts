@@ -1,6 +1,7 @@
 import {
   chainlinkAggregatorAbi,
   chainlinkLatestRoundAbi,
+  type Deployment,
   deployments,
   hunchBookFactoryAbi,
   kuruOrderBookAbi,
@@ -33,7 +34,8 @@ import { type FakeChain, Revert } from "./fake-chain.js";
 // SDK reads, resolvers whose `resolve` the test controls, outcome tokens, Kuru books, Chainlink feeds
 // and a Perpl exchange.
 
-export const testnet = deployments["monad-testnet"];
+/** The testnet deployment with its primary stack only: tests of extra stacks build their own (stacks.test.ts). */
+export const testnet: Deployment = { ...deployments["monad-testnet"], stacks: undefined };
 export const FACTORY = testnet.hunchBook.factory as Address;
 export const VAULT = testnet.hunchBook.vault as Address;
 export const USDC = testnet.hunchBook.usdc as Address;

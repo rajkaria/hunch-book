@@ -6,9 +6,11 @@ import { FACTORY, priceParams, RESOLVER, USDC } from "./fixtures";
 
 // A fake chain for read-layer tests: answers contract reads by function name.
 
-export const notDeployed: Deployment = { ...deployments["monad-testnet"], hunchBook: {} };
+// Single-stack deployments: tests of extra stacks build their own (kuru-v2.test.ts).
+export const notDeployed: Deployment = { ...deployments["monad-testnet"], hunchBook: {}, stacks: undefined };
 export const deployed: Deployment = {
   ...deployments["monad-testnet"],
+  stacks: undefined,
   hunchBook: {
     factory: FACTORY,
     vault: "0x00000000000000000000000000000000000000aa",

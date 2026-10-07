@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deployments } from "@hunch-book/shared";
 import { getAddress } from "viem";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleCommand, parseCommand, parseTarget } from "../src/commands.js";
@@ -316,14 +317,27 @@ describe("notifier cycle", () => {
   let states: MarketState[];
   let positions: Position;
 
-  // A fake chain: the factory lists the markets in `states`; wallets hold `positions` in each.
+  // A fake chain: the primary factory lists the markets in `states` (any other stack's factory lists
+  // none); wallets hold `positions` in each.
+  const PRIMARY_FACTORY = deployments["monad-testnet"].hunchBook.factory?.toLowerCase();
   function fakeClient() {
     return {
-      readContract: vi.fn(async ({ functionName, args }: { functionName: string; args?: unknown[] }) => {
-        if (functionName === "marketCount") return BigInt(states.length);
-        if (functionName === "isMarket") return args?.[0] === MARKET;
-        throw new Error(functionName);
-      }),
+      readContract: vi.fn(
+        async ({
+          address,
+          functionName,
+          args,
+        }: {
+          address?: string;
+          functionName: string;
+          args?: unknown[];
+        }) => {
+          const primary = address?.toLowerCase() === PRIMARY_FACTORY;
+          if (functionName === "marketCount") return primary ? BigInt(states.length) : 0n;
+          if (functionName === "isMarket") return primary && args?.[0] === MARKET;
+          throw new Error(functionName);
+        },
+      ),
       multicall: vi.fn(
         async ({ contracts }: { contracts: { address: string; functionName: string; args?: unknown[] }[] }) =>
           contracts.map((c) => {
