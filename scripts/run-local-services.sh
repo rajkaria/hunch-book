@@ -25,6 +25,9 @@
 #
 # stop sends SIGTERM and waits (STOP_WAIT seconds, default 90): the maker cancels every order and
 # withdraws its margin before it exits, the keeper finishes its cycle.
+#
+# When a service's launchd agent is loaded (ops/launchd, label xyz.playhunch.book.<service>), launchd owns
+# it: start and stop print the launchctl command to use instead, and exec writes the pid file for status.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,6 +36,7 @@ ENV_FILE="${ENV_FILE:-$ROOT/.env}"
 SETTINGS_FILE="${SERVICES_ENV_FILE:-$RUN/services.env}"
 STOP_WAIT="${STOP_WAIT:-90}"
 KEEP_AWAKE="${KEEP_AWAKE:-1}"
+LAUNCHD_PREFIX="${LAUNCHD_PREFIX:-xyz.playhunch.book}"
 SERVICES=(keeper maker)
 
 usage() {
@@ -60,6 +64,14 @@ running() {
   local pid
   pid="$(pid_of "$1")"
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && ps -p "$pid" -o command= | grep -q "src/main.ts run"
+}
+
+# The label of this service's launchd agent (ops/launchd) when one is loaded, else nothing. launchd then
+# owns the process: start and stop leave it alone, so two copies never run at once.
+launchd_label() {
+  local label="$LAUNCHD_PREFIX.$1"
+  command -v launchctl >/dev/null 2>&1 || return 0
+  if launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then echo "$label"; fi
 }
 
 upper() {
@@ -133,7 +145,12 @@ config_one() {
 }
 
 start_one() {
-  local svc="$1" log="$RUN/$1.log" node
+  local svc="$1" log="$RUN/$1.log" node label
+  label="$(launchd_label "$svc")"
+  if [ -n "$label" ]; then
+    echo "$svc: run by launchd ($label). Restart it with: launchctl kickstart -k gui/$(id -u)/$label"
+    return 0
+  fi
   if running "$svc"; then
     echo "$svc: already running (pid $(pid_of "$svc"))"
     return 0
@@ -196,7 +213,10 @@ exec_one() {
   node="$(node_bin)"
   while IFS= read -r line; do settings+=("$line"); done < <(settings_for "$svc")
   echo "--- exec $(date -u +%Y-%m-%dT%H:%M:%SZ) ($(mode_of "$svc"))"
-  # launchd does not keep the Mac awake. exec keeps this shell's pid, so caffeinate waits on the service.
+  # exec keeps this shell's pid, so the pid file and caffeinate both point at the service.
+  mkdir -p "$RUN"
+  echo "$$" >"$RUN/$svc.pid"
+  # launchd does not keep the Mac awake.
   if [ "$KEEP_AWAKE" = "1" ] && command -v caffeinate >/dev/null 2>&1; then
     "${DETACH[@]}" caffeinate -is -w "$$" >/dev/null 2>&1 </dev/null &
     echo "$svc: keeping this Mac awake while it runs (KEEP_AWAKE=0 to skip)"
@@ -206,7 +226,12 @@ exec_one() {
 }
 
 stop_one() {
-  local svc="$1" pid waited=0
+  local svc="$1" pid waited=0 label
+  label="$(launchd_label "$svc")"
+  if [ -n "$label" ]; then
+    echo "$svc: run by launchd ($label), which would start it again. Stop it with: launchctl bootout gui/$(id -u)/$label"
+    return 1
+  fi
   if ! running "$svc"; then
     echo "$svc: not running"
     rm -f "$RUN/$svc.pid"
@@ -240,11 +265,12 @@ health_file() {
 }
 
 status_one() {
-  local svc="$1" file
+  local svc="$1" file label
+  label="$(launchd_label "$svc")"
   if running "$svc"; then
-    echo "$svc: running (pid $(pid_of "$svc"), up $(ps -p "$(pid_of "$svc")" -o etime= | tr -d ' '); a start now would be $(mode_of "$svc"))"
+    echo "$svc: running (pid $(pid_of "$svc"), up $(ps -p "$(pid_of "$svc")" -o etime= | tr -d ' ')${label:+, by launchd $label}; a start now would be $(mode_of "$svc"))"
   else
-    echo "$svc: stopped"
+    echo "$svc: stopped${label:+ (launchd agent $label is loaded)}"
   fi
   file="$(health_file "$svc")"
   if [ -f "$file" ]; then

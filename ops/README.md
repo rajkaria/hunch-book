@@ -81,6 +81,8 @@ curl -s localhost:8782/health                                           # maker 
 launchctl bootout "gui/$(id -u)/xyz.playhunch.book.maker"              # SIGTERM; SIGKILL after 90 s
 ```
 
+While an agent is loaded, `scripts/run-local-services.sh` leaves its service alone (`start` and `stop`
+print the `launchctl` line to use instead), so two copies never run at once; `status` still reports it.
 `bootout` also stops it starting at the next login. To start it again, run the `bootstrap` line. After
 pulling new code, `launchctl kickstart -k "gui/$(id -u)/xyz.playhunch.book.keeper"` restarts it (rebuild
 `packages/shared` first if it changed).

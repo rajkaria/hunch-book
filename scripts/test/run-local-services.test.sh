@@ -40,7 +40,7 @@ BASH_UNDER_TEST="${BASH_UNDER_TEST:-bash}"
 
 run() {
   # A clean environment, so the caller's KEEPER_* or MAKER_* variables cannot leak in.
-  env -i PATH="$PATH" HOME="$HOME" "$@" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" config all 2>&1
+  env -i PATH="$PATH" HOME="$HOME" LAUNCHD_PREFIX=test.none "$@" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" config all 2>&1
 }
 
 cat >"$TMP/.env" <<'ENV'
@@ -120,6 +120,12 @@ check "exec runs in the service's directory" "$out" "cwd=$TMP/services/keeper"
 check "exec passes the settings" "$out" "enabled=1"
 check "exec passes the .env path" "$out" "envfile=$TMP/.env"
 check "exec passes no other service's settings" "$out" "maker=unset"
+if grep -qE '^[0-9]+$' "$TMP/.run/keeper.pid" 2>/dev/null; then
+  echo "ok   exec writes the service's pid file"
+else
+  echo "FAIL exec wrote no pid file"
+  failures=$((failures + 1))
+fi
 
 # start and stop: the pid file names the service itself (not a wrapper), in a session of its own, and
 # stop ends it. The fake service only sleeps; its command line looks like a real one.
@@ -129,7 +135,8 @@ trap 'exit 0' TERM
 while :; do sleep 1; done
 NODE
 chmod +x "$TMP/fake-service"
-svc_env=(env -i PATH="$PATH" HOME="$HOME" NODE_BIN="$TMP/fake-service" SKIP_SHARED_BUILD=1 KEEP_AWAKE=0 STOP_WAIT=10)
+svc_env=(env -i PATH="$PATH" HOME="$HOME" NODE_BIN="$TMP/fake-service" SKIP_SHARED_BUILD=1 KEEP_AWAKE=0 STOP_WAIT=10
+  LAUNCHD_PREFIX=test.none)
 out="$("${svc_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" start keeper 2>&1)"
 check "start reports the mode" "$out" "keeper: started, live"
 pid="$(cat "$TMP/.run/keeper.pid" 2>/dev/null || true)"
@@ -151,6 +158,26 @@ fi
 out="$("${svc_env[@]}" KEEPER_ENABLED=0 "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" start keeper 2>&1)"
 check "a dry-run start warns" "$out" "WARNING: starting as a DRY RUN"
 "${svc_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" stop keeper >/dev/null 2>&1 || true
+
+# A loaded launchd agent owns the service: start and stop leave it alone, status names it.
+cat >"$TMP/bin/launchctl" <<'LCTL'
+#!/usr/bin/env bash
+[ "$1" = "print" ] && [ "${2##*/}" = "fake.agent.keeper" ]
+LCTL
+chmod +x "$TMP/bin/launchctl"
+agent_env=(env -i PATH="$TMP/bin:$PATH" HOME="$HOME" NODE_BIN="$TMP/fake-service" SKIP_SHARED_BUILD=1 KEEP_AWAKE=0
+  LAUNCHD_PREFIX=fake.agent)
+out="$("${agent_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" start keeper 2>&1)"
+check "start leaves a launchd agent's service alone" "$out" "keeper: run by launchd (fake.agent.keeper)"
+check_absent "start starts no second copy" "$out" "started"
+out="$("${agent_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" stop keeper 2>&1 || true)"
+check "stop points at launchctl bootout" "$out" "launchctl bootout gui/"
+out="$("${agent_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" status keeper 2>&1)"
+check "status names the loaded agent" "$out" "launchd agent fake.agent.keeper is loaded"
+mkdir -p "$TMP/services/maker"
+out="$("${agent_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" start maker 2>&1)"
+check "a service with no agent still starts" "$out" "maker: started"
+"${agent_env[@]}" "$BASH_UNDER_TEST" "$TMP/scripts/run-local-services.sh" stop maker >/dev/null 2>&1 || true
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"
