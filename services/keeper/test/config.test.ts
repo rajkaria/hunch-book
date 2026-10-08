@@ -158,14 +158,26 @@ describe("parseConfig", () => {
 
 describe("stacks", () => {
   it("reads the Kuru v2 poke interval and the stacks to run", () => {
-    expect(parseConfig({})).toMatchObject({ kuruPokeSeconds: 900, stacks: undefined });
+    expect(parseConfig({})).toMatchObject({
+      kuruPokeSeconds: 900,
+      kuruBookPokeSeconds: 60,
+      stacks: undefined,
+    });
     expect(
-      parseConfig({ KEEPER_KURU_POKE_SECONDS: "300", KEEPER_STACKS: " primary, kuruV2 ,," }),
+      parseConfig({
+        KEEPER_KURU_POKE_SECONDS: "300",
+        KEEPER_KURU_BOOK_POKE_SECONDS: "30",
+        KEEPER_STACKS: " primary, kuruV2 ,,",
+      }),
     ).toMatchObject({
       kuruPokeSeconds: 300,
+      kuruBookPokeSeconds: 30,
       stacks: ["primary", "kuruV2"],
     });
     expect(() => parseConfig({ KEEPER_KURU_POKE_SECONDS: "0" })).toThrow(/KEEPER_KURU_POKE_SECONDS/);
+    expect(() => parseConfig({ KEEPER_KURU_BOOK_POKE_SECONDS: "0" })).toThrow(
+      /KEEPER_KURU_BOOK_POKE_SECONDS/,
+    );
     expect(() => parseConfig({ KEEPER_JOBS_OFF: "kuruFeeds" })).not.toThrow();
   });
 

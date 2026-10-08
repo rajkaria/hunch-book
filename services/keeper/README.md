@@ -43,10 +43,12 @@ creates books, after a per-token setup that takes days. So the graduate job chan
 | Graduate | The book is registered and the pool meets its rule | `market.graduate()` |
 
 and two cycle jobs do more: the Kuru feeds job (`kuruFeeds`) creates each open market's YES and NO feeds
-on the stack's `kuruFeedFactory` (`createAdapter`), and the oracle job pokes every open market, pools too,
-at most every `KEEPER_KURU_POKE_SECONDS` (or `KEEPER_ORACLE_POKE_SECONDS` when lower). Kuru's
-WithdrawalLimiter reads those feeds and refuses a stale price, and Kuru reads the price when it sets a
-token up.
+on the stack's `kuruFeedFactory` (`createAdapter`), and the oracle job pokes every open market, pools too.
+Kuru's WithdrawalLimiter reads those feeds and refuses a stale price, so a graduated market (its YES and
+NO can sit in Kuru) is poked at most every `KEEPER_KURU_BOOK_POKE_SECONDS` (default 60). A pool has no
+tokens out yet and Kuru reads its price only when it sets the tokens up, so pools are poked at most every
+`KEEPER_KURU_POKE_SECONDS` (default 900). `KEEPER_ORACLE_POKE_SECONDS` wins for both when it is lower.
+Anyone can call `poke(market)` on the oracle to refresh a market's feeds at once.
 
 After the markets, four jobs look at every market at once ([`src/jobs/`](./src/jobs)). Each runs only when
 its contract is in `hunchBook.periphery` (or, for series, a file is set), and each can be switched off by
@@ -219,7 +221,8 @@ To run it as a service (Railway, launchd, or in the background on this machine),
 | `KEEPER_MARKETS` | all | Comma-separated market addresses to handle; all markets when unset. |
 | `KEEPER_JOBS_OFF` | none | Comma-separated jobs to switch off: `prove`, `snapshot`, `autoRedeem`, `orders`, `oracle`, `series`, `kuruFeeds`. |
 | `KEEPER_ORACLE_POKE_SECONDS` | `1800` | Poke each market with a live book at most this often; `0` turns pokes off. |
-| `KEEPER_KURU_POKE_SECONDS` | `900` | Kuru v2 stacks: poke every open market (pools too) at most this often, to keep Kuru's limiter feeds fresh. Keep it well under the maximum price age Kuru sets for them. |
+| `KEEPER_KURU_POKE_SECONDS` | `900` | Kuru v2 stacks: poke every open pool at most this often, so its feeds are fresh when Kuru sets its tokens up. |
+| `KEEPER_KURU_BOOK_POKE_SECONDS` | `60` | Kuru v2 stacks: poke every graduated market at most this often, to keep Kuru's limiter feeds fresh. Keep it well under the maximum price age Kuru sets for them. |
 | `KEEPER_STACKS` | all | Comma-separated stacks to run (`primary`, or names under `stacks` such as `kuruV2`); every deployed stack when unset. |
 | `KEEPER_ORACLE_BATCH` | `25` | Markets per `pokeMany` transaction (1 to 200). |
 | `KEEPER_REDEEM_BATCH` | `50` | Holders per `redeemManyFor` transaction (1 to 500). |

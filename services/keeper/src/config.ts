@@ -47,10 +47,15 @@ export interface KeeperConfig {
   /** Poke each market with a live book at most this often; 0 turns oracle pokes off. */
   oraclePokeSeconds: number;
   /**
-   * Kuru v2 stacks: poke every open market (pools too) at most this often, so the feeds Kuru's
-   * WithdrawalLimiter reads stay fresher than its maximum price age.
+   * Kuru v2 stacks: poke every open pool at most this often, so the feeds are fresh when Kuru sets a
+   * market's tokens up.
    */
   kuruPokeSeconds: number;
+  /**
+   * Kuru v2 stacks: poke every graduated market at most this often, so the feeds Kuru's WithdrawalLimiter
+   * reads stay fresher than its maximum price age while YES and NO can sit in Kuru.
+   */
+  kuruBookPokeSeconds: number;
   /** Run only these stacks ("primary" or names under `stacks`); all when unset. */
   stacks: string[] | undefined;
   /** Markets per pokeMany transaction. */
@@ -205,6 +210,7 @@ export function parseConfig(env: Env): KeeperConfig {
     jobsOff,
     oraclePokeSeconds: num(env, "KEEPER_ORACLE_POKE_SECONDS", 1_800, nonNegative, "zero or more"),
     kuruPokeSeconds: num(env, "KEEPER_KURU_POKE_SECONDS", 900, positive, "above zero"),
+    kuruBookPokeSeconds: num(env, "KEEPER_KURU_BOOK_POKE_SECONDS", 60, positive, "above zero"),
     stacks: list(env.KEEPER_STACKS),
     oracleBatch: num(
       env,

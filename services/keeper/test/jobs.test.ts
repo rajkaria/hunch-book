@@ -68,6 +68,21 @@ describe("oracle pokes", () => {
     ).toEqual([h(1), h(2), h(3)]);
   });
 
+  it("a market's own interval wins over the shared one", () => {
+    expect(
+      marketsDue(
+        [
+          { address: h(1), lastPoke: 1_500n, pokeSeconds: 60 },
+          { address: h(2), lastPoke: 1_560n, pokeSeconds: 60 },
+          { address: h(3), lastPoke: 1_500n },
+          { address: h(4), lastPoke: 1_000n, pokeSeconds: undefined },
+        ],
+        1_600n,
+        300,
+      ),
+    ).toEqual([h(1), h(4)]);
+  });
+
   it("only markets with a live book", () => {
     expect(hasLiveBook({ graduated: true, phase: Phase.Graduated })).toBe(true);
     expect(hasLiveBook({ graduated: true, phase: Phase.Closed })).toBe(true);

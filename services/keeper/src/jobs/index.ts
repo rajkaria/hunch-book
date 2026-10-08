@@ -50,6 +50,7 @@ export function buildCycleJobs(config: KeeperConfig, deployment: Deployment, pri
         pokeSeconds: kuruV2
           ? Math.min(config.oraclePokeSeconds, config.kuruPokeSeconds)
           : config.oraclePokeSeconds,
+        bookPokeSeconds: kuruV2 ? Math.min(config.oraclePokeSeconds, config.kuruBookPokeSeconds) : undefined,
         batch: config.oracleBatch,
         includePools: kuruV2,
       }),

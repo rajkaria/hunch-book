@@ -11,14 +11,18 @@ import { type CycleJob, type JobContext, type JobRun, wentOut } from "./context.
 // records a market's chance only when someone pokes it, and each recorded value holds until the next
 // poke. The keeper pokes every market with a live book at most once per KEEPER_ORACLE_POKE_SECONDS, all
 // due markets in one `pokeMany` transaction, so the averages lending markets and other apps read stay
-// fresh. On a Kuru v2 stack it pokes every open market, pools included, at most once per
-// KEEPER_KURU_POKE_SECONDS: Kuru's WithdrawalLimiter reads the market's feeds and refuses a stale price. When a market was last poked comes from the oracle itself (`latest(market).timestamp`), so a
-// restart, or a poke by anyone else, counts.
+// fresh. On a Kuru v2 stack it pokes every open market, pools included: Kuru's WithdrawalLimiter reads the
+// market's feeds and refuses a stale price. A graduated market (its YES and NO can sit in Kuru) is poked at
+// most once per KEEPER_KURU_BOOK_POKE_SECONDS, a pool (no tokens out yet; Kuru reads the price only when
+// it sets the tokens up) at most once per KEEPER_KURU_POKE_SECONDS. When a market was last poked comes
+// from the oracle itself (`latest(market).timestamp`), so a restart, or a poke by anyone else, counts.
 
 export interface OracleOptions {
   oracle: Address;
   /** Poke a market at most this often. */
   pokeSeconds: number;
+  /** Poke a market with a live book at most this often instead (Kuru v2 stacks). */
+  bookPokeSeconds?: number;
   /** Markets per pokeMany transaction. */
   batch: number;
   /**
@@ -28,14 +32,17 @@ export interface OracleOptions {
   includePools?: boolean;
 }
 
-/** Markets whose last recorded poke is at least `pokeSeconds` old (never poked: due). Pure. */
+/**
+ * Markets whose last recorded poke is at least their interval old (never poked: due). A market's own
+ * `pokeSeconds` wins over the shared one. Pure.
+ */
 export function marketsDue(
-  markets: readonly { address: Address; lastPoke: bigint }[],
+  markets: readonly { address: Address; lastPoke: bigint; pokeSeconds?: number }[],
   now: bigint,
   pokeSeconds: number,
 ): Address[] {
   return markets
-    .filter((m) => m.lastPoke === 0n || now - m.lastPoke >= BigInt(pokeSeconds))
+    .filter((m) => m.lastPoke === 0n || now - m.lastPoke >= BigInt(m.pokeSeconds ?? pokeSeconds))
     .map((m) => m.address);
 }
 
@@ -67,8 +74,13 @@ export class OraclePokeJob implements CycleJob {
           args: [m.address] as const,
         })),
       });
+      const { bookPokeSeconds } = this.opts;
       due = marketsDue(
-        live.map((m, i) => ({ address: m.address, lastPoke: BigInt(latest[i]?.timestamp ?? 0) })),
+        live.map((m, i) => ({
+          address: m.address,
+          lastPoke: BigInt(latest[i]?.timestamp ?? 0),
+          pokeSeconds: bookPokeSeconds !== undefined && hasLiveBook(m) ? bookPokeSeconds : undefined,
+        })),
         now.timestamp,
         this.opts.pokeSeconds,
       );
@@ -78,6 +90,7 @@ export class OraclePokeJob implements CycleJob {
     ctx.health.jobInfo(this.name, {
       oracle: this.opts.oracle,
       pokeSeconds: this.opts.pokeSeconds,
+      bookPokeSeconds: this.opts.bookPokeSeconds,
       liveBooks: live.length,
       due: due.length,
       lastPokeAt: this.lastPokeAt,

@@ -361,7 +361,8 @@ latest poke.
   nothing. A value pushed onto the book and poked counts only until the next poke, which anyone can make in the
   next block. The cost of holding a false price grows with the time it must be held.
 - **Freshness.** If nobody pokes, the last value keeps being extended. Readers should check `updatedAt` from
-  `consultFull`. The keeper pokes every graduated market regularly (planned: every minute).
+  `consultFull`. The keeper pokes every graduated market regularly: on a Kuru v2 stack every minute
+  (`KEEPER_KURU_BOOK_POKE_SECONDS`), so the feeds Kuru's WithdrawalLimiter reads stay fresh.
 
 ### Trust and limits
 
