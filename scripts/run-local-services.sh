@@ -196,6 +196,11 @@ exec_one() {
   node="$(node_bin)"
   while IFS= read -r line; do settings+=("$line"); done < <(settings_for "$svc")
   echo "--- exec $(date -u +%Y-%m-%dT%H:%M:%SZ) ($(mode_of "$svc"))"
+  # launchd does not keep the Mac awake. exec keeps this shell's pid, so caffeinate waits on the service.
+  if [ "$KEEP_AWAKE" = "1" ] && command -v caffeinate >/dev/null 2>&1; then
+    "${DETACH[@]}" caffeinate -is -w "$$" >/dev/null 2>&1 </dev/null &
+    echo "$svc: keeping this Mac awake while it runs (KEEP_AWAKE=0 to skip)"
+  fi
   cd "$ROOT/services/$svc"
   exec env "$(upper "$svc")_ENV_FILE=$ENV_FILE" ${settings[@]+"${settings[@]}"} "$node" --import tsx src/main.ts run
 }

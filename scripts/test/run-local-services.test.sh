@@ -96,8 +96,24 @@ echo "envfile=${KEEPER_ENV_FILE:-}"
 echo "maker=${MAKER_ENABLED:-unset}"
 NODE
 chmod +x "$TMP/fake-node"
-out="$(env -i PATH="$PATH" HOME="$HOME" NODE_BIN="$TMP/fake-node" "$BASH_UNDER_TEST" \
+# A stand-in caffeinate records how it was called.
+mkdir -p "$TMP/bin"
+cat >"$TMP/bin/caffeinate" <<CAF
+#!/usr/bin/env bash
+echo "\$*" >"$TMP/caffeinate.args"
+CAF
+chmod +x "$TMP/bin/caffeinate"
+out="$(env -i PATH="$TMP/bin:$PATH" HOME="$HOME" NODE_BIN="$TMP/fake-node" "$BASH_UNDER_TEST" \
   "$TMP/scripts/run-local-services.sh" exec keeper 2>&1)"
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$TMP/caffeinate.args" ] && break; sleep 0.2; done
+check "exec keeps the Mac awake for the service's pid" "$(cat "$TMP/caffeinate.args" 2>/dev/null)" "-is -w "
+check "exec says it keeps the Mac awake" "$out" "keeping this Mac awake"
+rm -f "$TMP/caffeinate.args"
+out_quiet="$(env -i PATH="$TMP/bin:$PATH" HOME="$HOME" NODE_BIN="$TMP/fake-node" KEEP_AWAKE=0 "$BASH_UNDER_TEST" \
+  "$TMP/scripts/run-local-services.sh" exec keeper 2>&1)"
+sleep 0.5
+check_absent "exec with KEEP_AWAKE=0 leaves sleep alone" "$out_quiet" "keeping this Mac awake"
+check "exec with KEEP_AWAKE=0 runs no caffeinate" "$([ -e "$TMP/caffeinate.args" ] && echo ran || echo none)" "none"
 check "exec reports the mode" "$out" "(live)"
 check "exec runs the service's entry point" "$out" "args=--import tsx src/main.ts run"
 check "exec runs in the service's directory" "$out" "cwd=$TMP/services/keeper"

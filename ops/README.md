@@ -56,8 +56,9 @@ both services. For a machine that should keep them running, use launchd (below) 
 
 Two agent templates: [`launchd/xyz.playhunch.book.keeper.plist`](./launchd/xyz.playhunch.book.keeper.plist)
 and [`launchd/xyz.playhunch.book.maker.plist`](./launchd/xyz.playhunch.book.maker.plist). They start at
-login, restart after a crash, write to `.run/<service>.log`, and serve health on ports 8781 (keeper) and
-8782 (maker). Each runs `scripts/run-local-services.sh exec <service>`, so it takes the same settings as
+login, restart after a crash, write to `.run/<service>.log`, serve health on ports 8781 (keeper) and
+8782 (maker), and keep the Mac awake while the service runs (`caffeinate -is`; set `KEEP_AWAKE` to `0` in
+the plist's `EnvironmentVariables` to skip). A closed lid still sleeps. Each runs `scripts/run-local-services.sh exec <service>`, so it takes the same settings as
 a manual start: create `.run/services.env` first (above), or both run as a dry run. Install, from the
 repository root:
 
