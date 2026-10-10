@@ -29,8 +29,25 @@ export interface HunchBookContracts {
   deployBlock?: number;
   /** Deployment and wiring transactions, by contract or action, for explorer links. */
   deployTxs?: Record<string, Hex>;
-  /** Which Kuru exchange this stack's books are on (absent = 1). docs/PROTOCOL.md §8.1. */
+  /** Which Kuru interface this stack's books speak (absent = 1). docs/PROTOCOL.md §8.1. */
   kuruVersion?: 1 | 2;
+  /**
+   * Set when this stack's books are on Hunch Book's own order book instead of Kuru (docs/PROTOCOL.md
+   * §8.1, "Hunch order book"). The books speak Kuru v1's interface, so `kuruVersion` is 1 and every v1
+   * reader works on them through `deploymentForStack`, which points `external.kuru` here.
+   */
+  venue?: HunchVenueContracts;
+}
+
+/** Hunch Book's own order book: written by Deploy.s.sol (VENUE=hunch) and DeployHunchStack.s.sol. */
+export interface HunchVenueContracts {
+  kind: "hunch";
+  /** HunchOrderBookFactory: Kuru v1 Router's deployProxy and computeAddress. */
+  bookFactory: Address;
+  /** HunchMarginAccount: Kuru v1 MarginAccount's deposit, withdraw, getBalance, verifiedMarket. */
+  marginAccount: Address;
+  /** The HunchOrderBook every book is a clone of. */
+  bookImplementation: Address;
 }
 
 /** Written by contracts/script/DeployPeriphery.s.sol. */
@@ -70,8 +87,13 @@ export interface Deployment {
   explorer: string;
   /** The primary stack. */
   hunchBook: HunchBookContracts;
-  /** Extra stacks by name (testnet: `kuruV2` next to the v1 primary stack). */
+  /** Extra stacks by name (testnet: `kuruV2` and `hunch` next to the v1 primary stack). */
   stacks?: Record<string, HunchBookContracts>;
+  /**
+   * The stack new markets go to (the app's create page, the keeper's series): "primary" or a key under
+   * `stacks`. Absent = the primary stack.
+   */
+  defaultStack?: string;
   wallets: { maker: Address; keeper: Address };
   external: {
     usdc?: Address;
@@ -130,13 +152,31 @@ export function blockUrl(deployment: Deployment, block: bigint | number): string
   return `${deployment.explorer}/block/${block.toString()}`;
 }
 
+/** Where a stack's books are: Kuru's exchange, or Hunch Book's own order book. */
+export type Venue = "kuru" | "hunch";
+
 /** One deployed Hunch Book stack: a factory with its vault, graduator, router and periphery. */
 export interface Stack {
   /** "primary" for `hunchBook`, otherwise the key under `stacks`. */
   name: string;
   primary: boolean;
   kuruVersion: 1 | 2;
+  venue: Venue;
   contracts: HunchBookContracts;
+}
+
+/** The venue of a stack's contracts: "hunch" when they carry a Hunch venue, otherwise "kuru". */
+export function venueOf(contracts: Pick<HunchBookContracts, "venue">): Venue {
+  return contracts.venue?.kind === "hunch" ? "hunch" : "kuru";
+}
+
+/**
+ * What to call a stack's book venue in copy: "Hunch order book", "Kuru v2" or "Kuru". Markets on a Hunch
+ * venue trade on Hunch Book's own onchain order book.
+ */
+export function venueLabel(s: { venue: Venue; kuruVersion: 1 | 2 }): string {
+  if (s.venue === "hunch") return "Hunch order book";
+  return s.kuruVersion === 2 ? "Kuru v2" : "Kuru";
 }
 
 /** Every stack with a factory, the primary first. Readers that list markets go through all of them. */
@@ -144,7 +184,13 @@ export function stacksOf(deployment: Deployment): Stack[] {
   const out: Stack[] = [];
   const add = (name: string, primary: boolean, contracts: HunchBookContracts | undefined) => {
     if (!contracts?.factory) return;
-    out.push({ name, primary, kuruVersion: contracts.kuruVersion === 2 ? 2 : 1, contracts });
+    out.push({
+      name,
+      primary,
+      kuruVersion: contracts.kuruVersion === 2 ? 2 : 1,
+      venue: venueOf(contracts),
+      contracts,
+    });
   };
   add("primary", true, deployment.hunchBook);
   for (const [name, contracts] of Object.entries(deployment.stacks ?? {})) add(name, false, contracts);
@@ -170,11 +216,32 @@ export function stackNamed(deployment: Deployment, name: string): Stack | undefi
 }
 
 /**
+ * The stack new markets go to: `defaultStack` if it names a deployed stack, otherwise the primary
+ * stack (or the first deployed one). Undefined only on a network with no factory yet.
+ */
+export function defaultStackOf(deployment: Deployment): Stack | undefined {
+  const all = stacksOf(deployment);
+  const named = deployment.defaultStack ? all.find((s) => s.name === deployment.defaultStack) : undefined;
+  return named ?? all[0];
+}
+
+/**
  * The deployment as seen by one stack: `hunchBook` is that stack's contracts. Services written for one
- * factory (the keeper, the maker) run once per stack on this view, unchanged.
+ * factory (the keeper, the maker) run once per stack on this view, unchanged. On a Hunch venue
+ * `external.kuru` points at Hunch's own book factory and margin account, which speak Kuru v1's
+ * interface, so v1 readers and writers use them as they would Kuru's.
  */
 export function deploymentForStack(deployment: Deployment, stack: Stack): Deployment {
-  return { ...deployment, hunchBook: stack.contracts };
+  const venue = stack.contracts.venue;
+  if (venue?.kind !== "hunch") return { ...deployment, hunchBook: stack.contracts };
+  return {
+    ...deployment,
+    hunchBook: stack.contracts,
+    external: {
+      ...deployment.external,
+      kuru: { router: venue.bookFactory, marginAccount: venue.marginAccount },
+    },
+  };
 }
 
 /** Throws if a stack contract is missing, so readers never fall back to a zero address. */

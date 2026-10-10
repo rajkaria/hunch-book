@@ -109,7 +109,7 @@
     },
     "circleUsdc": "0x534b2f3A21130d7a60830c2Df862319e593943A3"
   },
-  "notes": "Testnet collateral is Hunch Book's own mintable test USDC (deployed with the protocol), because Kuru's testnet USDC cannot be minted. Kuru market creation is permissionless on testnet.",
+  "notes": "Testnet collateral is Hunch Book's own mintable test USDC (deployed with the protocol), because Kuru's testnet USDC cannot be minted. Kuru market creation is permissionless on testnet. The `hunch` stack trades on Hunch Book's own onchain order book (venue), so its markets graduate and trade with no third party; it is the default stack for new markets.",
   "stacks": {
     "kuruV2": {
       "deployBlock": 68935420,
@@ -177,6 +177,49 @@
           "templateTimelock": "0xa6572567da7a699d8eacd1ec954a97c38b1928e77e4e4725b0f20656b8023b31"
         }
       }
+    },
+    "hunch": {
+      "deployBlock": 69857525,
+      "factory": "0x846Cd400B832203befe5902ef43DAdc969985AF2",
+      "feeRecipient": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+      "graduator": "0xd23cc8dD4909ae29C51B155D6098dD17539BF3Cc",
+      "guardian": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+      "kuruVersion": 1,
+      "marketImplementation": "0xAEf7f97A739C8ea93D4F5Fc497B0181Cf92d8cE6",
+      "resolvers": {
+        "chainlinkTouch": "0x34Ac3F430c8F49735987Efe88634Ef8d9c295727",
+        "marketOutcome": "0xfD6c68F92aB6a381e6b1A3B6581EBf9035D3c5e5",
+        "perplFunding": "0x4ec0077e30EA8B626C5AA087C586E60542150951",
+        "perplFundingSpike": "0x3459d8026DD8E7B0f3BE2B1aF21050013b9bCA64",
+        "priceAtTime": "0x5582e5Aeb12e15EAda88402E2903Bc628Cc28B3C",
+        "priceRange": "0xBA86Bcf0915c7E79C7D8a7e170CA76F1d82f8694",
+        "snapshot": "0x1E62C389D7c035acfDD971C7E6b7157C1D34D632"
+      },
+      "router": "0x3DEDE22033c755bD4BE44B4E42e889785BBE4CC3",
+      "usdc": "0x13c5B2e982F437566991c4d9aC0a30F9f9aC15Ed",
+      "vault": "0x68B530302b012f22e5f00Ce0C6C8cF3A189fee86",
+      "venue": {
+        "bookFactory": "0x0DDF74540B6720B348483084F749907b2c3F46C5",
+        "bookImplementation": "0x7dEE44FeC7202be83Fe9A97a5D27b25801b369d5",
+        "kind": "hunch",
+        "marginAccount": "0x6dDaC7a754A2A4bf2fF688B8F08eaA8ADC42Ee1c"
+      },
+      "deployTxs": {
+        "addTemplate1": "0xbe05f177926d444be288afd4af81af32f8be6d3e61cc7bb937131ccb5cb190b6",
+        "addTemplate2": "0x9d9e59b2b670150effe87ba00f83cd4ae178b42f67a2410dd2f17b8428998db9",
+        "addTemplate3": "0xc78229b75eb57c5be060be3fce284b58c172a24b5a38958f32df44e239d69b2a",
+        "addTemplate4": "0xcd255b3c76c7e5fd4e076b1d78fcebd1688b96ceeedf627b8b0b9baf40d31119",
+        "addTemplate5": "0x871fd10b814f863895971d883cfa7e807f2cda1103233c954f0b309563ea71f9",
+        "addTemplate6": "0x0a9d45244a4e4f6dbe00fa5ee9c5dd9d5ae863d2ae8f64b92491e622e2fbb26f",
+        "addTemplate7": "0x16cbe8bac4236af24795c024f76805ba9296ab4e4d0ac1b7ba5478c94e26597d",
+        "bookFactory": "0x1d3a468079d0e928989933beca25e48ea6f2ddd3f864153d6ab8f93d8df85c32",
+        "factory": "0x5e2ead0e8706dea5cd0317285323e21f0f8722d858f1d02ef27530d4b8b0c406",
+        "graduator": "0xe53f609993a308d5f2fdf8891b7c8380b58917403e07474cef646ecfd3d5cf55",
+        "marketOutcome": "0x0a7ee74922b51b22946d8886689788de958a8625c11d2c0a507c9926110429f9",
+        "router": "0x1edb02162555d914d59e315d8243926f1302f7c5a46d43020d0df7a00523e5b0",
+        "setGraduator": "0xd23ba5aa82083831bd8c44a1bd37f4b96e79fadcab9b235fea4ee54b46cd4a29"
+      }
     }
-  }
+  },
+  "defaultStack": "hunch"
 }
