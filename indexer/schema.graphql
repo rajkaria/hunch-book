@@ -6,8 +6,9 @@
 # - Prices ending in E6 are USDC base units per whole YES token (0.416 USDC = 416000).
 # - Timestamps are unix seconds. Block numbers and timestamps are BigInt.
 # - A network can have more than one stack of Hunch Book contracts (docs/PROTOCOL.md section 8.1):
-#   the primary one and, on testnet, `kuruV2`, whose books are on Kuru v2. Every stack is indexed into
-#   the same tables. Records a contract numbers on its own (templates, orders, reward epochs, timelock
+#   the primary one and, on testnet, `kuruV2`, whose books are on Kuru v2, and `hunch`, whose books are
+#   on Hunch Book's own onchain order book (Venue Hunch). Every stack is indexed into the same tables.
+#   Records a contract numbers on its own (templates, orders, reward epochs, timelock
 #   operations) keep the plain number as their id on the primary stack and "<stack>-<number>" on others.
 # - Activity by Hunch Book's own wallets (maker bot, keeper, guardian, fee recipient, reward funder,
 #   timelock proposer) and by wallets our wallets paid to seed is labelled as ours: see Wallet.ourRole
@@ -16,7 +17,7 @@
 enum MarketStage {
   "Staking open or locked, never graduated. Lock and close are derived from the clock by readers."
   Pool
-  "Graduated to a Kuru book. Trading until close, then settlement."
+  "Graduated to an order book (Kuru's or Hunch Book's own). Trading until close, then settlement."
   Graduated
   Settled
   Voided
@@ -118,10 +119,21 @@ enum RouterTradeKind {
   SellNo
 }
 
+"""
+Where a market's book is. Hunch Book's own order book speaks Kuru v1's interface and events, so its books
+have kuruVersion 1 and are read like Kuru v1 books.
+"""
+enum Venue {
+  "Kuru's order books (kuruVersion says which version)."
+  Kuru
+  "Hunch Book's own onchain order book (HunchOrderBook), on a stack with a Hunch venue."
+  Hunch
+}
+
 enum BookSource {
-  "The Graduator created the book on Kuru (testnet)."
+  "The Graduator created the book (on Kuru v1 or on Hunch Book's own order book)."
   Created
-  "Kuru created the book and someone registered it with the Graduator (mainnet)."
+  "The book was created outside the Graduator (Kuru creates every Kuru v2 book) and someone registered it with the Graduator."
   Registered
 }
 
@@ -186,10 +198,12 @@ type Market {
   id: ID!
   "1, 2, 3...: the factory's market number, which also names the tokens (HB1-YES). Each stack's factory counts from 1."
   number: Int!
-  "\"primary\", or the stack's name under `stacks` in the deployments file (testnet: kuruV2)."
+  "\"primary\", or the stack's name under `stacks` in the deployments file (testnet: kuruV2, hunch)."
   stack: String! @index
   "The Kuru version of the stack's books: 1, or 2 (Kuru creates each book, PROTOCOL.md section 8.1)."
   kuruVersion: Int!
+  "Where the stack's books are: Kuru, or Hunch Book's own order book (kuruVersion 1)."
+  venue: Venue!
   template: Template!
   templateId: BigInt!
   key: String!
@@ -256,7 +270,7 @@ type Market {
   "The vault's redemption fee fraction for the winning side, set at settlement (fee = amount * n / d, rounded up)."
   redemptionFeeNumerator: BigInt
   redemptionFeeDenominator: BigInt
-  "Kuru fills on this market's book."
+  "Fills on this market's book (Kuru's or Hunch Book's own)."
   fillCount: Int!
   fillCountOurMaker: Int!
   "Kuru v2 swaps: the event does not name the makers, so whether ours was one is unknown."
@@ -339,7 +353,7 @@ type Wallet {
   lastActiveAt: BigInt
   stakeCount: Int!
   stakedUsdc: BigInt!
-  "Kuru fills where this wallet was the taker (directly or through the router) or the maker."
+  "Book fills where this wallet was the taker (directly or through the router) or the maker."
   fillCount: Int!
   fillVolume: BigInt!
   routerTradeCount: Int!
@@ -440,6 +454,8 @@ type Book {
   registrar: String
   "1 for a Kuru v1 book (Trade events, one per maker order filled), 2 for a v2 book (one SpotSwap per taker swap)."
   kuruVersion: Int!
+  "Kuru, or Hunch for Hunch Book's own order book (a v1 book to the indexer: the same events)."
+  venue: Venue!
   fillCount: Int!
   fillCountOurMaker: Int!
   fillCountMakerUnknown: Int!
@@ -456,15 +472,18 @@ type Book {
 }
 
 """
-One fill on a Hunch Book market's Kuru book. On a Kuru v1 book: one maker order filled (Kuru's Trade
-event). On a Kuru v2 book: one taker swap, at its average price (Kuru's SpotSwap event), which can fill
-several maker orders and does not name them, so the maker is unknown (makerKnown false).
+One fill on a Hunch Book market's book. On a Kuru v1 book, or on Hunch Book's own order book, which emits
+the same event: one maker order filled (the Trade event). On a Kuru v2 book: one taker swap, at its
+average price (Kuru's SpotSwap event), which can fill several maker orders and does not name them, so the
+maker is unknown (makerKnown false).
 """
 type Trade @index(fields: ["market", ["timestamp", "DESC"]]) {
   id: ID!
   market: Market!
   book: Book!
   kuruVersion: Int!
+  "The book's venue: Kuru, or Hunch Book's own order book."
+  venue: Venue!
   "Kuru v1: the maker order's id. Null on v2 swaps."
   orderId: BigInt
   "The maker; the zero address when it is unknown (Kuru v2 swaps)."
@@ -690,6 +709,7 @@ type Stack {
   name: String!
   primary: Boolean!
   kuruVersion: Int!
+  venue: Venue!
   factory: String!
   "Markets the stack's factory created: the next one's number is this plus one."
   marketsCreated: Int!
@@ -717,7 +737,7 @@ type ProtocolStats {
   stakedUsdc: BigInt!
   stakeCountOurs: Int!
   stakedUsdcOurs: BigInt!
-  "Kuru fills on our books."
+  "Fills on our markets' books (Kuru's or Hunch Book's own)."
   fillCount: Int!
   fillCountOurMaker: Int!
   "Fills where the taking side is one of our wallets."

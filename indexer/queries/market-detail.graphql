@@ -108,6 +108,7 @@ query MarketDetail($id: String!, $fills: Int = 50, $stakes: Int = 50) {
     book {
       id
       source
+      venue
       registrar
       fillCount
       volume

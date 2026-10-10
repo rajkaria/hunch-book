@@ -18,6 +18,9 @@ interface IERC20Approve {
 ///
 ///   DEPLOYER_PRIVATE_KEY=... MARKET=0x... SIZE=5000000 forge script script/TradeTestnet.s.sol \
 ///     --rpc-url $MONAD_TESTNET_RPC --broadcast --slow --gas-estimate-multiplier 110
+///
+/// STACK names an extra stack under `.stacks` (e.g. hunch, kuruV2) whose router trades MARKET; default
+/// the primary stack. Hunch order books read and trade exactly like Kuru v1 books here.
 contract TradeTestnet is Script {
     /// Accept at most 3% worse than the touch.
     uint256 internal constant SLIPPAGE_BPS = 300;
@@ -32,8 +35,10 @@ contract TradeTestnet is Script {
     function run() external {
         require(block.chainid == 10_143, "testnet only");
         string memory json = vm.readFile(string.concat(vm.projectRoot(), "/../deployments/monad-testnet.json"));
-        router = HunchRouter(vm.parseJsonAddress(json, ".hunchBook.router"));
-        usdc = TestUSDC(vm.parseJsonAddress(json, ".hunchBook.usdc"));
+        string memory stack = vm.envOr("STACK", string(""));
+        string memory path = bytes(stack).length == 0 ? ".hunchBook" : string.concat(".stacks.", stack);
+        router = HunchRouter(vm.parseJsonAddress(json, string.concat(path, ".router")));
+        usdc = TestUSDC(vm.parseJsonAddress(json, string.concat(path, ".usdc")));
         m = Market(payable(vm.envAddress("MARKET")));
         size = vm.envOr("SIZE", uint256(5e6));
 

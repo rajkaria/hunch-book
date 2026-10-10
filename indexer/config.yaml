@@ -116,18 +116,22 @@ chains:
         address:
           - "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A"
           - "0xd6994DD479d845F1ea039b6322fBE00c12Ea125A"
+          - "0x846Cd400B832203befe5902ef43DAdc969985AF2"
       - name: CollateralVault
         address:
           - "0x81b04B3567dcaDaE6a859394248C47ddc403ba37"
           - "0x1749333EeC149a75133F19D0fc6eF4cFC7f7E481"
+          - "0x68B530302b012f22e5f00Ce0C6C8cF3A189fee86"
       - name: HunchRouter
         address:
           - "0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6"
           - "0x5B08c1344728bBaC1851A75dbc8B9dB7D1c81556"
+          - "0x3DEDE22033c755bD4BE44B4E42e889785BBE4CC3"
       - name: Graduator
         address:
           - "0x7DC80DB34762A996aae6Ce516F562B2e6142fFE3"
           - "0x8D626Ec2E85Fbe71f1AF9E5c5e55EF4bDE68A919"
+          - "0xd23cc8dD4909ae29C51B155D6098dD17539BF3Cc"
       - name: Usdc
         address: "0x13c5B2e982F437566991c4d9aC0a30F9f9aC15Ed"
       - name: Market

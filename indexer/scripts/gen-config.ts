@@ -56,6 +56,11 @@ interface StackSection {
   deployBlock?: number;
   /** 1 when absent (the primary testnet stack predates the field). */
   kuruVersion?: number;
+  /**
+   * Set when the stack's books are on Hunch Book's own order book (contracts/src/venue/) instead of
+   * Kuru's. Those books speak Kuru v1's interface, so `kuruVersion` is 1.
+   */
+  venue?: { kind: string; bookFactory?: string; marginAccount?: string; bookImplementation?: string };
   resolvers?: Record<string, string>;
   periphery?: {
     autoRedeemer?: string;
@@ -78,7 +83,7 @@ interface DeploymentFile {
   rpc: string;
   explorer: string;
   hunchBook: StackSection;
-  /** Extra stacks by name (testnet: `kuruV2`, next to the Kuru v1 primary stack). */
+  /** Extra stacks by name (testnet: `kuruV2` and `hunch`, next to the Kuru v1 primary stack). */
   stacks?: Record<string, StackSection>;
   wallets: { maker: string; keeper: string };
   external: {
@@ -182,7 +187,8 @@ export function contractEvents(): { name: string; dynamic: boolean; events: stri
       ]),
     },
     { name: "OutcomeToken", dynamic: true, events: [ERC20_TRANSFER] },
-    // Kuru v1 books (the primary testnet stack): every fill names its maker.
+    // Kuru v1 books (the primary testnet stack), and Hunch Book's own books (a stack with a Hunch
+    // venue), which emit Kuru v1's events with the same layouts: every fill names its maker.
     {
       name: "KuruOrderBook",
       dynamic: true,
@@ -308,6 +314,32 @@ function readDeployment(network: string): DeploymentFile {
 
 const lower = (a: string | undefined): string | null => (a ? a.toLowerCase() : null);
 
+/**
+ * Where a stack's books are, in Kuru v1's terms, as packages/shared's deploymentForStack sees them: a
+ * Kuru stack keeps Kuru's Router and MarginAccount from `external.kuru`; a stack with a Hunch venue gets
+ * its own HunchOrderBookFactory (in the Router's place: it emits the Router's MarketRegistered) and
+ * HunchMarginAccount, and nothing of Kuru's.
+ */
+export function bookVenueOf(d: DeploymentFile, s: StackSection): Pick<StackConstants, "venue" | "kuru"> {
+  if (s.venue?.kind !== "hunch") {
+    return {
+      venue: "kuru",
+      kuru: {
+        router: d.external.kuru.router.toLowerCase(),
+        marginAccount: d.external.kuru.marginAccount.toLowerCase(),
+      },
+    };
+  }
+  const { bookFactory, marginAccount } = s.venue;
+  if (!bookFactory || !marginAccount) {
+    throw new Error(`${d.network}: a Hunch venue needs venue.bookFactory and venue.marginAccount`);
+  }
+  return {
+    venue: "hunch",
+    kuru: { router: bookFactory.toLowerCase(), marginAccount: marginAccount.toLowerCase() },
+  };
+}
+
 export function collateralOf(d: DeploymentFile): string | undefined {
   return d.hunchBook.usdc ?? d.external.usdc;
 }
@@ -319,13 +351,14 @@ export function isDeployed(d: DeploymentFile): boolean {
 }
 
 /** One stack's constants, addresses lowercase. */
-export function stackConstants(stack: NamedStack): StackConstants {
+export function stackConstants(d: DeploymentFile, stack: NamedStack): StackConstants {
   const { s } = stack;
   const p = s.periphery ?? {};
   return {
     name: stack.name,
     primary: stack.primary,
     kuruVersion: s.kuruVersion === 2 ? 2 : 1,
+    ...bookVenueOf(d, s),
     factory: lower(s.factory),
     vault: lower(s.vault),
     router: lower(s.router),
@@ -395,17 +428,15 @@ export function networkConstants(d: DeploymentFile): NetworkConstants {
       distributorFunder: lower(p.distributorFunder),
       timelockProposer: lower(p.timelockProposer),
     },
-    kuru: {
-      router: d.external.kuru.router.toLowerCase(),
-      marginAccount: d.external.kuru.marginAccount.toLowerCase(),
-    },
+    // The primary stack's, like `contracts` above: every other stack has its own in `stacks`.
+    kuru: bookVenueOf(d, h).kuru,
     kuruV2: d.external.kuruV2
       ? {
           accountCore: d.external.kuruV2.accountCore.toLowerCase(),
           spotRouter: d.external.kuruV2.spotRouter.toLowerCase(),
         }
       : null,
-    stacks: isDeployed(d) ? stacksOf(d).map(stackConstants) : [],
+    stacks: isDeployed(d) ? stacksOf(d).map((stack) => stackConstants(d, stack)) : [],
     perps: invert(d.external.perpl.perps, false),
     chainlinkFeeds: invert(d.external.chainlink, true),
     pythIds: invert(d.external.pyth.ids, true),

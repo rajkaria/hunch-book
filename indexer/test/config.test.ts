@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  bookVenueOf,
   contractEvents,
   eventSignature,
   INDEXER_DIR,
@@ -17,6 +18,10 @@ import {
 
 const deployment = (network: string) =>
   JSON.parse(readFileSync(join(INDEXER_DIR, "..", "deployments", `${network}.json`), "utf8"));
+
+/** Each address once, the first spelling kept: stacks can share a contract (testnet: the resolvers). */
+const distinct = (all: string[]): string[] =>
+  all.filter((a, i) => all.findIndex((b) => b.toLowerCase() === a.toLowerCase()) === i);
 
 /** The addresses a contract has in a rendered config's chain section, in order (one line or a list). */
 function addressesOf(config: string, name: string): string[] {
@@ -57,9 +62,10 @@ describe("generated config", () => {
       expect(addressesOf(config, name)).toEqual([d.hunchBook[key], ...extra.map((s) => s[key])]);
     }
     expect(addressesOf(config, "Usdc")).toEqual([d.hunchBook.usdc]);
-    // Template 7's resolver and every periphery contract, each under its own name, on every stack.
+    // Template 7's resolver and every periphery contract, each under its own name, on every stack,
+    // once each (the `hunch` stack shares the primary stack's snapshot resolver).
     expect(addressesOf(config, "SnapshotResolver")).toEqual(
-      [d.hunchBook, ...extra].flatMap((s) => (s.resolvers?.snapshot ? [s.resolvers.snapshot] : [])),
+      distinct([d.hunchBook, ...extra].flatMap((s) => (s.resolvers?.snapshot ? [s.resolvers.snapshot] : []))),
     );
     for (const [name, key] of [
       ["AutoRedeemer", "autoRedeemer"],
@@ -70,7 +76,7 @@ describe("generated config", () => {
       ["TemplateTimelock", "templateTimelock"],
     ] as const) {
       const all = [d.hunchBook, ...extra].flatMap((s) => (s.periphery?.[key] ? [s.periphery[key]] : []));
-      expect(addressesOf(config, name)).toEqual(all);
+      expect(addressesOf(config, name)).toEqual(distinct(all));
     }
     // Lending adapter factories, then Kuru v2 feed factories.
     const stacks = [d.hunchBook, ...extra];
@@ -81,6 +87,98 @@ describe("generated config", () => {
     expect(config).toContain(`url: \${ENVIO_MONAD_TESTNET_RPC:-${d.rpc}}`);
     expect(config).toContain(`for: \${ENVIO_RPC_MODE:-fallback}`);
     expect(config).toContain("interval_ceiling: 100");
+    // Books are found from each graduator's events, never by reading Kuru's contracts or a venue's.
+    const venues = extra.flatMap((s) => (s.venue ? [s.venue.bookFactory, s.venue.marginAccount] : []));
+    for (const a of [d.external.kuru.router, d.external.kuru.marginAccount, ...venues]) {
+      expect(config.toLowerCase()).not.toContain(a.toLowerCase());
+    }
+  });
+
+  it("gives each testnet stack its own book venue: Kuru's, or its own order book's, never both", () => {
+    const d = deployment("monad-testnet");
+    const n = networkConstants(d);
+    const kuru = {
+      router: d.external.kuru.router.toLowerCase(),
+      marginAccount: d.external.kuru.marginAccount.toLowerCase(),
+    };
+    // Every stack in the deployments file, the primary first, each with its venue.
+    expect(n.stacks.map((s) => s.name)).toEqual(["primary", ...Object.keys(d.stacks ?? {})]);
+    for (const s of n.stacks) {
+      const section = s.primary ? d.hunchBook : d.stacks[s.name];
+      if (section.venue?.kind === "hunch") {
+        expect(s).toMatchObject({
+          venue: "hunch",
+          kuruVersion: 1,
+          kuru: {
+            router: section.venue.bookFactory.toLowerCase(),
+            marginAccount: section.venue.marginAccount.toLowerCase(),
+          },
+        });
+        expect(s.kuru.router).not.toBe(kuru.router);
+        expect(s.kuru.marginAccount).not.toBe(kuru.marginAccount);
+      } else {
+        expect(s.venue).toBe("kuru");
+        expect(s.kuru).toEqual(kuru);
+      }
+    }
+    // The testnet `hunch` stack is the one on Hunch Book's own order book.
+    const hunch = n.stacks.find((s) => s.name === "hunch");
+    if (d.stacks?.hunch) expect(hunch?.venue).toBe("hunch");
+    // The top-level `kuru` is the primary stack's, like `contracts`.
+    expect(n.kuru).toEqual(n.stacks[0]?.kuru);
+  });
+
+  it("reads a Hunch venue's book factory and margin account in Kuru's place, wherever the stack is", () => {
+    const testnet = deployment("monad-testnet");
+    const a = (k: number) => `0x${k.toString(16).padStart(40, "0")}`;
+    const venue = {
+      kind: "hunch",
+      bookFactory: a(0xe1),
+      marginAccount: a(0xe2),
+      bookImplementation: a(0xe3),
+    };
+    expect(bookVenueOf(testnet, { venue })).toEqual({
+      venue: "hunch",
+      kuru: { router: a(0xe1), marginAccount: a(0xe2) },
+    });
+    // No venue, or one of another kind, is Kuru (as packages/shared's venueOf reads it).
+    const kuru = {
+      venue: "kuru",
+      kuru: {
+        router: testnet.external.kuru.router.toLowerCase(),
+        marginAccount: testnet.external.kuru.marginAccount.toLowerCase(),
+      },
+    };
+    expect(bookVenueOf(testnet, {})).toEqual(kuru);
+    expect(bookVenueOf(testnet, { venue: { kind: "other", bookFactory: a(0xe1) } })).toEqual(kuru);
+    // A Hunch venue without its contracts is a broken deployments file.
+    expect(() => bookVenueOf(testnet, { venue: { kind: "hunch", bookFactory: a(0xe1) } })).toThrow(
+      /venue.bookFactory and venue.marginAccount/,
+    );
+
+    // A primary stack on a Hunch venue (Deploy.s.sol with VENUE=hunch): the top-level `kuru` is its own.
+    const mainnet = deployment("monad-mainnet");
+    const deployed = {
+      ...mainnet,
+      hunchBook: {
+        factory: a(0xf1),
+        vault: a(0xf2),
+        router: a(0xf3),
+        graduator: a(0xf4),
+        deployBlock: 123,
+        venue,
+      },
+    };
+    const n = networkConstants(deployed);
+    expect(n.kuru).toEqual({ router: a(0xe1), marginAccount: a(0xe2) });
+    expect(n.stacks).toHaveLength(1);
+    expect(n.stacks[0]).toMatchObject({ name: "primary", venue: "hunch", kuruVersion: 1 });
+    // Its books are still found from its graduator; nothing of Kuru's is read.
+    const config = renderConfig(deployed, "ENVIO_MONAD_MAINNET_RPC");
+    expect(config).toContain(`      - name: Graduator\n        address: "${a(0xf4)}"\n`);
+    for (const k of [mainnet.external.kuru.router, mainnet.external.kuru.marginAccount, a(0xe1), a(0xe2)]) {
+      expect(config.toLowerCase()).not.toContain(k.toLowerCase());
+    }
   });
 
   it("leaves mainnet out until it has addresses, then renders it the same way", () => {
@@ -214,9 +312,9 @@ describe("generated config", () => {
     expect(config).toContain(`start_block: ${testnet.hunchBook.deployBlock}\n`);
 
     const n = networkConstants(both);
-    expect(n.stacks.map((s) => [s.name, s.primary, s.kuruVersion])).toEqual([
-      ["primary", true, 1],
-      ["kuruV2", false, 2],
+    expect(n.stacks.map((s) => [s.name, s.primary, s.kuruVersion, s.venue])).toEqual([
+      ["primary", true, 1, "kuru"],
+      ["kuruV2", false, 2, "kuru"],
     ]);
     expect(n.stacks[1]).toMatchObject({
       factory: v2.factory,

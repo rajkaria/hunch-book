@@ -111,6 +111,11 @@
         "name": "primary",
         "primary": true,
         "kuruVersion": 1,
+        "venue": "kuru",
+        "kuru": {
+          "router": "0x7efbe105ca7415de98f96622173458ac1c054630",
+          "marginAccount": "0xd029c2d98ff85d8f64799017fe00a59b1159ce02"
+        },
         "factory": "0x2c30da53f8c384d6ed6603e3138a98fd15e4928a",
         "vault": "0x81b04b3567dcadae6a859394248c47ddc403ba37",
         "router": "0xb9d22c84c5e2f4329eeee1b52ad753df3268c2a6",
@@ -143,6 +148,11 @@
         "name": "kuruV2",
         "primary": false,
         "kuruVersion": 2,
+        "venue": "kuru",
+        "kuru": {
+          "router": "0x7efbe105ca7415de98f96622173458ac1c054630",
+          "marginAccount": "0xd029c2d98ff85d8f64799017fe00a59b1159ce02"
+        },
         "factory": "0xd6994dd479d845f1ea039b6322fbe00c12ea125a",
         "vault": "0x1749333eec149a75133f19d0fc6ef4cfc7f7e481",
         "router": "0x5b08c1344728bbac1851a75dbc8b9db7d1c81556",
@@ -169,6 +179,43 @@
           "templateTimelock": "0x7f6150a5f7117ba929ff3bd1a26ec5a76931b4a5",
           "distributorFunder": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
           "timelockProposer": "0xd183a7daecf3d539683f37e1111558e3dfc210a8"
+        }
+      },
+      {
+        "name": "hunch",
+        "primary": false,
+        "kuruVersion": 1,
+        "venue": "hunch",
+        "kuru": {
+          "router": "0x0ddf74540b6720b348483084f749907b2c3f46c5",
+          "marginAccount": "0x6ddac7a754a2a4bf2ff688b8f08eaa8adc42ee1c"
+        },
+        "factory": "0x846cd400b832203befe5902ef43dadc969985af2",
+        "vault": "0x68b530302b012f22e5f00ce0c6c8cf3a189fee86",
+        "router": "0x3dede22033c755bd4be44b4e42e889785bbe4cc3",
+        "graduator": "0xd23cc8dd4909ae29c51b155d6098dd17539bf3cc",
+        "guardian": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+        "feeRecipient": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+        "resolvers": {
+          "chainlinkTouch": "0x34ac3f430c8f49735987efe88634ef8d9c295727",
+          "marketOutcome": "0xfd6c68f92ab6a381e6b1a3b6581ebf9035d3c5e5",
+          "perplFunding": "0x4ec0077e30ea8b626c5aa087c586e60542150951",
+          "perplFundingSpike": "0x3459d8026dd8e7b0f3be2b1af21050013b9bca64",
+          "priceAtTime": "0x5582e5aeb12e15eada88402e2903bc628cc28b3c",
+          "priceRange": "0xba86bcf0915c7e79c7d8a7e170ca76f1d82f8694",
+          "snapshot": "0x1e62c389d7c035acfdd971c7e6b7157c1d34d632"
+        },
+        "periphery": {
+          "autoRedeemer": null,
+          "conditionalOrders": null,
+          "referralRegistry": null,
+          "merkleDistributor": null,
+          "impliedProbabilityOracle": null,
+          "priceAdapterFactory": null,
+          "kuruFeedFactory": null,
+          "templateTimelock": null,
+          "distributorFunder": null,
+          "timelockProposer": null
         }
       }
     ],

@@ -46,7 +46,10 @@ export interface StackAddr {
   vault: string;
   router: string;
   graduator: string;
-  /** Where Kuru keeps traders' tokens: v1's margin account, v2's AccountCore. */
+  /**
+   * Where the books keep traders' tokens: Kuru v1's margin account, v2's AccountCore, or a Hunch venue's
+   * HunchMarginAccount.
+   */
   custody: string;
 }
 
@@ -73,6 +76,20 @@ export const KURU_V2: StackAddr | undefined =
         custody: n.kuruV2.accountCore,
       }
     : undefined;
+
+const hunchStack = n.stacks.find((s) => s.venue === "hunch");
+
+/** The testnet stack on Hunch Book's own order book (`stacks.hunch`), once the deployments file has it. */
+export const HUNCH: StackAddr | undefined = hunchStack
+  ? {
+      name: hunchStack.name,
+      factory: must(hunchStack.factory),
+      vault: must(hunchStack.vault),
+      router: must(hunchStack.router),
+      graduator: must(hunchStack.graduator),
+      custody: hunchStack.kuru.marginAccount,
+    }
+  : undefined;
 
 /** The block the periphery was deployed at on testnet: tests emit periphery logs after it. */
 export const PERIPHERY_BLOCK = n.periphery.deployBlock ?? 0;

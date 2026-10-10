@@ -1,6 +1,6 @@
 // HunchBookFactory: templates and market creation, on every stack's factory.
 import { indexer } from "envio";
-import { addr, networkOf, scopedId } from "../lib/network.js";
+import { addr, networkOf, scopedId, venueOf } from "../lib/network.js";
 import { marketTerms, parlayDetails, snapshotId } from "../lib/params.js";
 import { emptyMarket, Unit } from "../lib/store.js";
 
@@ -58,6 +58,7 @@ indexer.onEvent({ contract: "HunchBookFactory", event: "MarketCreated" }, async 
   market.number = stack.marketsCreated;
   market.stack = stackConstants.name;
   market.kuruVersion = stackConstants.kuruVersion;
+  market.venue = venueOf(stackConstants);
   market.template_id = scopedId(u.m.chainId, u.m.src, templateId.toString());
   market.templateId = templateId;
   market.key = key;

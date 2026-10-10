@@ -1,4 +1,7 @@
-// Kuru order books of graduated markets (registered from the Graduator's events in graduator.ts).
+// Order books of graduated markets (registered from the Graduator's events in graduator.ts): Kuru's,
+// and Hunch Book's own (contracts/src/venue/HunchOrderBook.sol), which emits Kuru v1's OrderCreated,
+// Trade and OrdersCanceled with the same layouts and is read as a KuruOrderBook. Each fill carries its
+// book's venue.
 //
 // Kuru v1's Trade event, as read on Monad testnet (contracts/script/TradeTestnet.s.sol):
 // - isBuy is the taker's side: true when the taker bought YES from a resting ask.
@@ -62,6 +65,7 @@ async function recordFill(u: Unit, book: Mut<Book>, f: Fill): Promise<void> {
     market_id: marketId,
     book_id: book.id,
     kuruVersion: f.kuruVersion,
+    venue: book.venue,
     orderId: f.orderId,
     maker,
     makerKnown,

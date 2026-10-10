@@ -2,15 +2,38 @@ import type { Enum } from "envio";
 import generated from "../networks.generated.json" with { type: "json" };
 
 /**
+ * Where a stack's books are: "kuru" (Kuru's own order books) or "hunch" (Hunch Book's own onchain order
+ * book, contracts/src/venue/, which speaks Kuru v1's interface). The same words as packages/shared.
+ */
+export type Venue = "kuru" | "hunch";
+
+/** Kuru v1's Router and MarginAccount, or the contracts that stand in for them on a Hunch venue. */
+export interface BookVenueContracts {
+  /** Kuru's Router, or the stack's HunchOrderBookFactory (it emits the Router's MarketRegistered). */
+  router: string;
+  /** Kuru's MarginAccount, or the stack's HunchMarginAccount. Holds every token on the books. */
+  marginAccount: string;
+}
+
+/**
  * One stack of Hunch Book contracts (docs/PROTOCOL.md section 8.1): the primary one (`hunchBook` in the
- * deployments file) or an extra one under `stacks` (testnet: `kuruV2`). Addresses are lowercase.
+ * deployments file) or an extra one under `stacks` (testnet: `kuruV2`, `hunch`). Addresses are lowercase.
  */
 export interface StackConstants {
   /** "primary", or the stack's key under `stacks`. */
   name: string;
   primary: boolean;
-  /** The Kuru version its books are on: 1 (anyone creates a book) or 2 (Kuru creates them). */
+  /**
+   * The Kuru version its books speak: 1 (anyone creates a book; Hunch Book's own books are v1 too) or 2
+   * (Kuru creates them).
+   */
   kuruVersion: 1 | 2;
+  venue: Venue;
+  /**
+   * The stack's book venue in Kuru v1's terms: Kuru's Router and MarginAccount on a Kuru stack, its own
+   * HunchOrderBookFactory and HunchMarginAccount on a Hunch venue (never Kuru's).
+   */
+  kuru: BookVenueContracts;
   factory: string | null;
   vault: string | null;
   router: string | null;
@@ -73,7 +96,11 @@ export interface NetworkConstants {
     distributorFunder: string | null;
     timelockProposer: string | null;
   };
-  kuru: { router: string; marginAccount: string };
+  /**
+   * The primary stack's book venue, like `contracts` above: Kuru's Router and MarginAccount, or its own
+   * order book's on a Hunch venue. Every stack's own is in `stacks`.
+   */
+  kuru: BookVenueContracts;
   /** Kuru v2's AccountCore and SpotRouter, once the deployments file names them. */
   kuruV2: { accountCore: string; spotRouter: string } | null;
   /**
@@ -127,6 +154,8 @@ function primaryOf(n: NetworkConstants): StackConstants {
       name: "primary",
       primary: true,
       kuruVersion: 1,
+      venue: "kuru",
+      kuru: n.kuru,
       ...n.contracts,
       guardian: n.ours.guardian,
       feeRecipient: n.ours.feeRecipient,
@@ -141,7 +170,11 @@ function primaryOf(n: NetworkConstants): StackConstants {
   );
 }
 
-/** Every contract address of a stack (not its wallets), for finding which stack a contract belongs to. */
+/**
+ * Every contract address of a stack (not its wallets), for finding which stack a contract belongs to. A
+ * Hunch venue's book factory and margin account are the stack's own; Kuru's are not ours, and every Kuru
+ * stack shares them.
+ */
 function contractsOf(s: StackConstants): (string | null)[] {
   const { distributorFunder: _funder, timelockProposer: _proposer, ...contracts } = s.periphery;
   return [
@@ -151,7 +184,22 @@ function contractsOf(s: StackConstants): (string | null)[] {
     s.graduator,
     ...Object.values(s.resolvers),
     ...Object.values(contracts),
+    ...(s.venue === "hunch" ? [s.kuru.router, s.kuru.marginAccount] : []),
   ];
+}
+
+/** The schema's Venue for a stack's venue. */
+export function venueOf(s: Pick<StackConstants, "venue">): Enum<"Venue"> {
+  return s.venue === "hunch" ? "Hunch" : "Kuru";
+}
+
+/**
+ * How the books a graduator registers are read: its stack's Kuru version and venue (Kuru v1 for an
+ * unknown graduator). A Hunch venue's books are Kuru v1 books to the indexer: same events, same layouts.
+ */
+export function booksOf(chainId: number, graduator: string): { kuruVersion: 1 | 2; venue: Enum<"Venue"> } {
+  const stack = stackOfContract(chainId, graduator);
+  return { kuruVersion: stack?.kuruVersion ?? 1, venue: stack ? venueOf(stack) : "Kuru" };
 }
 
 /**

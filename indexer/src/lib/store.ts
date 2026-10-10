@@ -16,7 +16,7 @@ import type {
   Wallet,
 } from "envio";
 import { average, impliedChanceBps, marketSolvencyMargin, shareBps, utcDay } from "./math.js";
-import { addr, type StackConstants, stackNamed, stackOfContract, staticRoleOf } from "./network.js";
+import { addr, type StackConstants, stackNamed, stackOfContract, staticRoleOf, venueOf } from "./network.js";
 
 /** Entities read from the context are frozen; handlers work on mutable copies and write them once. */
 export type Mut<T> = { -readonly [K in keyof T]: T[K] };
@@ -186,6 +186,7 @@ export class Unit {
       name: c.name,
       primary: c.primary,
       kuruVersion: c.kuruVersion,
+      venue: venueOf(c),
       factory: c.factory ?? "",
       marketsCreated: 0,
     }));
@@ -536,11 +537,16 @@ export function emptyStaker(market: string, wallet: string, m: Pick<EventMeta, "
 }
 
 /** A market skeleton. MarketRegistered (vault) creates it; MarketCreated (factory) fills in the terms. */
-/** A Kuru book's record, from the Graduator's event (or the market's Graduated, if that never came). */
+/** A book's record, from the Graduator's event (or the market's Graduated, if that never came). */
 export function emptyBook(
   id: string,
   market: string,
-  b: { source: Enum<"BookSource">; registrar: string | undefined; kuruVersion: number },
+  b: {
+    source: Enum<"BookSource">;
+    registrar: string | undefined;
+    kuruVersion: number;
+    venue: Enum<"Venue">;
+  },
   m: Pick<EventMeta, "timestamp" | "block" | "tx">,
 ): Book {
   return {
@@ -549,6 +555,7 @@ export function emptyBook(
     source: b.source,
     registrar: b.registrar ? addr(b.registrar) : undefined,
     kuruVersion: b.kuruVersion,
+    venue: b.venue,
     fillCount: 0,
     fillCountOurMaker: 0,
     fillCountMakerUnknown: 0,
@@ -575,6 +582,7 @@ export function emptyMarket(
     number: 0,
     stack: stack.name,
     kuruVersion: stack.kuruVersion,
+    venue: venueOf(stack),
     template_id: "",
     templateId: 0n,
     key: "",

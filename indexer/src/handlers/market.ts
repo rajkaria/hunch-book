@@ -99,7 +99,7 @@ indexer.onEvent({ contract: "Market", event: "Graduated" }, async ({ event, cont
     emptyBook(
       book,
       market.id,
-      { source: "Created", registrar: undefined, kuruVersion: market.kuruVersion },
+      { source: "Created", registrar: undefined, kuruVersion: market.kuruVersion, venue: market.venue },
       u.m,
     ),
   );

@@ -10,24 +10,30 @@ import {PerplFundingParams} from "../src/interfaces/ITemplates.sol";
 import {IPerplExchange} from "../src/interfaces/external/IPerplExchange.sol";
 
 /// Testnet only. Creates a Perpl funding market (template 1) and fills its pool from Hunch Book's
-/// own wallets so it meets the graduation rule, then graduates it into a new Kuru book and pushes
-/// every staker's tokens. This activity is ours and is labelled as ours wherever it is counted:
-/// the creator is the deployer and the ten stakers are addresses derived from the deployer key
-/// (label "hunch-book testnet seed"), so anyone can see they are one party.
+/// own wallets so it meets the graduation rule, then graduates it (on a Hunch-venue stack the
+/// Graduator creates the book in that same transaction) and pushes every staker's tokens. This
+/// activity is ours and is labelled as ours wherever it is counted: the creator is the deployer and
+/// the stakers are addresses derived from the deployer key (label "hunch-book testnet seed"), so
+/// anyone can see they are one party.
 ///
-///   DEPLOYER_PRIVATE_KEY=... PERP_ID=64 THRESHOLD=1500 forge script script/SeedTestnetMarket.s.sol \
+///   DEPLOYER_PRIVATE_KEY=... STACK=hunch PERP_ID=64 THRESHOLD=0 forge script script/SeedTestnetMarket.s.sol \
 ///     --rpc-url $MONAD_TESTNET_RPC --broadcast --slow --gas-estimate-multiplier 110
 ///
-/// Env: PERP_ID (default 64, MON), THRESHOLD (raw Perpl units; default 1500), LOCK_IN_BLOCKS
-/// (default 200,000, about 17 hours), INTERVALS (default 24 funding intervals in the window).
+/// Env: STACK (default the primary stack), PERP_ID (default 64, MON), THRESHOLD (raw Perpl units,
+/// may be negative; default 1500; 0 asks "will longs pay shorts on net"), LOCK_IN_BLOCKS (default
+/// 200,000, about 17 hours), INTERVALS (default 24 funding intervals in the window), CREATOR_STAKE (USDC,
+/// default 50, on YES), YES_STAKERS / NO_STAKERS (default 6 / 4) and YES_EACH / NO_EACH (USDC, default
+/// 60 / 70).
 contract SeedTestnetMarket is Script {
     uint32 internal constant TEMPLATE_PERPL_FUNDING = 1;
 
     function run() external {
         require(block.chainid == 10_143, "testnet only");
         string memory json = vm.readFile(string.concat(vm.projectRoot(), "/../deployments/monad-testnet.json"));
-        HunchBookFactory factory = HunchBookFactory(vm.parseJsonAddress(json, ".hunchBook.factory"));
-        TestUSDC usdc = TestUSDC(vm.parseJsonAddress(json, ".hunchBook.usdc"));
+        string memory stack = vm.envOr("STACK", string(""));
+        string memory path = bytes(stack).length == 0 ? ".hunchBook" : string.concat(".stacks.", stack);
+        HunchBookFactory factory = HunchBookFactory(vm.parseJsonAddress(json, string.concat(path, ".factory")));
+        TestUSDC usdc = TestUSDC(vm.parseJsonAddress(json, string.concat(path, ".usdc")));
         IPerplExchange perpl = IPerplExchange(vm.parseJsonAddress(json, ".external.perpl.exchange"));
 
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -36,23 +42,27 @@ contract SeedTestnetMarket is Script {
         p.perpId = perpId;
         p.startBlock = uint64(block.number + vm.envOr("LOCK_IN_BLOCKS", uint256(200_000)));
         p.endBlock = p.startBlock + uint64(vm.envOr("INTERVALS", uint256(24)) * perpl.getFundingInterval());
-        p.threshold = int256(vm.envOr("THRESHOLD", uint256(1500)));
+        p.threshold = vm.envOr("THRESHOLD", int256(1500));
         p.expectedScalingExp = uint8(perpl.getPerpetualInfoV2(perpId).fundingSumScalingExp);
         bytes memory params = abi.encode(p);
 
-        address[] memory stakers = new address[](11);
+        uint256 yesStakers = vm.envOr("YES_STAKERS", uint256(6));
+        uint256 n = 1 + yesStakers + vm.envOr("NO_STAKERS", uint256(4));
+        address[] memory stakers = new address[](n);
         stakers[0] = vm.addr(pk);
-        for (uint256 i = 1; i < 11; ++i) {
+        for (uint256 i = 1; i < n; ++i) {
             stakers[i] = vm.addr(uint256(keccak256(abi.encode("hunch-book testnet seed", pk, i))) % (2 ** 255));
         }
+        uint256 yesEach = vm.envOr("YES_EACH", uint256(60)) * 1e6;
+        uint256 noEach = vm.envOr("NO_EACH", uint256(70)) * 1e6;
+        uint256 creatorStake = vm.envOr("CREATOR_STAKE", uint256(50)) * 1e6;
 
         vm.startBroadcast(pk);
-        usdc.mint(stakers[0], 1000e6);
+        usdc.mint(stakers[0], creatorStake + yesStakers * yesEach + (n - 1 - yesStakers) * noEach);
         usdc.approve(factory.vault(), type(uint256).max);
-        Market m = Market(payable(factory.createMarket(TEMPLATE_PERPL_FUNDING, params, Side.Yes, 50e6)));
-        // Six YES at 60 and four NO at 70: 410 YES / 280 NO, a 59% implied chance.
-        for (uint256 i = 1; i < 11; ++i) {
-            m.stakeFor(stakers[i], i <= 6 ? Side.Yes : Side.No, i <= 6 ? 60e6 : 70e6);
+        Market m = Market(payable(factory.createMarket(TEMPLATE_PERPL_FUNDING, params, Side.Yes, creatorStake)));
+        for (uint256 i = 1; i < n; ++i) {
+            m.stakeFor(stakers[i], i <= yesStakers ? Side.Yes : Side.No, i <= yesStakers ? yesEach : noEach);
         }
         m.graduate();
         m.claimTokensFor(stakers);
