@@ -26,7 +26,8 @@ import {
 } from "viem";
 
 // Every custom error a Hunch Book call can revert with, decoded by name and turned into one plain
-// sentence. A router trade can revert in the router, the vault, the market, Kuru's book or a token,
+// sentence. A router trade can revert in the router, the vault, the market, the book (Kuru's, or Hunch
+// Book's own order book, which uses Kuru v1's error names) or a token,
 // and a settlement in any of seven resolvers, so every simulation carries all of them (KNOWN_ERRORS_ABI).
 
 /** Errors defined in the contracts but not in the interfaces the shared ABIs are generated from. */
@@ -199,7 +200,7 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // graduation and claims
   GraduationPaused: "Graduation is paused.",
   GraduationRuleNotMet: "The pool does not meet its graduation rule yet.",
-  BookNotReady: "This market's Kuru book is not ready, so it cannot graduate yet.",
+  BookNotReady: "This market's order book is not ready, so it cannot graduate yet.",
   NothingToClaim: "There is nothing to claim.",
   NotGraduated: "The pool has not graduated, so there are no tokens to claim.",
   AlreadyGraduated: "This pool graduated: its stakers hold tokens instead of a pool claim.",
@@ -244,7 +245,8 @@ export const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   InsufficientLiquidity: "The book does not hold enough orders for that amount. Try a smaller amount.",
   UnknownMarket: "This address is not a Hunch Book market.",
   AmountTooLarge: "That amount is too large.",
-  MarketStateError: "Kuru has paused this book, so it cannot trade right now.",
+  MarketStateError:
+    "This book is not taking orders right now: its market is not trading (before graduation or after close), or Kuru paused it.",
   SizeError: "That amount is below the book's minimum order size.",
   PriceError: "The book refused the price.",
   TickSizeError: "That price is not on the book's tick grid.",

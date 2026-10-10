@@ -9,13 +9,24 @@ import {
 } from "@hunch-book/shared";
 import type { Address } from "viem";
 import { beforeEach, describe, expect, it } from "vitest";
-import { getMarket, getOrderBook, listMarkets, mintSets, quote, stake } from "../src/index.js";
+import {
+  createMarket,
+  getMarket,
+  getOrderBook,
+  listMarkets,
+  marketVenue,
+  mintSets,
+  quote,
+  stake,
+} from "../src/index.js";
 import { FakeChain } from "./fake-chain.js";
 import {
   addr,
   blockWindow,
+  FACTORY,
   type FakeMarket,
   Ledger,
+  registerBook,
   registerFactory,
   registerMarket,
   registerResolver,
@@ -159,5 +170,142 @@ describe("several stacks", () => {
     chain.register(VAULT2, collateralVaultAbi, { mintSets: () => undefined });
     await mintSets(ctx, addr(0x2002), 1_000_000n);
     expect(chain.sent.at(-1)).toMatchObject({ to: VAULT2, functionName: "mintSets" });
+  });
+});
+
+// Testnet's third stack: `hunch`, on Hunch Book's own order book. Its books speak Kuru v1's interface, so
+// the SDK reads and quotes them as v1 books; each market carries the venue so copy can name it.
+const FACTORY3 = addr(0xf5);
+const VAULT3 = addr(0xf6);
+const BOOK3 = addr(0xb3);
+const YES3 = addr(0x6001);
+const NO3 = addr(0x6002);
+const VENUE = {
+  kind: "hunch" as const,
+  bookFactory: addr(0xf7),
+  marginAccount: addr(0xf8),
+  bookImplementation: addr(0xf9),
+};
+
+describe("a stack on Hunch Book's own order book", () => {
+  const withHunch: Deployment = {
+    ...deployment,
+    stacks: {
+      ...deployment.stacks,
+      hunch: {
+        factory: FACTORY3,
+        vault: VAULT3,
+        router: addr(0xfa),
+        usdc: USDC,
+        kuruVersion: 1,
+        venue: VENUE,
+      },
+    },
+    defaultStack: "hunch",
+  };
+  let v3: FakeMarket[];
+
+  beforeEach(() => {
+    v3 = [
+      market(1, 0x3001, {
+        phase: Phase.Graduated,
+        graduated: true,
+        book: BOOK3,
+        tokens: { yes: YES3, no: NO3 },
+      }),
+    ];
+    chain.register(FACTORY3, hunchBookFactoryAbi, {
+      marketCount: () => BigInt(v3.length),
+      marketAt: ([i]) => v3[Number(i as bigint)]?.address as Address,
+      isMarket: ([a]) => v3.some((m) => m.address.toLowerCase() === (a as string).toLowerCase()),
+      marketOf: () => "0x0000000000000000000000000000000000000000",
+      createMarket: () => addr(0x3999),
+      vault: () => VAULT3,
+      usdc: () => USDC,
+    });
+    for (const m of v3) {
+      registerMarket(chain, m);
+      chain.register(m.address, marketAbi, { factory: () => FACTORY3 });
+    }
+    registerBook(chain, BOOK3, YES3, {
+      bids: [{ price: 440_000n, size: 50_000_000n }],
+      asks: [{ price: 460_000n, size: 30_000_000n }],
+    });
+    registerToken(chain, YES3, ledger);
+    registerToken(chain, NO3, ledger);
+  });
+
+  it("lists its markets tagged with the stack and the venue; Kuru markets keep theirs", async () => {
+    const page = await listMarkets(chain.context({ deployment: withHunch }), { limit: 10 });
+    expect(page.total).toBe(5);
+    expect(page.markets.map((m) => [m.address, m.stack, m.kuruVersion, m.venue])).toEqual([
+      [addr(0x1002), undefined, undefined, undefined],
+      [addr(0x1001), undefined, undefined, undefined],
+      [addr(0x2002), "kuruV2", 2, "kuru"],
+      [addr(0x2001), "kuruV2", 2, "kuru"],
+      [addr(0x3001), "hunch", 1, "hunch"],
+    ]);
+    expect(page.markets.map((m) => marketVenue(m).label)).toEqual([
+      "Kuru",
+      "Kuru",
+      "Kuru v2",
+      "Kuru v2",
+      "Hunch order book",
+    ]);
+  });
+
+  it("reads a Hunch order book market's prices and book as Kuru v1's", async () => {
+    const ctx = chain.context({ deployment: withHunch });
+    const m = await getMarket(ctx, addr(0x3001));
+    expect(m).toMatchObject({
+      stack: "hunch",
+      kuruVersion: 1,
+      venue: "hunch",
+      prices: { bidE6: 440_000n, askE6: 460_000n },
+    });
+    expect(marketVenue(m as NonNullable<typeof m>)).toEqual({ venue: "hunch", label: "Hunch order book" });
+    const book = await getOrderBook(ctx, addr(0x3001));
+    expect(book.book).toBe(BOOK3);
+    expect(book.midE6).toBe(450_000n);
+    expect(book.params.takerFeeBps).toBe(0n);
+    const q = await quote(ctx, addr(0x3001), "buyYes", 4_600_000n);
+    expect(q.tokens).toBe(10_000_000n); // 10 YES at 0.46, no fee
+  });
+
+  it("stakes through the hunch stack's own vault", async () => {
+    const ctx = chain.context({ deployment: withHunch, key: KEY });
+    const me = ctx.walletClient?.account?.address as Address;
+    ledger.set(USDC, me, 1_000_000_000n);
+    v3.push(market(2, 0x3002));
+    registerMarket(chain, v3[1] as FakeMarket);
+    chain.register(addr(0x3002), marketAbi, { factory: () => FACTORY3 });
+    await stake(ctx, addr(0x3002), "no", 5_000_000n);
+    expect(chain.sent[0]).toMatchObject({ to: USDC, functionName: "approve", args: [VAULT3, 5_000_000n] });
+  });
+
+  it("creates new markets on the default stack, and on another stack only when asked", async () => {
+    const ctx = chain.context({ deployment: withHunch, key: KEY });
+    const me = ctx.walletClient?.account?.address as Address;
+    ledger.set(USDC, me, 1_000_000_000n);
+    const input = { templateId: 1, params: params(0x3100n), side: "yes" as const, firstStake: 5_000_000n };
+    const created = await createMarket(ctx, input);
+    expect(created.market).toBe(addr(0x3999));
+    expect(chain.sent.at(-1)).toMatchObject({ to: FACTORY3, functionName: "createMarket" });
+    // The first stake is approved to the hunch stack's vault, never the primary one's.
+    expect(ledger.allowance(USDC, me, VAULT3)).toBeGreaterThanOrEqual(5_000_000n);
+    const approvals = chain.sent.filter((c) => c.functionName === "approve").map((c) => c.args[0]);
+    expect(approvals).not.toContain(VAULT);
+    // Without defaultStack, the primary stack, as before.
+    await createMarket(chain.context({ deployment, key: KEY }), input);
+    expect(chain.sent.at(-1)).toMatchObject({ to: FACTORY, functionName: "createMarket" });
+  });
+
+  it("tags a primary stack that is itself on a Hunch venue (a network deployed with VENUE=hunch)", async () => {
+    const primaryHunch: Deployment = {
+      ...testnet,
+      hunchBook: { ...testnet.hunchBook, venue: VENUE },
+    };
+    const m = await getMarket(chain.context({ deployment: primaryHunch }), addr(0x1001));
+    expect(m).toMatchObject({ stack: "primary", kuruVersion: 1, venue: "hunch" });
   });
 });

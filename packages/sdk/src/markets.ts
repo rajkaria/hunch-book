@@ -15,6 +15,8 @@ import {
   snapshotResolverAbi,
   stacksOf,
   templateLabel,
+  type Venue,
+  venueLabel,
   type Window,
 } from "@hunch-book/shared";
 import { type Abi, type Address, erc20Abi, getAddress, type Hex, isAddressEqual, zeroAddress } from "viem";
@@ -24,8 +26,9 @@ import { type DecodedParams, decodeMarketParams, marketAsset } from "./params.js
 import { snapshotAsset } from "./settlement/snapshot.js";
 
 // Reads of markets from the chain: the factory's list, one market in full (decoded params, the
-// resolver's rule sentence, phase, pool totals, the Kuru book's best prices and the implied chance),
-// and a wallet's position. Each market costs one Multicall3 pass plus one for the extras.
+// resolver's rule sentence, phase, pool totals, the book's best prices and the implied chance), and a
+// wallet's position. Each market costs one Multicall3 pass plus one for the extras. A market's book is
+// on its stack's venue: Kuru (v1 or v2), or Hunch Book's own order book, which speaks Kuru v1's interface.
 
 export type OutcomeLabel = "unresolved" | "yes" | "no";
 export type PhaseName = "pool" | "pool-locked" | "trading" | "closed" | "settled" | "voided";
@@ -87,7 +90,7 @@ export interface MarketInfo {
   pool: { yes: bigint; no: bigint; total: bigint; stakers: number };
   window: Window;
   tokens: { yes: Address; no: Address };
-  /** The Kuru YES/USDC book, or null before one is set. */
+  /** The YES/USDC order book (Kuru's, or Hunch Book's own: see `venue`), or null before one is set. */
   book: Address | null;
   resolver: Address;
   creator: Address;
@@ -109,11 +112,23 @@ export interface MarketInfo {
   /** Template 7: what the snapshot reads, from the resolver's `source(sourceId)`. */
   snapshotSource?: { label: string; unit: string; decimals: number } | null;
   /**
-   * The deployment stack the market belongs to ("primary", or a name under `stacks` such as "kuruV2")
-   * and its Kuru version. Absent means the primary stack on Kuru v1.
+   * The deployment stack the market belongs to ("primary", or a name under `stacks` such as "kuruV2" or
+   * "hunch"), its Kuru version, and its venue: "kuru", or "hunch" for Hunch Book's own order book (whose
+   * books speak Kuru v1's interface, so `kuruVersion` is 1). All three absent means the primary stack on
+   * Kuru v1. `marketVenue` gives the venue with its name for copy.
    */
   stack?: string;
   kuruVersion?: 1 | 2;
+  venue?: Venue;
+}
+
+/**
+ * Where a market's book is, and what to call it in copy: "Hunch order book", "Kuru v2" or "Kuru".
+ * Works on any MarketInfo (absent fields mean Kuru v1).
+ */
+export function marketVenue(m: Pick<MarketInfo, "venue" | "kuruVersion">): { venue: Venue; label: string } {
+  const venue = m.venue ?? "kuru";
+  return { venue, label: venueLabel({ venue, kuruVersion: m.kuruVersion ?? 1 }) };
 }
 
 const MARKET_READS = [
@@ -320,9 +335,9 @@ async function withExtras(
 }
 
 /** The stack fields a market carries (absent for the primary stack on Kuru v1). */
-function stackTag(stack: Stack | undefined): Pick<MarketInfo, "stack" | "kuruVersion"> {
-  if (!stack || (stack.primary && stack.kuruVersion === 1)) return {};
-  return { stack: stack.name, kuruVersion: stack.kuruVersion };
+function stackTag(stack: Stack | undefined): Pick<MarketInfo, "stack" | "kuruVersion" | "venue"> {
+  if (!stack || (stack.primary && stack.kuruVersion === 1 && stack.venue === "kuru")) return {};
+  return { stack: stack.name, kuruVersion: stack.kuruVersion, venue: stack.venue };
 }
 
 /**
@@ -336,9 +351,10 @@ export async function readMarkets(
 ): Promise<MarketInfo[]> {
   const per = MARKET_READS.length;
   const results = await multicall(ctx, addresses.flatMap(marketCalls));
+  const tag = stackTag(stack ?? stacksOf(ctx.deployment).find((s) => s.primary));
   const parsed = addresses.flatMap((address, i) => {
     const m = parseMarket(ctx, address, results, i * per);
-    return m ? [{ ...m, ...stackTag(stack) }] : [];
+    return m ? [{ ...m, ...tag }] : [];
   });
   return withExtras(ctx, parsed);
 }

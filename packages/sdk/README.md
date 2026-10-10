@@ -1,7 +1,7 @@
 # @hunch-book/sdk
 
 TypeScript SDK for Hunch Book, built on [viem](https://viem.sh). Read markets, quote trades against the
-live Kuru book, send every lifecycle action, find settlement evidence for templates 1 to 7, verify any
+live order book (Hunch Book's own, or Kuru's: each market's `venue` says which), send every lifecycle action, find settlement evidence for templates 1 to 7, verify any
 settlement from the chain alone, use the periphery contracts, and build reward trees.
 
 Status: **building**. It runs against the contracts live on Monad testnet and is tested end to end

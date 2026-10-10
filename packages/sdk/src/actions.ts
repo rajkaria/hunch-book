@@ -1,6 +1,7 @@
 import {
   collateralOf,
   collateralVaultAbi,
+  defaultStackOf,
   hunchBookFactoryAbi,
   hunchRouterAbi,
   marketAbi,
@@ -125,14 +126,16 @@ export function encodeCreateParams(input: Pick<CreateMarketInput, "templateId" |
 
 /**
  * Creates a market and makes the creator's first stake. Approves the vault for the stake first if
- * needed. Throws with the existing market's address if the same question exists already.
+ * needed. Throws with the existing market's address if the same question exists already. The market
+ * goes to `options.stack`, or else to the deployment's default stack (`defaultStack`: on testnet the
+ * `hunch` stack, whose books are Hunch Book's own order book), or else the primary one.
  */
 export async function createMarket(
   ctx: HunchContext,
   input: CreateMarketInput,
   options: { approval?: ApprovalMode; stack?: string } & SendOptions = {},
 ): Promise<TxResult<Address> & { market: Address }> {
-  const { factory, vault, usdc } = addresses(ctx, options.stack);
+  const { factory, vault, usdc } = addresses(ctx, options.stack ?? defaultStackOf(ctx.deployment)?.name);
   const params = encodeCreateParams(input);
   const existing = await ctx.publicClient.readContract({
     address: factory,

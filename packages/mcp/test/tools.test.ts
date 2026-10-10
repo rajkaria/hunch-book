@@ -297,6 +297,58 @@ describe("tool handlers", () => {
     expect(missing.result.content[0]?.text).toMatch(/not a Hunch Book market/);
   });
 
+  it("names each market's venue: Hunch Book's own order book or Kuru", async () => {
+    const sdk = fakeSdk();
+    const hunch = market({
+      id: 3,
+      address: "0x0000000000000000000000000000000000001003",
+      stack: "hunch",
+      kuruVersion: 1,
+      venue: "hunch",
+    });
+    const v2 = market({
+      id: 4,
+      address: "0x0000000000000000000000000000000000001004",
+      stack: "kuruV2",
+      kuruVersion: 2,
+      venue: "kuru",
+    });
+    sdk.markets.all.mockResolvedValue([market(), hunch, v2]);
+    const { json } = await run("list_markets", {}, sdk);
+    expect(
+      json.markets.map((m: { stack: string; venue: string; venueLabel: string }) => [
+        m.stack,
+        m.venue,
+        m.venueLabel,
+      ]),
+    ).toEqual([
+      ["primary", "kuru", "Kuru"],
+      ["hunch", "hunch", "Hunch order book"],
+      ["kuruV2", "kuru", "Kuru v2"],
+    ]);
+    // Tool text never says every book is on Kuru.
+    for (const name of ["quote", "trade", "list_markets", "get_market"]) {
+      expect(byName(name).description).not.toMatch(/Kuru book/);
+    }
+    expect(byName("quote").description).toMatch(/Hunch Book's own order book/);
+  });
+
+  it("status lists every stack with its venue and marks the default one", async () => {
+    const { json } = await run("status", {});
+    expect(
+      json.stacks.map((s: { name: string; venue: string; venueLabel: string; default: boolean }) => [
+        s.name,
+        s.venue,
+        s.venueLabel,
+        s.default,
+      ]),
+    ).toEqual([
+      ["primary", "kuru", "Kuru", false],
+      ["kuruV2", "kuru", "Kuru v2", false],
+      ["hunch", "hunch", "Hunch order book", true],
+    ]);
+  });
+
   it("quotes in plain units", async () => {
     const { json, sdk } = await run("quote", { market: MARKET, kind: "buyYes", amount: "10" });
     expect(sdk.quotes.quote).toHaveBeenCalledWith(MARKET, "buyYes", 10_000_000n, { slippageBps: 100n });
@@ -415,6 +467,8 @@ describe("tool handlers", () => {
       firstStake: "5",
     });
     expect(json.market).toBe("0x000000000000000000000000000000000000beef");
+    // Testnet's default stack: the market graduates to Hunch Book's own order book.
+    expect(json).toMatchObject({ stack: "hunch", venue: "hunch", venueLabel: "Hunch order book" });
     expect(sdk.actions.createMarket).toHaveBeenCalledWith({
       templateId: 1,
       params: { perpId: 16n, startBlock: 1_000n, endBlock: 9_571n, threshold: 0n, expectedScalingExp: 2 },

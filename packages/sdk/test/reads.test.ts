@@ -193,7 +193,7 @@ describe("book and quotes", () => {
 
   it("refuses a book read for a market without one", async () => {
     await expect(getOrderBook(chain.context(), markets[0]?.address as Address)).rejects.toThrow(
-      /no Kuru book yet/,
+      /no order book yet/,
     );
   });
 

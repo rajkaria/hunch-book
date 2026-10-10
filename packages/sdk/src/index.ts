@@ -1,6 +1,6 @@
-// @hunch-book/sdk: read Hunch Book markets, quote trades on their Kuru books, send every lifecycle
-// action, find settlement evidence for templates 1 to 7, verify settlements, use the periphery, and
-// build reward trees. Every function takes a context first (tree-shakeable); createHunchClient binds
+// @hunch-book/sdk: read Hunch Book markets, quote trades on their order books (Kuru's, or Hunch Book's
+// own), send every lifecycle action, find settlement evidence for templates 1 to 7, verify settlements,
+// use the periphery, and build reward trees. Every function takes a context first (tree-shakeable); createHunchClient binds
 // them all to one. docs/SDK.md has the guide.
 
 export {
@@ -42,6 +42,8 @@ export {
   TouchDirection,
   type TradeKind,
   txUrl,
+  type Venue,
+  venueLabel,
   type Window,
 } from "@hunch-book/shared";
 export * from "./actions.js";

@@ -14,7 +14,7 @@ import { getOrderBook, type OrderBook } from "./book.js";
 import type { HunchContext } from "./context.js";
 import type { MarketInfo } from "./markets.js";
 
-// Quotes for the router's four paths (docs/PROTOCOL.md §5.4) against the live Kuru book. The math is
+// Quotes for the router's four paths (docs/PROTOCOL.md §5.4) against the live order book. The math is
 // the shared package's, which follows HunchRouter's and Kuru's integer arithmetic, so a quote equals
 // what the router would do against the same book.
 

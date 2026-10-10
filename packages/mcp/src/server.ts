@@ -64,7 +64,8 @@ export function readDoc(file: string, dirs: readonly string[] = DOC_DIRS): strin
 
 export const INSTRUCTIONS = [
   "Hunch Book runs yes/no prediction markets on Monad in USDC. A market starts as a pool (stake on YES or NO),",
-  "graduates to a Kuru order book once it proves demand (trade YES and NO any time), and settles by reading",
+  "graduates to an onchain order book once it proves demand (trade YES and NO any time; each market's",
+  "venue says whether its book is Hunch Book's own order book or Kuru's), and settles by reading",
   "onchain data: no person sets an outcome. Amounts are decimal strings in USDC or tokens. Start with",
   "list_markets, read a market with get_market, quote before you trade, and check any settlement with",
   "verify_settlement. Every transaction result has an explorer link.",

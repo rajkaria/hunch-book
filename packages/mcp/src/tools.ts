@@ -6,6 +6,7 @@ import {
   type HunchClient,
   type MarketInfo,
   type MarketParamsInput,
+  marketVenue,
   Phase,
   parseUsdc,
   type Quote,
@@ -17,7 +18,7 @@ import {
   type TradeKind,
   type Verification,
 } from "@hunch-book/sdk";
-import { stacksOf } from "@hunch-book/shared";
+import { defaultStackOf, stacksOf, venueLabel } from "@hunch-book/shared";
 import { isAddress } from "viem";
 import { z } from "zod";
 import type { McpConfig } from "./config.js";
@@ -65,13 +66,20 @@ const PHASES = ["pool", "pool-locked", "trading", "closed", "settled", "voided"]
 
 const iso = (seconds: bigint): string => new Date(Number(seconds) * 1000).toISOString();
 
-/** A market as an agent reads it: plain units, the rule sentence, the chance as a percent. */
+/**
+ * A market as an agent reads it: plain units, the rule sentence, the chance as a percent, and where its
+ * book is (`venue`: "hunch" for Hunch Book's own order book, "kuru" for Kuru's; `venueLabel` names it).
+ */
 export function summarizeMarket(m: MarketInfo, deployment: HunchPort["deployment"]) {
   const w = m.window;
+  const venue = marketVenue(m);
   return {
     id: m.id,
     address: m.address,
     explorer: addressUrl(deployment, m.address),
+    stack: m.stack ?? "primary",
+    venue: venue.venue,
+    venueLabel: venue.label,
     template: `${m.templateId} (${m.template})`,
     asset: m.asset,
     phase: m.phaseName,
@@ -353,10 +361,15 @@ export const TOOLS = [
         usdc: sdk.deployment.hunchBook.usdc ?? sdk.deployment.external.usdc ?? null,
       },
       // Every stack (a market's `stack` field names the one it belongs to; its trades and stakes go to
-      // that stack's router and vault, which the tools pick on their own).
+      // that stack's router and vault, which the tools pick on their own). `venue` says where the stack's
+      // books are: Hunch Book's own order book ("hunch") or Kuru's ("kuru").
       stacks: stacksOf(sdk.deployment).map((s) => ({
         name: s.name,
         kuruVersion: s.kuruVersion,
+        venue: s.venue,
+        venueLabel: venueLabel(s),
+        // Where new markets go (create_market uses this stack).
+        default: s.name === defaultStackOf(sdk.deployment)?.name,
         factory: s.contracts.factory ?? null,
         vault: s.contracts.vault ?? null,
         router: s.contracts.router ?? null,
@@ -375,7 +388,7 @@ export const TOOLS = [
     name: "list_markets",
     title: "List markets",
     description:
-      "Lists Hunch Book markets, newest first, with each market's rule in one sentence, phase, chance of YES, pool totals and best book prices. Filter by phase (pool, pool-locked, trading, closed, settled, voided), template id (1 to 7) or asset (BTC, ETH, MON, SOL).",
+      "Lists Hunch Book markets, newest first, with each market's rule in one sentence, phase, chance of YES, pool totals, best book prices and the venue its book is on (Hunch Book's own order book or Kuru). Filter by phase (pool, pool-locked, trading, closed, settled, voided), template id (1 to 7) or asset (BTC, ETH, MON, SOL).",
     inputSchema: {
       phase: z.enum(PHASES).optional().describe("Only markets in this phase."),
       template: z.number().int().min(1).max(7).optional().describe("Only markets on this template id."),
@@ -412,7 +425,7 @@ export const TOOLS = [
     name: "get_market",
     title: "Get one market",
     description:
-      "One market in full: the exact rule, phase, window, pool, book prices, chance, outcome, and what settling it now would take. With a wallet, also the wallet's position in it.",
+      "One market in full: the exact rule, phase, window, pool, book prices and venue, chance, outcome, and what settling it now would take. With a wallet, also the wallet's position in it.",
     inputSchema: { market: address.describe("The market's address.") },
     write: false,
     handler: async (input, { sdk }) => {
@@ -450,7 +463,7 @@ export const TOOLS = [
     name: "quote",
     title: "Quote a trade",
     description:
-      "Quotes a trade on a trading market's Kuru book, exactly as the router would fill it now. kind: buyYes (amount = USDC to spend), sellYes (amount = YES to sell), buyNo (amount = NO to receive), sellNo (amount = NO to sell). Returns what you pay and get, the average price, the impact against the mid, and the slippage limit a trade would use.",
+      "Quotes a trade on a trading market's order book (on its venue: Hunch Book's own order book or Kuru), exactly as the router would fill it now. kind: buyYes (amount = USDC to spend), sellYes (amount = YES to sell), buyNo (amount = NO to receive), sellNo (amount = NO to sell). Returns what you pay and get, the average price, the impact against the mid, and the slippage limit a trade would use.",
     inputSchema: {
       market: address.describe("The market's address."),
       kind: tradeKind,
@@ -522,13 +535,13 @@ export const TOOLS = [
     name: "create_market",
     title: "Create a market",
     description: [
-      "Creates a market from a template and makes the creator's first stake (at least 5 USDC). Template params by id:",
+      "Creates a market from a template and makes the creator's first stake (at least 5 USDC). It goes to the network's default stack (status marks it), and graduates to that stack's venue. Template params by id:",
       "1 Perpl net funding: perpId, startBlock, endBlock, threshold (raw funding units), expectedScalingExp.",
       '2 price at a time: source ("chainlink" with feed, or "pyth" with pythId), strikeE8 (USD x 1e8), lockTime, closeTime (unix seconds).',
       '3 price touch: feed, strikeE8, direction ("atOrAbove" or "atOrBelow"), lockTime, startTime, endTime.',
       "4 Perpl funding spike: as template 1, threshold for one funding event.",
       "5 price range: as template 2 with lowerE8 and upperE8 instead of strikeE8.",
-      "6 parlay: legs (2 to 5 market addresses), lockTime, closeTime.",
+      "6 parlay: legs (2 to 5 market addresses, all on the default stack), lockTime, closeTime.",
       '7 snapshot: sourceId (from the resolver\'s source list), threshold (raw units), comparator ("above", "atOrAbove", "below" or "atOrBelow"), lockTime, closeTime, snapshotWindow (60 to 1800 seconds, default 600).',
       "Numbers may be strings. docs://hunch-book/templates has every rule.",
     ].join(" "),
@@ -551,8 +564,12 @@ export const TOOLS = [
         side: input.side,
         firstStake,
       });
+      const stack = defaultStackOf(sdk.deployment);
       return {
         market: tx.market,
+        stack: stack?.name ?? "primary",
+        venue: stack?.venue ?? "kuru",
+        venueLabel: stack ? venueLabel(stack) : "Kuru",
         tx: tx.hash,
         explorer: tx.url,
         marketExplorer: addressUrl(sdk.deployment, tx.market),
@@ -579,7 +596,7 @@ export const TOOLS = [
     name: "trade",
     title: "Trade on the book",
     description:
-      "Trades through Hunch Book's router on a trading market's Kuru book, with a slippage limit and a deadline. kind and amount as in quote. Quote first to see the price.",
+      "Trades through Hunch Book's router on a trading market's order book (Hunch Book's own or Kuru's, as the market's venue says), with a slippage limit and a deadline. kind and amount as in quote. Quote first to see the price.",
     inputSchema: {
       market: address,
       kind: tradeKind,

@@ -17,9 +17,10 @@ import type { HunchContext } from "./context.js";
 import { type MarketInfo, requireMarket } from "./markets.js";
 import { multicall, ok } from "./multicall.js";
 
-// A market's Kuru YES/USDC book, read onchain: every resting level from `getL2Book()` and the
-// matching parameters from `getMarketParams()` (docs/PROTOCOL.md §8.1: the onchain book is the source
-// of truth). Quotes walk these levels with Kuru's own integer arithmetic.
+// A market's YES/USDC book, read onchain: every resting level from `getL2Book()` and the matching
+// parameters from `getMarketParams()` (docs/PROTOCOL.md §8.1: the onchain book is the source of truth).
+// Quotes walk these levels with Kuru's own integer arithmetic. A Hunch order book has Kuru v1's
+// interface and per-level formulas (with no fees), so it reads and quotes as a v1 book.
 
 export interface BookLevelE6 {
   /** USDC base units per whole YES token. */
@@ -133,7 +134,7 @@ export async function readBook(
       options,
     );
     const data = ok<Hex>(results[0]);
-    if (data === undefined) throw new Error(`Could not read the Kuru book ${book}.`);
+    if (data === undefined) throw new Error(`Could not read the book ${book}.`);
     const raw = ok<RawParams>(results[1]);
     params = raw ? matchParams(raw) : HUNCH_BOOK_PARAMS;
     l2 = decodeL2Book(data);
@@ -157,7 +158,7 @@ export async function readBook(
 /** A market's book, or a plain error when it has none yet. */
 export async function getOrderBook(ctx: HunchContext, market: Address | MarketInfo): Promise<OrderBook> {
   const m = await requireMarket(ctx, market);
-  if (!m.book) throw new Error(`Market #${m.id} has no Kuru book yet: it trades only after graduation.`);
+  if (!m.book) throw new Error(`Market #${m.id} has no order book yet: it trades only after graduation.`);
   return readBook(ctx, m.book, m.address, { kuruVersion: m.kuruVersion ?? 1 });
 }
 
