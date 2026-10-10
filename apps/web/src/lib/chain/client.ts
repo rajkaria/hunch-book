@@ -1,5 +1,5 @@
-import type { Deployment } from "@hunch-book/shared";
-import { type Chain, createPublicClient, http, type PublicClient } from "viem";
+import { type Deployment, rpcUrlsOf } from "@hunch-book/shared";
+import { type Chain, createPublicClient, fallback, http, type PublicClient } from "viem";
 import { appChain, appDeployment, appNetwork } from "../config";
 
 /** The subset of a viem public client the read layer uses, so tests can pass a stub. */
@@ -12,9 +12,10 @@ export function makePublicClient(
   deployment: Deployment = appDeployment,
   chain: Chain = appChain,
 ): PublicClient {
+  // The deployment's RPC first, then its public fallbacks: a dropped request moves to the next one.
   return createPublicClient({
     chain,
-    transport: http(deployment.rpc, { timeout: 12_000, retryCount: 2 }),
+    transport: fallback(rpcUrlsOf(deployment).map((url) => http(url, { timeout: 12_000, retryCount: 1 }))),
   });
 }
 

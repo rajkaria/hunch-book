@@ -2,6 +2,11 @@
   "network": "monad-testnet",
   "chainId": 10143,
   "rpc": "https://testnet-rpc.monad.xyz",
+  "rpcFallbacks": [
+    "https://monad-testnet.drpc.org",
+    "https://rpc.ankr.com/monad_testnet",
+    "https://10143.rpc.thirdweb.com"
+  ],
   "explorer": "https://testnet.monadscan.com",
   "hunchBook": {
     "usdc": "0x13c5B2e982F437566991c4d9aC0a30F9f9aC15Ed",

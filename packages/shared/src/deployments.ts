@@ -84,6 +84,8 @@ export interface Deployment {
   network: Network;
   chainId: number;
   rpc: string;
+  /** More public RPCs for the same chain, tried in order when `rpc` fails (readers use `rpcUrlsOf`). */
+  rpcFallbacks?: string[];
   explorer: string;
   /** The primary stack. */
   hunchBook: HunchBookContracts;
@@ -121,6 +123,19 @@ export function loadDeployment(network: Network | number): Deployment {
       : deployments[network];
   if (!found) throw new Error(`no deployment for ${String(network)}`);
   return found;
+}
+
+/** The network's RPC endpoints in the order to try them: `extra` first (a private RPC), then `rpc`, then
+ * `rpcFallbacks`, without repeats. Public RPCs drop requests under load; readers put these behind a
+ * fallback transport so one failing endpoint does not fail the read. */
+export function rpcUrlsOf(deployment: Pick<Deployment, "rpc" | "rpcFallbacks">, extra?: string): string[] {
+  const all = [extra, deployment.rpc, ...(deployment.rpcFallbacks ?? [])];
+  const out: string[] = [];
+  for (const url of all) {
+    const u = url?.trim();
+    if (u && !out.includes(u)) out.push(u);
+  }
+  return out;
 }
 
 /** The collateral token Hunch Book uses on this network (test USDC on testnet, Circle USDC on mainnet). */

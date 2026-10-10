@@ -1,6 +1,6 @@
-import { chainsByNetwork, deployments } from "@hunch-book/shared";
+import { chainsByNetwork, deployments, rpcUrlsOf } from "@hunch-book/shared";
 import type { Chain, Transport } from "viem";
-import { type CreateConnectorFn, createConfig, http, injected } from "wagmi";
+import { type CreateConnectorFn, createConfig, fallback, http, injected } from "wagmi";
 import { passkeyConnector } from "../account/connector";
 import { buildNetwork, networkOptions } from "../config";
 
@@ -18,7 +18,7 @@ const selectable = networkOptions().filter((o) => o.selectable);
 const ordered = [buildNetwork, ...selectable.map((o) => o.network).filter((n) => n !== buildNetwork)];
 const chains = ordered.map((n): Chain => chainsByNetwork[n]) as unknown as readonly [Chain, ...Chain[]];
 const transports: Record<number, Transport> = Object.fromEntries(
-  ordered.map((n) => [chainsByNetwork[n].id, http(deployments[n].rpc)]),
+  ordered.map((n) => [chainsByNetwork[n].id, fallback(rpcUrlsOf(deployments[n]).map((url) => http(url)))]),
 );
 
 export const wagmiConfig = createConfig({

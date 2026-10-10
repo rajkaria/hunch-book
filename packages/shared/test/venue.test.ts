@@ -5,6 +5,7 @@ import {
   defaultStackOf,
   deploymentForStack,
   deployments,
+  rpcUrlsOf,
   stackNamed,
   stacksOf,
   venueLabel,
@@ -74,5 +75,21 @@ describe("venues", () => {
     expect(hunch?.kuruVersion).toBe(1);
     expect(hunch?.contracts.venue?.marginAccount).toMatch(/^0x[0-9a-fA-F]{40}$/);
     expect(hunch?.contracts.usdc).toBe(t.hunchBook.usdc);
+  });
+});
+
+describe("rpc endpoints", () => {
+  it("puts a private RPC first, then the file's RPC and its fallbacks, without repeats", () => {
+    const t = deployments["monad-testnet"];
+    const urls = rpcUrlsOf(t);
+    expect(urls[0]).toBe(t.rpc);
+    expect(urls.length).toBeGreaterThan(1);
+    expect(new Set(urls).size).toBe(urls.length);
+    expect(rpcUrlsOf(t, " https://private.example ")[0]).toBe("https://private.example");
+    expect(rpcUrlsOf({ rpc: "https://a", rpcFallbacks: ["https://a", "https://b"] }, "https://b")).toEqual([
+      "https://b",
+      "https://a",
+    ]);
+    expect(rpcUrlsOf({ rpc: "https://a" })).toEqual(["https://a"]);
   });
 });

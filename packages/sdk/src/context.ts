@@ -1,9 +1,10 @@
-import { chainsByNetwork, type Deployment, deployments, type Network } from "@hunch-book/shared";
+import { chainsByNetwork, type Deployment, deployments, type Network, rpcUrlsOf } from "@hunch-book/shared";
 import {
   type Account,
   type Address,
   type Chain,
   createPublicClient,
+  fallback,
   http,
   type PublicClient,
   type Transport,
@@ -65,7 +66,10 @@ export function createContext(options: ContextOptions = {}): HunchContext {
     options.publicClient ??
     (createPublicClient({
       chain,
-      transport: http(options.rpcUrl ?? deployment.rpc, { timeout: 15_000, retryCount: 2 }),
+      // `rpcUrl` (or the deployment's RPC) first, then the deployment's public fallbacks.
+      transport: fallback(
+        rpcUrlsOf(deployment, options.rpcUrl).map((url) => http(url, { timeout: 15_000, retryCount: 1 })),
+      ),
     }) as PublicClient);
   return {
     network,
