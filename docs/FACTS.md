@@ -97,13 +97,13 @@ From [PROTOCOL.md §12](./PROTOCOL.md#12-parameters-v0) and the deploy script; t
 | Testnet gas price | about 100 gwei base fee | `eth_gasPrice`, 2026-10-03 |
 | Kuru mainnet market creation | owner-only (`Unauthorized()` for anyone else) | the mainnet rehearsal fork test |
 
-## Tests (2026-10-07)
+## Tests (2026-10-10)
 
 | Suite | Count | Run |
 |---|---|---|
-| Contracts: unit, fuzz and invariant | 648 | `cd contracts && forge test` |
-| Contracts: fork tests on live Monad testnet and mainnet | 52 | `FOUNDRY_PROFILE=fork forge test` |
-| TypeScript: app, shared, SDK, MCP, keeper, maker, indexer, notifier, watchdog, rewards, examples | 1,532 passing | `pnpm test` |
+| Contracts: unit, fuzz and invariant | 698 | `cd contracts && forge test` |
+| Contracts: fork tests on live Monad testnet and mainnet | 60 | `FOUNDRY_PROFILE=fork forge test` |
+| TypeScript: app, shared, SDK, MCP, keeper, maker, indexer, notifier, watchdog, rewards, examples | 1,618 passing | `pnpm test` |
 | npm packages: the four tarballs as published, plus 3 checker tests | 4 packages | `node scripts/check-packages.mjs` (CI adds `--install`) |
 | Local services script: settings, exec, start and stop | 28 checks | `bash scripts/test/run-local-services.test.sh` |
 
