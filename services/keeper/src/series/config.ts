@@ -1,12 +1,14 @@
 import { readFileSync } from "node:fs";
 import { Side, TemplateId, TouchDirection } from "@hunch-book/shared";
-import { parseUnits } from "viem";
+import { type Address, getAddress, isAddress, parseUnits } from "viem";
 
 // The recurring series file (KEEPER_SERIES_FILE; example: services/keeper/series.example.json, docs in
 // docs/SERIES.md). Each series describes markets that repeat on a schedule: which template, which asset,
-// when each period locks and closes, how the strike is chosen, and the first stake the keeper makes from
-// its own USDC when it creates the market. Everything is checked when the file is read, so a mistake
-// stops the keeper at startup with a plain message instead of failing at creation time.
+// when each period locks and closes, how the strike is chosen, the first stake the keeper makes from its
+// own USDC when it creates the market, and optionally a seed: more stakes the keeper pays for, right
+// after creating, for other wallets of ours, so the pool can meet its graduation rule on its own.
+// Everything that can be checked without the chain is checked when the file is read, so a mistake stops
+// the keeper at startup with a plain message instead of failing at creation time.
 
 /** A series on a block clock (templates 1 and 4): blocks, like the Perpl markets themselves. */
 export interface BlockSchedule {
@@ -50,6 +52,28 @@ export type StrikeRule =
   /** Template 4: the q-quantile of the single-interval increments of the last `intervals` events. */
   | { rule: "funding-increment-quantile"; q: number; intervals: number };
 
+/**
+ * Who a seed stake is for: Hunch Book's maker ("maker", `wallets.maker`), the stack's guardian
+ * ("guardian", the deployer on testnet), or any address. Never the keeper: it is the market's creator
+ * and its own stake is `firstStake`.
+ */
+export type SeedHolder = "maker" | "guardian" | Address;
+
+/** One seed stake: `market.stakeFor(holder, side, amount)`, paid from the keeper's USDC. */
+export interface SeedStake {
+  for: SeedHolder;
+  side: Side;
+  /** USDC base units. */
+  amount: bigint;
+}
+
+export interface SeedSpec {
+  stakes: SeedStake[];
+}
+
+/** At most this many seed stakes per series. */
+export const MAX_SEED_STAKES = 10;
+
 export interface SeriesSpec {
   id: string;
   enabled: boolean;
@@ -61,6 +85,8 @@ export interface SeriesSpec {
   schedule: BlockSchedule | TimeSchedule;
   strike: StrikeRule;
   firstStake: { side: Side; amount: bigint };
+  /** Optional: stakes the keeper makes for our other wallets right after it creates each market. */
+  seed?: SeedSpec;
 }
 
 const BLOCK_TEMPLATES = new Set<number>([TemplateId.PerplFunding, TemplateId.PerplFundingSpike]);
@@ -201,6 +227,57 @@ function parseStrike(templateId: number, raw: Record<string, unknown>, at: strin
   }
 }
 
+const amountPattern = /^\d+(\.\d{1,6})?$/;
+
+function parseSide(value: unknown, field: string): Side {
+  if (value === "yes") return Side.Yes;
+  if (value === "no") return Side.No;
+  throw new Error(`${field} must be "yes" or "no"`);
+}
+
+/**
+ * The optional seed. What needs the chain (the market's caps, the guardian's address, the keeper's own
+ * address) is checked when the keeper seeds; this checks the shape, the amounts and that every holder
+ * appears once.
+ */
+function parseSeed(raw: Record<string, unknown>, at: string): SeedSpec {
+  const list = raw.stakes;
+  if (!Array.isArray(list) || list.length === 0) throw new Error(`${at}.stakes must be a list of stakes`);
+  if (list.length > MAX_SEED_STAKES) throw new Error(`${at}.stakes has more than ${MAX_SEED_STAKES} stakes`);
+  const seen = new Set<string>();
+  const stakes = list.map((item, i) => {
+    const s = record(item, `${at}.stakes[${i}]`);
+    const holder = s.for;
+    let target: SeedHolder;
+    if (holder === "maker" || holder === "guardian") {
+      target = holder;
+    } else if (holder === "keeper") {
+      throw new Error(
+        `${at}.stakes[${i}].for cannot be "keeper": the keeper creates the market, and its own stake is firstStake`,
+      );
+    } else if (typeof holder === "string" && isAddress(holder, { strict: false })) {
+      target = getAddress(holder);
+    } else {
+      throw new Error(`${at}.stakes[${i}].for must be "maker", "guardian" or a 0x address`);
+    }
+    const key = target.toLowerCase();
+    if (seen.has(key)) {
+      throw new Error(
+        `${at}.stakes names ${String(holder)} twice: every seed stake is for a different wallet`,
+      );
+    }
+    seen.add(key);
+    const side = parseSide(s.side, `${at}.stakes[${i}].side`);
+    if (typeof s.usdc !== "string" || !amountPattern.test(s.usdc)) {
+      throw new Error(`${at}.stakes[${i}].usdc must be an amount like "45"`);
+    }
+    const amount = parseUnits(s.usdc, 6);
+    if (amount <= 0n) throw new Error(`${at}.stakes[${i}].usdc must be above zero`);
+    return { for: target, side, amount };
+  });
+  return { stakes };
+}
+
 /** Parses and checks a series file's JSON text. */
 export function parseSeriesFile(text: string): SeriesSpec[] {
   let json: unknown;
@@ -234,9 +311,8 @@ export function parseSeriesFile(text: string): SeriesSpec[] {
           : undefined;
     if (direction === undefined) throw new Error(`${at}: direction must be "up" or "down"`);
     const stake = record(raw.firstStake, `${at}.firstStake`);
-    const side = stake.side === "yes" ? Side.Yes : stake.side === "no" ? Side.No : undefined;
-    if (side === undefined) throw new Error(`${at}.firstStake.side must be "yes" or "no"`);
-    if (typeof stake.usdc !== "string" || !/^\d+(\.\d{1,6})?$/.test(stake.usdc)) {
+    const side = parseSide(stake.side, `${at}.firstStake.side`);
+    if (typeof stake.usdc !== "string" || !amountPattern.test(stake.usdc)) {
       throw new Error(`${at}.firstStake.usdc must be an amount like "5"`);
     }
     return {
@@ -248,6 +324,7 @@ export function parseSeriesFile(text: string): SeriesSpec[] {
       schedule: parseSchedule(templateId, record(raw.schedule, `${at}.schedule`), `${at}.schedule`),
       strike: parseStrike(templateId, record(raw.strike, `${at}.strike`), `${at}.strike`),
       firstStake: { side, amount: parseUnits(stake.usdc, 6) },
+      ...(raw.seed === undefined ? {} : { seed: parseSeed(record(raw.seed, `${at}.seed`), `${at}.seed`) }),
     };
   });
 }

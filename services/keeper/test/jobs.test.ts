@@ -136,5 +136,8 @@ describe("which cycle jobs run", () => {
     const file = new URL("../series.example.json", import.meta.url).pathname;
     const names = buildCycleJobs(parseConfig({ KEEPER_SERIES_FILE: file }), testnet).map((j) => j.name);
     expect(names).toContain("series");
+    // Only on the default stack: a keeper for any other stack leaves it out.
+    const other = buildCycleJobs(parseConfig({ KEEPER_SERIES_FILE: file }), testnet, { series: false });
+    expect(other.map((j) => j.name)).not.toContain("series");
   });
 });

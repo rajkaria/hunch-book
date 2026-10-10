@@ -191,6 +191,31 @@ describe("graduate", () => {
     });
   });
 
+  it("Hunch order book: graduates in one transaction and never asks Kuru for a book", () => {
+    const hunch: Globals = { ...testnetGlobals, venue: "hunch" };
+    expect(plan(market(), at(1n), { globals: hunch })).toEqual([
+      {
+        job: "graduate",
+        action: "graduate",
+        reason: "rule met; the graduator creates the Hunch order book in the same transaction",
+      },
+    ]);
+    expect(needsBookLookup(market(), hunch)).toBe(false);
+    expect(plan(market({ graduatorBook: BOOK }), at(1n), { globals: hunch })[0]?.reason).toBe(
+      `rule met and Hunch order book ${BOOK} is ready`,
+    );
+
+    // A Hunch graduator that cannot create books is a wiring mistake: wait and say so, even with a
+    // predicted book in hand. No book-request and no registerBook, ever.
+    const miswired: Globals = { ...hunch, canCreateBooks: false };
+    expect(needsBookLookup(market(), miswired)).toBe(false);
+    for (const predictedBook of [undefined, { address: BOOK, deployed: true }]) {
+      const [d] = plan(market(), at(1n), { globals: miswired, predictedBook });
+      expect(d?.action).toBe(undefined);
+      expect(d?.reason).toContain("cannot create books");
+    }
+  });
+
   it("does nothing for graduation outside the Pool phase", () => {
     const decisions = plan(market({ phase: Phase.PoolLocked }), at(68_100_000n));
     expect(decisions.map((d) => d.job)).toEqual(["settle"]);

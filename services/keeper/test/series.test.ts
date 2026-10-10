@@ -4,12 +4,15 @@ import {
   decodePerplFundingParams,
   decodePriceAtTimeParams,
   decodePriceRangeParams,
+  deployments,
   Side,
   TemplateId,
   TouchDirection,
 } from "@hunch-book/shared";
-import type { Address } from "viem";
+import { type Address, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
+import type { JobContext } from "../src/jobs/context.js";
+import { SeriesJob } from "../src/jobs/series.js";
 import { parseDuration, parseSeriesFile, type SeriesSpec } from "../src/series/config.js";
 import {
   buildParams,
@@ -231,5 +234,79 @@ describe("params and identity", () => {
     const later = buildParams(daily, { ...p, lock: 1_001n }, { feed: FEED, strike: { strikeE8: 7n } });
     expect(periodIdentity(TemplateId.PriceAtTime, later)).not.toBe(periodIdentity(TemplateId.PriceAtTime, a));
     expect(periodIdentity(TemplateId.Parlay, a)).toBeUndefined();
+  });
+});
+
+describe("the series job across stacks", () => {
+  // Series run on the default stack. A period already created on another stack (before `defaultStack`
+  // moved, for example from the primary stack to `hunch`) is found there by its exact params and never
+  // created again.
+  const OWN = "0x846Cd400B832203befe5902ef43DAdc969985AF2" as Address;
+  const OTHER = "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A" as Address;
+  const EXISTING = "0x2A44B99014cF73065BFb89197a08DE09D18d3982" as Address;
+  const KEEPER = "0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569" as Address;
+  const fixed: SeriesSpec = {
+    ...daily,
+    id: "eth-fixed",
+    strike: { rule: "fixed", value: 400_000_000_000n },
+  };
+  if (fixed.schedule.clock !== "time") throw new Error("expected a time schedule");
+  const createAt = periodAt(fixed.schedule, 0n).createAt;
+  const now = { block: 1n, timestamp: createAt };
+
+  function run(otherHas: Address) {
+    const sent: { action: string; to: Address }[] = [];
+    const asked: Address[] = [];
+    const ctx = {
+      deployment: {
+        ...deployments["monad-testnet"],
+        hunchBook: { factory: OWN, vault: OWN, usdc: OWN },
+      },
+      client: {
+        readContract: async ({ address }: { address: Address }) => {
+          asked.push(address);
+          return zeroAddress;
+        },
+        multicall: async ({ contracts }: { contracts: { address: Address; functionName: string }[] }) =>
+          contracts.map((c) => {
+            if (c.functionName === "marketOf") {
+              asked.push(c.address);
+              return c.address === OTHER ? otherHas : zeroAddress;
+            }
+            if (c.functionName === "balanceOf" || c.functionName === "allowance") return 10n ** 12n;
+            return false;
+          }),
+      },
+      tx: { account: KEEPER, enabled: true },
+      health: { jobInfo: () => {} },
+      alerter: { send: async () => {} },
+      verbose: false,
+      knownMarkets: () => [],
+      failed: (_job: string, _label: string, error: unknown) => {
+        throw error;
+      },
+      send: async (_job: string, _label: string, request: { action: string; to: Address }) => {
+        sent.push({ action: request.action, to: request.to });
+        return { status: "dry-run", simulation: { ok: true } };
+      },
+    } as unknown as JobContext;
+    return { ctx, sent, asked };
+  }
+
+  it("does not create a period another stack's factory already has", async () => {
+    const job = new SeriesJob([fixed], { enabled: true, otherFactories: [OTHER] });
+    const { ctx, sent, asked } = run(EXISTING);
+    const result = await job.run(ctx, [], now);
+    expect(result).toEqual({ sent: 0, due: 0 });
+    expect(sent).toEqual([]);
+    expect(asked).toEqual([OWN, OTHER]);
+  });
+
+  it("creates it on its own stack when no stack has it", async () => {
+    const job = new SeriesJob([fixed], { enabled: true, otherFactories: [OTHER] });
+    const { ctx, sent } = run(zeroAddress);
+    const result = await job.run(ctx, [], now);
+    expect(result.due).toBe(1);
+    expect(sent).toEqual([{ action: "createMarket", to: OWN }]);
   });
 });

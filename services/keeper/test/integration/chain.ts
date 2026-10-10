@@ -60,6 +60,10 @@ export const ARTIFACTS = {
   mockKuruAccountCoreV2: artifact("MockKuruV2.sol", "MockKuruAccountCoreV2"),
   mockKuruSpotRouterV2: artifact("MockKuruV2.sol", "MockKuruSpotRouterV2"),
   mockKuruLimiterV2: artifact("MockKuruV2.sol", "MockKuruWithdrawalLimiterV2"),
+  // Hunch Book's own order book: the factory deploys its margin account and the book implementation.
+  hunchBookFactory: artifact("HunchOrderBookFactory.sol", "HunchOrderBookFactory"),
+  hunchOrderBook: artifact("HunchOrderBook.sol", "HunchOrderBook"),
+  hunchMarginAccount: artifact("HunchMarginAccount.sol", "HunchMarginAccount"),
 };
 export type ArtifactName = keyof typeof ARTIFACTS;
 

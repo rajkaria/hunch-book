@@ -113,12 +113,16 @@ export function ruleShortfall(m: Pick<PlanMarket, "yesTotal" | "noTotal" | "stak
   return out;
 }
 
+/** How plan reasons name the stack's books: "Hunch order book" on a Hunch venue, else "Kuru book". */
+const bookName = (g: Pick<Globals, "venue">) => (g.venue === "hunch" ? "Hunch order book" : "Kuru book");
+
 /**
  * True when the graduate job needs to know whether Kuru already created this market's book. Kuru v1
  * mainnet: once the rule is met. Kuru v2: from creation, because Kuru's setup takes days and the book
- * can be registered before the pool fills.
+ * can be registered before the pool fills. Never on a Hunch venue: Kuru has no part in those books.
  */
 export function needsBookLookup(m: PlanMarket, g: Globals): boolean {
+  if (g.venue === "hunch") return false;
   if (m.phase !== Phase.Pool || isZero(g.graduator) || !isZero(m.graduatorBook) || g.canCreateBooks)
     return false;
   if (g.kuruVersion === 2) return true;
@@ -139,13 +143,22 @@ function planGraduate(input: PlanInput): Decision {
   if (g.graduationPaused) return { job, reason: "rule met, but graduation is paused" };
   if (isZero(g.graduator)) return { job, reason: "rule met, but the factory has no graduator" };
   if (!isZero(m.graduatorBook)) {
-    return { job, action: "graduate", reason: `rule met and Kuru book ${m.graduatorBook} is ready` };
+    return { job, action: "graduate", reason: `rule met and ${bookName(g)} ${m.graduatorBook} is ready` };
   }
   if (g.canCreateBooks) {
     return {
       job,
       action: "graduate",
-      reason: "rule met; the graduator creates the Kuru book in the same transaction",
+      reason: `rule met; the graduator creates the ${bookName(g)} in the same transaction`,
+    };
+  }
+  if (g.venue === "hunch") {
+    // Every graduator on a Hunch venue creates books (DeployHunchStack.s.sol). One that cannot is a
+    // wiring mistake, and asking Kuru for the book would be wrong: wait, and say why.
+    return {
+      job,
+      reason:
+        "rule met, but this stack's graduator cannot create books, and on a Hunch venue nothing else does: check the graduator in the deployments file",
     };
   }
   if (predictedBook?.deployed) {

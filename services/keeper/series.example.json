@@ -1,5 +1,5 @@
 {
-  "note": "Recurring series for the keeper (docs/SERIES.md). Copy this file, set KEEPER_SERIES_FILE to the copy, and turn creation on with KEEPER_SERIES_ENABLED=1 (KEEPER_ENABLED must be on too). Blocks and assets below are for Monad testnet.",
+  "note": "Recurring series for the keeper (docs/SERIES.md). Copy this file, set KEEPER_SERIES_FILE to the copy, and turn creation on with KEEPER_SERIES_ENABLED=1 (KEEPER_ENABLED must be on too). Blocks and assets below are for Monad testnet. The two funding series carry a seed: right after creating each market, the keeper stakes for our maker and our guardian from its own USDC (on testnet, minted from the TestUSDC faucet), so the pool meets the testnet rule (100 USDC from 3 stakers) and graduates on its own. The seed is our own money and is logged as ours.",
   "series": [
     {
       "id": "btc-funding-weekly",
@@ -15,7 +15,13 @@
         "minLeadBlocks": 2000
       },
       "strike": { "rule": "trailing-median-funding", "windows": 8 },
-      "firstStake": { "side": "yes", "usdc": "5" }
+      "firstStake": { "side": "yes", "usdc": "55" },
+      "seed": {
+        "stakes": [
+          { "for": "maker", "side": "no", "usdc": "30" },
+          { "for": "guardian", "side": "no", "usdc": "25" }
+        ]
+      }
     },
     {
       "id": "eth-noon-daily",
@@ -64,7 +70,13 @@
         "minLeadBlocks": 2000
       },
       "strike": { "rule": "funding-increment-quantile", "q": 0.98, "intervals": 600 },
-      "firstStake": { "side": "no", "usdc": "5" }
+      "firstStake": { "side": "yes", "usdc": "55" },
+      "seed": {
+        "stakes": [
+          { "for": "maker", "side": "no", "usdc": "30" },
+          { "for": "guardian", "side": "no", "usdc": "25" }
+        ]
+      }
     },
     {
       "id": "eth-range-daily",

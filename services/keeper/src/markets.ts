@@ -7,6 +7,7 @@ import {
   marketAbi,
   type Outcome,
   type Phase,
+  type Venue,
   type Window,
 } from "@hunch-book/shared";
 import {
@@ -64,6 +65,11 @@ export interface Globals {
   usdc: Address;
   /** The stack's Kuru version (deployments file, `kuruVersion`; absent = 1). */
   kuruVersion: 1 | 2;
+  /**
+   * Where the stack's books are (deployments file, `venue`): "kuru", or "hunch" for Hunch Book's own
+   * order book, whose graduator creates each book inside `graduate()`. Absent = "kuru".
+   */
+  venue?: Venue;
 }
 
 const BATCH_BYTES = 16_384;
@@ -73,6 +79,7 @@ export async function readGlobals(
   factory: Address,
   blockNumber: bigint,
   kuruVersion: 1 | 2 = 1,
+  venue: Venue = "kuru",
 ): Promise<Globals> {
   const [graduationPaused, graduator, usdc] = await client.multicall({
     allowFailure: false,
@@ -97,6 +104,7 @@ export async function readGlobals(
     canCreateBooks,
     usdc: getAddress(usdc),
     kuruVersion,
+    venue,
   };
 }
 

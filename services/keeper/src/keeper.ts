@@ -9,6 +9,8 @@ import {
   PHASE_LABEL,
   Phase,
   Side,
+  type Venue,
+  venueOf,
 } from "@hunch-book/shared";
 import {
   type Account,
@@ -60,8 +62,8 @@ import {
 
 // The long-running keeper. Each cycle it reads every live market at one block, plans each job with the
 // pure functions in plan.ts, and sends what is due through sendTx (which honours the kill switch).
-// It only ever calls permissionless functions: graduate, registerBook, claimTokensFor, settle,
-// voidIfExpired and claimPoolFor. It never holds user funds and never decides an outcome: `settle`
+// It only ever calls permissionless functions: graduate, registerBook (Kuru stacks), claimTokensFor,
+// settle, voidIfExpired and claimPoolFor. It never holds user funds and never decides an outcome: `settle`
 // passes evidence to the market's resolver, which reads the source and answers, or refuses.
 
 /** In dry-run, the same intended transaction is logged again at most this often. */
@@ -84,8 +86,12 @@ export interface KeeperDeps {
   cycleJobs?: CycleJob[];
   /** Used for Hermes, the indexer and the alert webhook (tests pass a fake). */
   fetchFn?: typeof fetch;
-  /** The stack this keeper works on, when the deployment has several (main.ts runs one keeper each). */
-  stack?: { name: string; primary: boolean };
+  /**
+   * The stack this keeper works on, when the deployment has several (main.ts runs one keeper each).
+   * `series`: this stack is the default one, so it runs the series job (absent: only the primary does).
+   * `otherFactories`: the other stacks' factories, which the series job checks for a period's market.
+   */
+  stack?: { name: string; primary: boolean; series?: boolean; otherFactories?: readonly Address[] };
 }
 
 export interface CycleSummary {
@@ -193,6 +199,7 @@ export class Keeper {
       minMon: config.minMon,
       stack: this.stackName,
       kuruVersion: this.kuruVersion,
+      venue: this.venue,
     });
     this.alerter = new Alerter(
       config.alertWebhook,
@@ -206,7 +213,13 @@ export class Keeper {
       this.fetchFn,
     );
     this.cycleJobs =
-      deps.cycleJobs ?? (factory ? buildCycleJobs(config, this.deployment, deps.stack?.primary ?? true) : []);
+      deps.cycleJobs ??
+      (factory
+        ? buildCycleJobs(config, this.deployment, {
+            series: deps.stack?.series ?? deps.stack?.primary ?? true,
+            otherFactories: deps.stack?.otherFactories,
+          })
+        : []);
   }
 
   get keeper(): Address {
@@ -243,7 +256,7 @@ export class Keeper {
     }
     const head = await this.client.getBlock();
     const now: ChainNow = { block: head.number, timestamp: head.timestamp };
-    const globals = await readGlobals(this.client, factory, now.block, this.kuruVersion);
+    const globals = await readGlobals(this.client, factory, now.block, this.kuruVersion, this.venue);
     const markets = await this.directory.refresh(now.block, globals.graduator);
     const runAt = new Date().toISOString();
     // Every job looks at every live market each cycle, even when none has anything for it to do.
@@ -816,6 +829,15 @@ export class Keeper {
   }
 
   /**
+   * Where this stack's books are: "kuru", or "hunch" for Hunch Book's own order book (deployments file
+   * `venue`). A Hunch venue speaks Kuru v1's interface and its graduator always creates the book in
+   * `graduate()`, so the keeper never asks Kuru for one there.
+   */
+  get venue(): Venue {
+    return venueOf(this.deployment.hunchBook);
+  }
+
+  /**
    * Kuru v2: where Kuru's SpotRouter would deploy the book GraduatorV2 asks for, whether it is there, and
    * if so whether GraduatorV2 would accept it (bookProblem).
    */
@@ -842,7 +864,10 @@ export class Keeper {
     };
   }
 
-  /** The address Kuru's deployProxy gives this market's book, and whether a book is already there. */
+  /**
+   * The address Kuru's deployProxy gives this market's book, and whether a book is already there. Kuru
+   * stacks only: needsBookLookup is false on a Hunch venue, whose graduator creates the book itself.
+   */
   private async predictBook(m: MarketSnapshot, g: Globals): Promise<PredictedBook> {
     if (this.kuruVersion === 2) return this.predictBookV2(m, g);
     const p = await this.bookParams(g.graduator);
@@ -872,14 +897,15 @@ export class Keeper {
   /**
    * Logs (and posts to the webhook) the exact Kuru deployProxy call that creates this market's book,
    * at most once per KEEPER_BOOK_REQUEST_SECONDS per market. Once Kuru deploys it, the graduate job
-   * finds the book at the predicted address and registers it.
+   * finds the book at the predicted address and registers it. Never on a Hunch venue: Kuru has no part
+   * in those books (plan.ts never asks for one there; this is the second guard).
    */
   private async requestBook(
     m: MarketSnapshot,
     g: Globals,
     predictedBook: PredictedBook | undefined,
   ): Promise<boolean> {
-    if (!this.store) return false;
+    if (!this.store || this.venue === "hunch") return false;
     const nowSeconds = Math.floor(Date.now() / 1000);
     const last = this.store.market(m.address).bookRequestedAt;
     if (last !== undefined && nowSeconds - last < this.config.bookRequestSeconds) return false;

@@ -40,6 +40,8 @@ export interface HealthSnapshot {
   /** The stack this keeper works on ("primary" or a name under `stacks`) and its Kuru version. */
   stack?: string;
   kuruVersion?: number;
+  /** Where the stack's books are: "kuru", or "hunch" for Hunch Book's own order book. */
+  venue?: string;
   keeper: string;
   enabled: boolean;
   cycles: number;
@@ -85,6 +87,7 @@ export class Health {
       minMon: number;
       stack?: string;
       kuruVersion?: number;
+      venue?: string;
     },
   ) {
     this.snapshot = {

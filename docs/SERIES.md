@@ -1,7 +1,9 @@
 # Recurring series
 
-Status: **building**. The keeper's series job (roadmap K-2) is built and tested on a local chain; it is
-not switched on for any network yet. Until it is, every market is created by a person.
+Status: **live on Monad testnet**. Our keeper runs two series there, `btc-funding-weekly` (template 1)
+and `mon-funding-spike-daily` (template 4); every market they create is ours and labelled as ours. From
+2026-10-10 new periods go to the `hunch` stack (the network's default stack) and are seeded to its
+graduation rule from our own wallets (see Seed below), so each one opens its own order book.
 
 A series is a market that repeats on a schedule: "BTC funding this week" every week, "ETH at noon UTC"
 every day. The keeper creates each period's market when its creation point arrives, from its own
@@ -51,8 +53,43 @@ a mistake stops the keeper with a message naming the series and the field.
 | `schedule` | When each period locks and closes, and when its market is created (below). |
 | `strike` | How the strike is chosen (below). |
 | `firstStake` | `side` (`"yes"` or `"no"`) and `usdc` (an amount like `"5"`), at least the factory's creator minimum (5 USDC in v0). |
+| `seed` | Optional: more stakes the keeper makes right after creating each market, for other wallets of ours (below). |
 
 Any other field (such as `note`) is ignored.
+
+### Seed
+
+A seed lets a series market graduate on its own. Right after the keeper creates a market (its own first
+stake already made), it stakes for other wallets of ours with `market.stakeFor(holder, side, amount)`,
+paying from its own USDC. With enough stakers and USDC on both sides, the pool meets its graduation rule
+at once and the graduate job turns it into a live order book.
+
+```json
+"firstStake": { "side": "yes", "usdc": "55" },
+"seed": {
+  "stakes": [
+    { "for": "maker", "side": "no", "usdc": "30" },
+    { "for": "guardian", "side": "no", "usdc": "25" }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `for` | `"maker"` (`wallets.maker`), `"guardian"` (the stack's `guardian`, the deployer on testnet), or a `0x` address. Never `"keeper"`: the keeper creates the market, and its own stake is `firstStake`. Each holder appears once. |
+| `side`, `usdc` | As for `firstStake`. Each stake must be at least the market's minimum stake, within its wallet cap, and all of them within its pool cap; the keeper checks this against the market itself and refuses the whole seed (with an alert) if not. |
+
+This is our own money: every seed stake is paid by the keeper and held by a wallet of ours, and it is
+labelled as ours wherever it is counted (the keeper's `series-seed` log line names the series, the market
+and each holder, with `ours: true`; the indexer counts the maker's and the guardian's stakes as ours). Use
+`"maker"` and `"guardian"` rather than other addresses, so every stake stays labelled. The stakes are real
+positions: when the market graduates the keeper pushes each holder its tokens, so the maker receives its
+side as inventory to quote with.
+
+The keeper pays the seed from its own USDC. On Monad testnet only, when it holds too little, it first
+mints the missing amount from Hunch Book's test USDC faucet (`TestUSDC.mint`, at most 10,000 per call).
+It never mints anywhere else: on mainnet a short balance leaves the market a pool, logs
+`series-seed-unfunded`, alerts, and tries again after half an hour.
 
 ### Schedules
 
@@ -113,14 +150,23 @@ and then:
    rule never creates a second market for a period.
 3. **Funds:** if the keeper's USDC is below the first stake, it logs `series-unfunded`, alerts once per
    half hour (when a webhook is set) and waits. If the guardian paused market creation, it waits.
-4. **Approval:** if the vault may not pull the first stake yet, the keeper approves exactly that amount
-   first.
+4. **Approval:** if the vault may not pull the first stake (and the seed, when there is one) yet, the
+   keeper approves exactly that amount first.
 5. **Create:** `factory.createMarket(template, params, side, stake)`, simulated first. The resolver checks
    the params when the market is created (a lock in the past, a feed not on its list, a window too long);
    if the simulation fails the reason is logged and nothing is sent.
+6. **Seed** (when the series has one): one `market.stakeFor` per holder that has no stake in the market
+   yet, so a restart between creating and seeding picks up where it stopped and never stakes a holder
+   twice. A stake that fails is logged (`series-seed-failed`), alerted, and tried again no sooner than half
+   an hour later; the market stays a pool meanwhile. A market that is no longer a pool is not seeded.
+
+Series markets go to the default stack (`defaultStack` in the deployments file; testnet: `hunch`, Hunch
+Book's own order book). Before creating a period, the keeper also asks every other stack's factory for a
+market with the same exact params, so a period is never created twice when the default stack changes.
 
 Every step logs one line (`series-wait`, `series-exists`, `series-unfunded`, `series-would-create`,
-`series-created` with the transaction link) when what it says changes.
+`series-created` with the transaction link, `series-seed` per seed stake, `series-seeded`) when what it
+says changes.
 
 ## Health
 
@@ -130,13 +176,14 @@ Every step logs one line (`series-wait`, `series-exists`, `series-unfunded`, `se
 |---|---|
 | `file` | The series file read. |
 | `creating` | `on`, or why it is a dry run. |
-| `series[]` | Per series: `id`, `template`, `asset`, `enabled`, `next` (the next period's index, lock, close and creation point), `status` (in words), `lastMarket` and `lastTx` once it has created one. |
+| `series[]` | Per series: `id`, `template`, `asset`, `enabled`, `next` (the next period's index, lock, close and creation point), `status` (in words), `lastMarket` and `lastTx` once it has created one, and `seed` (each seed stake's holder, address, side, amount, status and transaction). |
 
 ## Costs
 
 Each market costs the first stake (from the keeper's USDC, at risk like any stake) and gas for
-`createMarket` (and an approval when needed). The stake is returned or paid out like anyone's: it is a
-real position, labelled as ours.
+`createMarket` (and an approval when needed), plus, with a seed, the seed stakes and one `stakeFor` each
+(and on testnet a faucet mint when the keeper is short). Every stake is returned or paid out like anyone's:
+each is a real position, labelled as ours.
 
 ## Limits
 

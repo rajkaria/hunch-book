@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     envLoaded: loaded,
     keeper: keeper.keeper,
     ...describeConfig(config),
-    stacks: keepers.map((k) => ({ stack: k.stackName, kuruVersion: k.kuruVersion })),
+    stacks: keepers.map((k) => ({ stack: k.stackName, kuruVersion: k.kuruVersion, venue: k.venue })),
     templates: keeper.settlers.templates(),
     cycleJobs: keepers.map((k) => ({ stack: k.stackName, jobs: k.cycleJobs.map((j) => j.name) })),
   });
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   if (args.mode === "once") {
     for (const k of keepers) {
       k.verbosePlan = true;
-      setLogContext(keepers.length > 1 ? { stack: k.stackName } : {});
+      setLogContext(keepers.length > 1 ? { stack: k.stackName, venue: k.venue } : {});
       const summary = await k.cycle();
       log("cycle", { ...summary, enabled: config.enabled });
     }
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     // One stack after another, so the keeper's transactions never race for a nonce.
     for (const k of keepers) {
       if (stop.signal.aborted) break;
-      setLogContext(keepers.length > 1 ? { stack: k.stackName } : {});
+      setLogContext(keepers.length > 1 ? { stack: k.stackName, venue: k.venue } : {});
       try {
         const summary = await k.cycle();
         if (summary.sent > 0) log("cycle", { ...summary });
