@@ -1,5 +1,7 @@
 // Kuru's spot contracts (github.com/Kuru-Labs/Kuru-contracts-dex-public), only the parts Hunch Book uses.
 // Kuru's events carry no indexed fields: filter logs by the emitting contract's address.
+// Hunch Book's own order book (contracts/src/venue) has these same functions, events and errors, plus the
+// few extra errors listed below, so these ABIs read, write and decode both venues.
 
 const orderBookErrors = [
   { type: "error", name: "MarketStateError", inputs: [] },
@@ -15,6 +17,9 @@ const orderBookErrors = [
   { type: "error", name: "SlippageExceeded", inputs: [] },
   { type: "error", name: "Uint96Overflow", inputs: [] },
   { type: "error", name: "Uint32Overflow", inputs: [] },
+  // Hunch order book only.
+  { type: "error", name: "AlreadyInitialized", inputs: [] },
+  { type: "error", name: "Reentrancy", inputs: [] },
 ] as const;
 
 const marginAccountErrors = [
@@ -23,6 +28,9 @@ const marginAccountErrors = [
   { type: "error", name: "NativeAssetMismatch", inputs: [] },
   { type: "error", name: "ZeroAddressNotAllowed", inputs: [] },
   { type: "error", name: "ProtocolPaused", inputs: [] },
+  // HunchMarginAccount only.
+  { type: "error", name: "OnlyFactory", inputs: [] },
+  { type: "error", name: "UntrackedTokensMissing", inputs: [] },
 ] as const;
 
 /** One Kuru market (an ERC-1967 proxy over OrderBook). Prices in pricePrecision units, sizes in sizePrecision units. */
@@ -375,6 +383,13 @@ export const kuruRouterAbi = [
   { type: "error", name: "InvalidTickSize", inputs: [] },
   { type: "error", name: "InvalidSizePrecision", inputs: [] },
   { type: "error", name: "InvalidPricePrecision", inputs: [] },
+  // HunchOrderBookFactory only.
+  { type: "error", name: "NotHunchMarket", inputs: [] },
+  { type: "error", name: "WrongQuoteAsset", inputs: [] },
+  { type: "error", name: "MarketSizeError", inputs: [] },
+  { type: "error", name: "MarketFeeError", inputs: [] },
+  { type: "error", name: "InvalidSpread", inputs: [] },
+  { type: "error", name: "ZeroAddressNotAllowed", inputs: [] },
 ] as const;
 
 /** Kuru's sentinels for an empty side in bestBidAsk(). */
