@@ -101,7 +101,10 @@ contract KuruV2ForkTest is Test {
         deployer = vm.addr(DEPLOYER_KEY);
         Deploy.Deployed memory d = new Deploy()
             .deployWith(
-                DEPLOYER_KEY, deployer, deployer, Deploy.Options({kuruVersion: 2, stack: "forkTestV2", wireKuru: true})
+                DEPLOYER_KEY,
+                deployer,
+                deployer,
+                Deploy.Options({kuruVersion: 2, stack: "forkTestV2", wireKuru: true, hunchVenue: false})
             );
         assertEq(d.kuruVersion, 2);
         usdc = TestUSDC(d.usdc);
@@ -367,7 +370,10 @@ contract KuruV2ForkTest is Test {
     function test_fork_kuruV2_wireLater() public {
         Deploy.Deployed memory p = new Deploy()
             .deployWith(
-                DEPLOYER_KEY, deployer, deployer, Deploy.Options({kuruVersion: 2, stack: "forkWireV2", wireKuru: false})
+                DEPLOYER_KEY,
+                deployer,
+                deployer,
+                Deploy.Options({kuruVersion: 2, stack: "forkWireV2", wireKuru: false, hunchVenue: false})
             );
         assertEq(HunchBookFactory(p.factory).graduator(), address(0));
 

@@ -82,7 +82,10 @@ contract MainnetRehearsalForkTest is Test {
         // The v1 rehearsal (Kuru v1 is live on mainnet; the fallback if Kuru v2 slips). The v2 launch path
         // is rehearsed in test_mainnetFirst* below and on testnet in KuruV2.fork.t.sol.
         d = script.deployWith(
-            DEPLOYER_KEY, guardian, feeRecipient, Deploy.Options({kuruVersion: 1, stack: "", wireKuru: true})
+            DEPLOYER_KEY,
+            guardian,
+            feeRecipient,
+            Deploy.Options({kuruVersion: 1, stack: "", wireKuru: true, hunchVenue: false})
         );
 
         usdc = IERC20Like(d.usdc);
@@ -139,7 +142,10 @@ contract MainnetRehearsalForkTest is Test {
             )
         );
         again.deployWith(
-            DEPLOYER_KEY, guardian, feeRecipient, Deploy.Options({kuruVersion: 2, stack: "", wireKuru: true})
+            DEPLOYER_KEY,
+            guardian,
+            feeRecipient,
+            Deploy.Options({kuruVersion: 2, stack: "", wireKuru: true, hunchVenue: false})
         );
     }
 
@@ -148,7 +154,10 @@ contract MainnetRehearsalForkTest is Test {
     function test_mainnetFirst_poolsRunWithoutAGraduator() public {
         Deploy again = new Deploy();
         Deploy.Deployed memory p = again.deployWith(
-            DEPLOYER_KEY, guardian, feeRecipient, Deploy.Options({kuruVersion: 2, stack: "", wireKuru: false})
+            DEPLOYER_KEY,
+            guardian,
+            feeRecipient,
+            Deploy.Options({kuruVersion: 2, stack: "", wireKuru: false, hunchVenue: false})
         );
         HunchBookFactory f = HunchBookFactory(p.factory);
         assertEq(p.graduator, address(0));

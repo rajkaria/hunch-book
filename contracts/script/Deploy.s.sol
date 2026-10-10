@@ -22,6 +22,7 @@ import {IKuruRouter} from "../src/interfaces/external/IKuruRouter.sol";
 import {IKuruAccountCore, IKuruSpotRouter} from "../src/interfaces/external/IKuruV2.sol";
 import {IPerplExchange} from "../src/interfaces/external/IPerplExchange.sol";
 import {IPyth} from "../src/interfaces/external/IPyth.sol";
+import {HunchOrderBookFactory} from "../src/venue/HunchOrderBookFactory.sol";
 
 /// Deploys Hunch Book to a Monad network and writes every address into deployments/<network>.json,
 /// the only address source every reader uses. A dry run (no --broadcast) writes nothing.
@@ -47,6 +48,16 @@ import {IPyth} from "../src/interfaces/external/IPyth.sol";
 /// pools work and cannot graduate until script/WireKuruV2.s.sol wires them (the factory's one-time
 /// setGraduator, by the same deployer key).
 ///
+/// Venue (PROTOCOL.md §8.1). VENUE=kuru (default) trades on Kuru as above. VENUE=hunch deploys Hunch
+/// Book's own order book (HunchOrderBookFactory, its HunchMarginAccount and the book implementation)
+/// and wires the v1 Graduator and HunchRouter to it: books are created at graduation on any network,
+/// with no third party. It implies KURU_VERSION=1 (the books speak Kuru v1's interface) and writes
+/// `<stack>.venue`.
+///
+/// Graduation rule (PROTOCOL.md §5.3, §12): GRADUATION_MIN_POOL (USDC, whole units) and
+/// GRADUATION_MIN_STAKERS override the v0 values (500 USDC, 10 stakers) for templates 1 and 2; the
+/// other template scripts copy template 1's rule.
+///
 /// Env: DEPLOYER_PRIVATE_KEY; GUARDIAN and FEE_RECIPIENT (default: the deployer, testnet only);
 /// KURU_VERSION; STACK; WIRE_KURU (default 1); KURU_TAKER_FEE_PPS / KURU_MAKER_FEE_PPS (the fees asked
 /// of Kuru for v2 books; default 7000 / 4000, Kuru's testnet defaults).
@@ -70,6 +81,8 @@ contract Deploy is Script {
         string stack;
         /// False deploys no graduator and router (mainnet before Kuru v2 exists).
         bool wireKuru;
+        /// True: Hunch Book's own order book instead of Kuru (VENUE=hunch).
+        bool hunchVenue;
     }
 
     struct Deployed {
@@ -85,6 +98,10 @@ contract Deploy is Script {
         address feeRecipient;
         uint256 deployBlock;
         uint8 kuruVersion;
+        /// Hunch's own venue (VENUE=hunch); zero otherwise.
+        address bookFactory;
+        address marginAccount;
+        address bookImplementation;
     }
 
     string internal json;
@@ -107,6 +124,10 @@ contract Deploy is Script {
         o.kuruVersion = uint8(vm.envOr("KURU_VERSION", block.chainid == MAINNET ? uint256(2) : uint256(1)));
         o.stack = vm.envOr("STACK", string(""));
         o.wireKuru = vm.envOr("WIRE_KURU", uint256(1)) != 0;
+        string memory venue = vm.envOr("VENUE", string("kuru"));
+        o.hunchVenue = keccak256(bytes(venue)) == keccak256("hunch");
+        require(o.hunchVenue || keccak256(bytes(venue)) == keccak256("kuru"), "VENUE must be kuru or hunch");
+        if (o.hunchVenue) o.kuruVersion = 1;
     }
 
     /// Deploys everything from `key` and returns the addresses without writing them anywhere.
@@ -132,6 +153,7 @@ contract Deploy is Script {
         d.feeRecipient = feeRecipient;
         d.kuruVersion = o.kuruVersion;
         require(d.kuruVersion == 1 || d.kuruVersion == 2, "KURU_VERSION must be 1 or 2");
+        require(!o.hunchVenue || d.kuruVersion == 1, "VENUE=hunch books use the Kuru v1 interface");
         if (block.chainid == MAINNET) {
             require(d.guardian != deployer, "mainnet guardian must be a separate multisig, not the deployer");
             require(d.feeRecipient != address(0), "fee recipient required");
@@ -141,7 +163,8 @@ contract Deploy is Script {
         vm.startBroadcast(pk);
         _deployCore(d);
         _deployResolvers(d);
-        if (o.wireKuru) _deployTrading(d);
+        if (o.hunchVenue) _deployHunchVenue(d);
+        else if (o.wireKuru) _deployTrading(d);
         if (d.guardian == deployer) _addTemplates(d);
         vm.stopBroadcast();
     }
@@ -252,6 +275,34 @@ contract Deploy is Script {
         d.router = address(new HunchRouter(IHunchBookFactory(d.factory)));
     }
 
+    /// Hunch Book's own order book, with the v1 Graduator (creating books on every network) and the v1
+    /// HunchRouter on it (PROTOCOL.md §8.1, "Hunch order book"). Same book parameters as on Kuru v1.
+    function _deployHunchVenue(Deployed memory d) internal {
+        HunchOrderBookFactory venue = new HunchOrderBookFactory(IHunchBookFactory(d.factory));
+        d.bookFactory = address(venue);
+        d.marginAccount = address(venue.marginAccount());
+        d.bookImplementation = venue.implementation();
+        Graduator graduator = new Graduator(
+            IHunchBookFactory(d.factory),
+            IKuruRouter(d.bookFactory),
+            IKuruMarginAccount(d.marginAccount),
+            d.usdc,
+            true,
+            IGraduator.BookParams({
+                sizePrecision: 1e6,
+                pricePrecision: 1e6,
+                tickSize: 1000,
+                minSize: 1e6,
+                takerFeeBps: 0,
+                makerFeeBps: 0,
+                kuruAmmSpread: 30
+            })
+        );
+        d.graduator = address(graduator);
+        HunchBookFactory(d.factory).setGraduator(d.graduator);
+        d.router = address(new HunchRouter(IHunchBookFactory(d.factory)));
+    }
+
     /// GraduatorV2 and HunchRouterV2 for `factory`, against Kuru's v2 addresses in the deployment file.
     /// Inside a broadcast; WireKuruV2.s.sol reuses it.
     function deployKuruV2(address factory, address usdc) public returns (address graduator, address router) {
@@ -280,8 +331,19 @@ contract Deploy is Script {
         return MarketCaps({poolCap: 5000e6, walletCap: 1000e6, minStake: 1e6, creatorMinStake: 5e6});
     }
 
-    function graduationRule() public pure returns (GraduationRule memory) {
-        return GraduationRule({minPool: 500e6, minStakers: 10, minChanceBps: 300, maxChanceBps: 9700});
+    function graduationRule() public view returns (GraduationRule memory) {
+        uint256 minPool = vm.envOr("GRADUATION_MIN_POOL", uint256(500));
+        uint256 minStakers = vm.envOr("GRADUATION_MIN_STAKERS", uint256(10));
+        require(minPool >= 10 && minPool <= 5000, "GRADUATION_MIN_POOL out of range");
+        require(minStakers >= 2 && minStakers <= 100, "GRADUATION_MIN_STAKERS out of range");
+        return GraduationRule({
+            // forge-lint: disable-next-line(unsafe-typecast)
+            minPool: uint128(minPool * 1e6),
+            // forge-lint: disable-next-line(unsafe-typecast)
+            minStakers: uint32(minStakers),
+            minChanceBps: 300,
+            maxChanceBps: 9700
+        });
     }
 
     // ---- output ----
@@ -301,6 +363,14 @@ contract Deploy is Script {
             vm.serializeAddress(k, "router", d.router);
         }
         vm.serializeUint(k, "kuruVersion", d.kuruVersion);
+        if (d.bookFactory != address(0)) {
+            string memory v = "venue";
+            vm.serializeString(v, "kind", "hunch");
+            vm.serializeAddress(v, "bookFactory", d.bookFactory);
+            vm.serializeAddress(v, "marginAccount", d.marginAccount);
+            string memory venue = vm.serializeAddress(v, "bookImplementation", d.bookImplementation);
+            vm.serializeString(k, "venue", venue);
+        }
         vm.serializeString(k, "resolvers", resolvers);
         vm.serializeAddress(k, "guardian", d.guardian);
         vm.serializeAddress(k, "feeRecipient", d.feeRecipient);
