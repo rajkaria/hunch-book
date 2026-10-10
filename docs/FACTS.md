@@ -43,6 +43,15 @@ Each was created by the deployer with a 50 USDC first stake on YES; four address
 | [0x2B31…Ffff](https://testnet.monadscan.com/address/0x2B31160548b1211958339BEa9b39561bA3fFFfff) | Will MON longs pay shorts on net in funding on Perpl (perp 64) between blocks 69,880,803 and 70,737,903? | [0x3f1D…37AF](https://testnet.monadscan.com/address/0x3f1D3C83515ae03D289b7F7E2A0e63Af5b4f37AF) | [tx](https://testnet.monadscan.com/tx/0x63ba5c01ccd516c35d17bfec5a3bf95870efe9d5bab62ceccc504d7920976724) | [tx](https://testnet.monadscan.com/tx/0x6a358f135309610ec9d38528ae590049cfda586a422c3a185e2bd0f5208693cf) | block 70,737,903, about 2026-10-13 17:00 UTC |
 | [0x21dc…D41B](https://testnet.monadscan.com/address/0x21dc581cBC26E7C42adA3462C35Ce9f49d9FD41B) | Will BTC longs pay shorts on net in funding on Perpl (perp 16) between blocks 69,880,937 and 73,995,017? | [0x06F5…9e12](https://testnet.monadscan.com/address/0x06F5D1375d40ADF2b3f52c410CEbcC773d2f9e12) | [tx](https://testnet.monadscan.com/tx/0x7eb3c6fe4542761748defff5029671b69e33d07f4982877e6693690a3d5c9925) | [tx](https://testnet.monadscan.com/tx/0x4b535cf1afc73d2cdeb1f5acbfc6307591e4fe8570dd2a89ec8793bbab0e915e) | block 73,995,017, about 2026-10-25 |
 
+Our maker bot quoted both books from its first cycle after the restart (MON market: bid 0.475, ask 0.506,
+[tx](https://testnet.monadscan.com/tx/0x91dac539ea3d2d72c81a985d1da40841b326232f5d56ce1649949f014f1a1136); BTC
+market: bid 0.97, ask 0.99, [tx](https://testnet.monadscan.com/tx/0x558b01f421ba65bb9ee9c15f30ae0341bab000917638a1de95e998ca3106a47e)).
+Router trades on the MON market from the deployer (ours), 5 USDC or 5 tokens each:
+[buy YES](https://testnet.monadscan.com/tx/0x7d2966d4dbd043b23b02754e4cc355a47b852cf05b6403c28707c6df5632d905) (9.881422 YES),
+[sell YES](https://testnet.monadscan.com/tx/0x88cd250052de49736357572fac3a31eb1a0173790b997569df6fa72c753f679b) (4.693675 USDC),
+[buy NO](https://testnet.monadscan.com/tx/0x86f16a248b1854ae4cdcd3c39ce41629e3816e602084eff4dde264ef712c45b9) (paid 2.625 USDC),
+[sell NO](https://testnet.monadscan.com/tx/0x7b7be1b5cceaf68076db986479f42995d358828eb0634b072c177e1f005317fe) (received 2.47 USDC).
+
 ## Market #1 (our own, seeded by us)
 
 | Fact | Value | Source |
