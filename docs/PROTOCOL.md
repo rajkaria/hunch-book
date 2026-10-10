@@ -1,13 +1,13 @@
 # Hunch Book protocol specification
 
-Version 0.2 (2026-10-04). Status: **live on Monad testnet**, mainnet planned. Every contract below is deployed on testnet (addresses in [`deployments/monad-testnet.json`](../deployments/monad-testnet.json)); [ROADMAP.md](./ROADMAP.md) tracks what ships when, and [TEMPLATES.md](./TEMPLATES.md) and [PERIPHERY.md](./PERIPHERY.md) cover templates 1 to 7 and the contracts around the core in full.
+Version 0.3 (2026-10-10). Status: **live on Monad testnet**, mainnet planned. Every contract below is deployed on testnet (addresses in [`deployments/monad-testnet.json`](../deployments/monad-testnet.json)); [ROADMAP.md](./ROADMAP.md) tracks what ships when, and [TEMPLATES.md](./TEMPLATES.md) and [PERIPHERY.md](./PERIPHERY.md) cover templates 1 to 7 and the contracts around the core in full.
 
 ## 1. Summary
 
 Hunch Book runs yes/no prediction markets on Monad in USDC. Every market goes through up to three stages:
 
 1. **Pool.** People stake USDC on YES or NO. The split of the pool is the market's chance. No market maker is needed, so a market works from its first dollar.
-2. **Book.** If the pool proves demand before it locks, it **graduates**. In one transaction the pool's USDC becomes fully backed YES and NO tokens, split between the stakers so that each staker's payout is exactly what the pool would have paid, fees included. The YES token opens as a YES/USDC spot market on Kuru, Monad's onchain order book, at the pool's price. From then on anyone can buy or sell either side at any time.
+2. **Book.** If the pool proves demand before it locks, it **graduates**. In one transaction the pool's USDC becomes fully backed YES and NO tokens, split between the stakers so that each staker's payout is exactly what the pool would have paid, fees included. The YES token opens as a YES/USDC spot market on an onchain order book at the pool's price: Hunch Book's own order book, which the graduation transaction creates on any network with no third party (§8.1), or Kuru's. From then on anyone can buy or sell either side at any time.
 3. **Settlement.** When the observation window ends, anyone can settle the market. A resolver contract reads the answer from onchain data: Perpl's historical funding accumulator, or a price from Chainlink's onchain feeds (or a Pyth price signed by Pyth's publishers). No person, including the Hunch team, can set an outcome.
 
 Pools that never graduate settle as pools.
@@ -62,7 +62,8 @@ Pools that never graduate settle as pools.
 
 Notes:
 - Touch markets (§6.3) can settle YES before close, as soon as anyone proves the event happened.
-- Kuru's book is not ours to halt; only Kuru can pause a market. After close, Hunch's router refuses trades and Hunch's maker cancels all its orders, but orders other people left on the book can still fill, and so can any liquidity someone deposited in the book's built-in AMM vault. The app warns makers about this, and we ask Kuru to soft-pause each book at close.
+- A Hunch order book (§8.1) stops matching by itself at close: it reads the market's phase, accepts cancels only before graduation and from close on, and nobody can pause it or change that.
+- A Kuru book is not ours to halt; only Kuru can pause a market. After close, Hunch's router refuses trades and Hunch's maker cancels all its orders, but orders other people left on a Kuru book can still fill, and so can any liquidity someone deposited in the book's built-in AMM vault. The app warns makers about this, and we ask Kuru to soft-pause each book at close.
 
 ## 5. Economics
 
@@ -232,11 +233,13 @@ A template ships only if:
                   └─────────┬───────────┘                  │
                             │ flash loan                   │ graduate
                   ┌─────────▼───────────┐       ┌──────────▼──────────┐
-  traders ───────►│    HunchRouter      │──────►│ Kuru YES/USDC book  │◄── makers
-                  └─────────────────────┘       └──────────▲──────────┘
+  traders ───────►│    HunchRouter      │──────►│ YES/USDC order book │◄── makers
+                  └─────────────────────┘       │ (Hunch's or Kuru's) │
+                                                └──────────▲──────────┘
                                                 ┌──────────┴──────────┐
-                                                │     Graduator       │──► Kuru Router.deployProxy
-                                                └─────────────────────┘
+                                                │     Graduator       │──► book factory deployProxy
+                                                └─────────────────────┘    (HunchOrderBookFactory or
+                                                                            Kuru's Router)
 ```
 
 | Contract | Upgradeable | Holds funds | Notes |
@@ -245,8 +248,11 @@ A template ships only if:
 | `OutcomeToken` | no (minimal clones) | no | mint/burn only by the vault |
 | `Market` | no (minimal clones) | no (funds are in the vault) | state machine, pool ledger, claims |
 | `HunchBookFactory` | no (a fix ships as a new factory) | no | canonical market keys, template registry, caps |
-| `Graduator` | no | no | creates (testnet) or verifies and registers (mainnet) each market's Kuru book |
+| `Graduator` | no | no | creates each market's book at graduation (Hunch order book on any network, Kuru v1 testnet) or verifies and registers a Kuru-created one |
 | `HunchRouter` | no | never between transactions | approvals set per call and reset |
+| `HunchOrderBookFactory` | no | no | creates Hunch order books (minimal clones), anyone can call it, only for Hunch markets |
+| `HunchOrderBook` | no (minimal clones) | no (tokens sit in the margin account) | one per graduated market; price-time priority; matches only while the market is Graduated |
+| `HunchMarginAccount` | no | every token on Hunch order books | free balances per user, escrow per book; no owner, no pause |
 | Resolvers | no | no | pure readers of their source |
 
 ### 7.2 Interfaces (v0, frozen)
@@ -288,7 +294,43 @@ Decisions made at the freeze:
 
 ## 8. Integrations
 
-### 8.1 Kuru
+### 8.1 Order book venues
+
+A graduated market's YES token trades on one YES/USDC order book. Each stack in the deployments file
+uses one venue: Hunch Book's own order book (`venue.kind = "hunch"`) or Kuru (v1 or v2). New markets go
+to the network's `defaultStack`.
+
+| Network | Stack | Venue | Graduation |
+|---|---|---|---|
+| Testnet | `hunch` (default) | Hunch order book | the Graduator creates the book inside `graduate()`; no third party |
+| Testnet | `primary` | Kuru v1 | the Graduator calls Kuru's `deployProxy` inside `graduate()` (open on testnet) |
+| Testnet | `kuruV2` | Kuru v2 | waits for Kuru governance to create each book (below) |
+| Mainnet | none yet | Hunch order book planned; Kuru when Kuru creates books | |
+
+#### Hunch order book
+
+Status: **live on Monad testnet** (stack `hunch`: factory [0x846C…5AF2](https://testnet.monadscan.com/address/0x846Cd400B832203befe5902ef43DAdc969985AF2), book factory [0x0DDF…46C5](https://testnet.monadscan.com/address/0x0DDF74540B6720B348483084F749907b2c3F46C5), margin account [0x6dDa…Ee1c](https://testnet.monadscan.com/address/0x6dDaC7a754A2A4bf2fF688B8F08eaA8ADC42Ee1c); every contract verified on Sourcify). Rehearsed on a fork of Monad mainnet with Circle USDC ([HunchVenueMainnet.fork.t.sol](../contracts/test/fork/HunchVenueMainnet.fork.t.sol)).
+
+Hunch Book's own fully onchain order book, so graduation and trading never wait on anyone:
+
+- `HunchOrderBookFactory.deployProxy` creates a book (a minimal clone at an address salted by every parameter) for the YES token of a market a Hunch Book factory created, against that factory's USDC. Anyone can call it, on any network. The Graduator calls it inside `graduate()`.
+- `HunchOrderBook` is a price-time priority limit order book with market orders, one per market. Prices are multiples of the tick from 0.001 to 1 USDC; each level is a FIFO list; a bitmap finds the best level.
+- `HunchMarginAccount` holds every token. Users have free balances they can withdraw at any time; each book has an escrow that backs its resting orders and only it can move. Its token balance always covers both (invariant tests).
+- No owner, no pause, no fees, no AMM vault, no upgrade path.
+
+It exposes the parts of Kuru v1's Router, OrderBook and MarginAccount interfaces that Hunch Book's Graduator, HunchRouter, maker bot, keeper, indexer and app use: the same function selectors, return layouts, events and error names (written by us from those interfaces). So the v1 Graduator (`canCreateBooks = true`) and the v1 HunchRouter run on it unchanged, and so does every Kuru v1 reader offchain. Where it differs from Kuru v1, on purpose:
+
+| Hunch order book | Why |
+|---|---|
+| Matches only while the market is Graduated. Before graduation and from close on it accepts cancels only (`marketState()` reads 1); withdrawals always work | Nobody can fill a resting order after the answer is known, and nobody can pause it: it reads the market's own clock |
+| Books exist only for Hunch markets | The factory checks the YES token's market and the USDC |
+| No trading fees, no AMM vault | Hunch earns only the redemption fee (§5.7) |
+| Every limit order is post-only; a crossing limit order reverts | Takers use market orders, which carry the slippage limit |
+| Rounding: a market buy at a level takes `min(floor(q · 1e6 / p), size)` for `ceil(take · p / 1e6)` and returns any quote left; a market sell pays each resting bid's drop in locked USDC | Fills meet or beat Kuru v1's per-level arithmetic, which the router's quotes and the app's estimates reproduce, so every existing quote stays valid (fuzz tests) |
+
+Book parameters are the Kuru v1 ones below with fees 0/0. Graduation rule on the testnet `hunch` stack: 100 USDC from at least 3 stakers (§12).
+
+#### Kuru
 
 **Book creation.** Kuru's Router creates a spot market and its AMM vault in one call:
 
@@ -337,7 +379,7 @@ What changes, and how Hunch Book handles it:
 
 `GraduatorV2.registerBook` accepts a book only if Kuru's SpotRouter deployed it and AccountCore registered it (with this market's YES token and the protocol's USDC in AccountCore's own records), the book reports the same AccountCore and tokens, both precisions are exact, the tick, fees (maker at most taker) and minimum order are within the limits fixed at deploy, both tokens are enabled in AccountCore and both have a price source in the WithdrawalLimiter. `bookProblem(market, book)` returns the first reason a book would be refused. Registration is permanent; Kuru's books are upgradeable, so the router checks every fill on its own balance changes.
 
-Testnet runs two stacks: the original v1 stack (Kuru v1 books, permissionless) and a v2 stack (`stacks.kuruV2` in `deployments/monad-testnet.json`). Mainnet runs one v2 stack.
+Testnet runs three stacks: `hunch` (Hunch order book, the default for new markets), the original v1 stack (Kuru v1 books, permissionless) and a v2 stack (`stacks.kuruV2` in `deployments/monad-testnet.json`). Mainnet is not deployed yet; its first stack is planned on the Hunch order book, so it does not wait on Kuru, with a Kuru stack added once Kuru creates books for it.
 
 ### 8.2 Perpl
 
@@ -383,6 +425,7 @@ None of these hold user funds or decide outcomes. If all of them stop, users can
   - Price threshold: probability that a lognormal price ends above the strike, using recent realised volatility from the Chainlink feed's own round history (read onchain with `getRoundData`, no API key). Assets with no Chainlink feed use Pyth history instead.
 - Quotes `p ± spread/2`, skewed by inventory, clamped to [0.01, 0.99], with a minimum spread of 2 cents and per-market inventory caps. It widens near close and cancels everything at close.
 - It mints and merges complete sets to manage inventory.
+- It quotes on every stack's books, Hunch order books and Kuru books alike, through the same Kuru v1 calls.
 - Its address is published, and every fill against it is counted separately on the proof page.
 
 ### 9.3 Indexer (Envio HyperIndex)
@@ -390,7 +433,7 @@ None of these hold user funds or decide outcomes. If all of them stop, users can
 Public Monad RPCs cap `eth_getLogs` at 100 blocks (about 30 seconds of chain), so the indexer reads through Envio HyperSync. Markets are registered dynamically from the factory's `MarketCreated` event.
 
 
-Entities: `Market`, `Stake`, `Staker`, `Graduation`, `TokenClaim`, `Trade` (Kuru fills on registered books), `Position`, `Settlement`, `Redemption`, `Creator`, `DailyStats`. The proof page's metrics (wallets, trades, volume, maker share) come only from these entities.
+Entities: `Market`, `Stake`, `Staker`, `Graduation`, `TokenClaim`, `Trade` (fills on registered books, Hunch's or Kuru's), `Position`, `Settlement`, `Redemption`, `Creator`, `DailyStats`. The proof page's metrics (wallets, trades, volume, maker share) come only from these entities.
 
 ### 9.4 App
 
@@ -422,6 +465,7 @@ Every transaction the app sends is shown with an explorer link.
 4. Payoff identity of §5.3 holds for random stake sets, within rounding dust.
 5. No call sequence lets any address set an outcome or redeem a losing token for value.
 6. The guardian cannot block settlement, redemption, merge or refunds.
+7. Hunch order book: for every token, the margin account holds at least the sum of all free balances and book escrows; each book's escrow equals exactly what its resting orders lock; levels, linked lists and the best-price bitmap agree; the book is never crossed; no tokens appear or vanish.
 
 ### 10.2 Threats and answers
 
@@ -436,7 +480,8 @@ Every transaction the app sends is shown with an explorer link.
 | Withholding touch proofs | Anyone can prove; the keeper watches every touch market; 24-hour challenge before NO |
 | Guardian key compromise | Can only pause creation and graduation |
 | USDC issuer freezes the vault | Out of our control; disclosed |
-| Kuru outage | Book trading stops; mint, merge, settle and redeem do not depend on Kuru |
+| Kuru outage | Trading on Kuru books stops; Hunch order books, mint, merge, settle and redeem do not depend on Kuru |
+| Spam orders on a Hunch order book | Every resting order is at least 1 YES; a taker's gas grows with the orders it fills, so it sizes its order; cancels and withdrawals are never blocked |
 | A fake "book" registered for a market | `registerBook` accepts only markets registered in Kuru's MarginAccount with this YES token, USDC and the expected precisions |
 
 ### 10.3 Beta limits (v0)
@@ -452,7 +497,7 @@ Limits apply to markets created after a change; existing markets keep the limits
 
 ## 11. Known limitations
 
-- Mainnet graduation depends on Kuru creating each book (Kuru's mainnet market creation is owner-only).
+- Graduation onto a Kuru book on mainnet depends on Kuru creating each book (Kuru's market creation there is owner-only). The Hunch order book removes that dependency; it is new and not audited.
 - After graduation, a void pays 0.50 per token, which is not a refund for someone who bought at another price.
 - Thin books are likely at first. Until outside makers join, a large share of book fills will be against Hunch's labelled maker; the proof page shows that share.
 - Perpl funding markets inherit Perpl's trust model: a permissioned price administrator sets funding rates and a 3-of-7 multisig can upgrade the Exchange.
@@ -466,18 +511,18 @@ Limits apply to markets created after a change; existing markets keep the limits
 | Outcome token decimals | 6 |
 | Pool fee `φ` | 2% of winnings |
 | Creator share of fees | 25% |
-| Graduation rule | T ≥ 500 USDC, ≥ 10 stakers, both sides, 3% ≤ p ≤ 97% |
+| Graduation rule | T ≥ 500 USDC, ≥ 10 stakers, both sides, 3% ≤ p ≤ 97% (testnet `hunch` stack: T ≥ 100 USDC, ≥ 3 stakers, so a market can graduate in a demo) |
 | Settlement deadline | close + 7 days |
 | Touch challenge period | 24 hours |
 | Price source | Chainlink round that brackets `T` (staleness ≤ 1 hour); Pyth (60 seconds after `T`) where no Chainlink feed exists |
 | Perpl settlement | `block.number > B`; void if paused, rescaled or upgraded during the window |
-| Kuru book | precisions 1e6/1e6, tick 0.001 USDC, AMM vault empty (§8.1) |
+| Order book | precisions 1e6/1e6, tick 0.001 USDC, min order 1 YES, max order = pool cap; Hunch order book: no fees, no AMM vault; Kuru: AMM vault left empty (§8.1) |
 
 ## 13. Open items before deployment
 
 | Item | Resolved by |
 |---|---|
-| Kuru: turnaround for creating mainnet books, soft-pausing books at close, legacy vs new exchange contracts | Kuru team |
+| Kuru: turnaround for creating mainnet books, soft-pausing books at close (only for Kuru stacks; the Hunch order book needs neither) | Kuru team |
 | Chainlink feeds on Monad testnet | Found: BTC/USD and ETH/USD (in `deployments/monad-testnet.json`). They update about once a day, so testnet price markets often fail the one-hour staleness rule and void; testnet demos use Perpl funding markets, and price markets are tested on a mainnet fork |
 | Pyth Hermes API access for historical updates (only needed for assets with no Chainlink feed, such as SOL) | API key, then a fork test with a real update |
 | How often Perpl upgrades its Exchange (affects how often the upgrade rule voids markets) | watch the implementation slot during the beta |

@@ -41,12 +41,16 @@ from the book addresses the Graduator registered, never from other Kuru markets.
 
 ### Stacks
 
-A network can have more than one stack of Hunch Book contracts ([PROTOCOL.md §8.1](./PROTOCOL.md#81-kuru)):
+A network can have more than one stack of Hunch Book contracts ([PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)):
 the primary one (`hunchBook` in the deployments file) and extra ones under `stacks`. On testnet the
-primary stack is on Kuru v1 and `stacks.kuruV2` is on Kuru v2. Every contract in the table above is read
-on every stack that has it, with the same handlers, into the same tables:
+primary stack is on Kuru v1, `stacks.kuruV2` is on Kuru v2, and `stacks.hunch` (the default for new
+markets) is on Hunch Book's own order book. Hunch books speak Kuru v1's interface, so they are read
+exactly like Kuru v1 books: found from the stack's Graduator (`BookCreated`), with the same order and
+trade handlers. Every contract in the table above is read on every stack that has it, with the same
+handlers, into the same tables:
 
-- `Market.stack` and `Market.kuruVersion` say where a market belongs. Each stack's factory numbers its
+- `Market.stack`, `Market.kuruVersion` and `Market.venue` (`Kuru` or `Hunch`, also on `Book`, `Trade`
+  and `Stack`) say where a market belongs and where its book is. Each stack's factory numbers its
   own markets from 1, so `Market.number` repeats across stacks; `Stack.marketsCreated` keeps each count.
 - A record a contract numbers on its own keeps that number as its id on the primary stack and gets
   `"<stack>-"` in front on another: `Template`, `ConditionalOrder`, `RewardEpoch` (and its

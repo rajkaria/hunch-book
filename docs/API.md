@@ -45,9 +45,12 @@ Base URL: `https://book.playhunch.xyz/api/v1` (the app's own origin; the network
   wallets), `makerIsHunchMaker` (the fill's maker is our maker bot, `wallets.maker` in the deployments
   file) and `traderIsHunch` (the taking wallet is ours). Stats split fills and volume the same way.
 
-- **Stacks**: a network can run several stacks (a factory with its vault, graduator and router;
-  testnet has the original Kuru v1 stack and a Kuru v2 stack, [PROTOCOL.md §8.1](./PROTOCOL.md#81-kuru)).
-  Every endpoint covers all of them; a market on an extra stack carries `stack` and `kuruVersion`.
+- **Stacks and venues**: a network can run several stacks (a factory with its vault, graduator and
+  router; testnet has the `hunch` stack on Hunch Book's own order book, where new markets go, the
+  original Kuru v1 stack and a Kuru v2 stack, [PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)).
+  Every endpoint covers all of them. Market and settlement objects carry `stack` (`primary`, `hunch`,
+  `kuruV2`), `venue` (`hunch` or `kuru`) and `venueLabel` (`Hunch order book`, `Kuru` or `Kuru v2`);
+  a market on a Kuru v2 stack also carries `kuruVersion`. The markets CSV ends with `stack,venue`.
 
 ## GET /markets
 

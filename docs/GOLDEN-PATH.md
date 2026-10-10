@@ -1,8 +1,8 @@
 # Golden path: one market, start to finish, on Monad testnet
 
 This is the walk-through for a person who wants to see every stage of a Hunch Book market with their
-own eyes: stake into a pool, graduate it to a Kuru order book, trade YES and NO, settle it from
-the chain, check the settlement, and redeem. It takes two browser wallets and about two and a half
+own eyes: stake into a pool, graduate it to an onchain order book (Hunch Book's own, created in the
+graduation transaction), trade YES and NO, settle it from the chain, check the settlement, and redeem. It takes two browser wallets and about two and a half
 hours, most of it waiting for the observation window.
 
 Everything runs on Monad testnet with Hunch Book's own test USDC, which has no value. The app is
@@ -11,7 +11,12 @@ with a link to the explorer (<https://testnet.monadscan.com>).
 
 ## What is prepared for you
 
-Graduation needs a pool of at least 500 USDC from at least 10 different wallets, with stakes on both
+New markets go to the `hunch` stack, which trades on Hunch Book's own order book. Its graduation rule
+is a pool of at least 100 USDC from at least 3 different wallets, with stakes on both sides and a chance
+between 3% and 97%, so the prepared pool needs only one of your wallets to graduate (the older Kuru v1
+stack keeps the v0 rule below, with `STACK` unset).
+
+On the v0 rule, graduation needs a pool of at least 500 USDC from at least 10 different wallets, with stakes on both
 sides and a chance between 3% and 97% (docs/PROTOCOL.md §5.3). Ten wallets is a lot to ask of one
 person, so Hunch Book prepares a market that is just short of the rule:
 
@@ -48,6 +53,20 @@ market from any template, and the rest of this walk-through is the same. You the
 yourself.
 
 ## The market prepared for this run
+
+Created on 2026-10-10 on the `hunch` stack with `STACK=hunch LOCK_AT_UNIX=1791819000 MARGIN_MINUTES=0
+SEED_STAKERS=2 GAP_USDC=20`:
+
+| | |
+|---|---|
+| Market | [0xfeACC2dbB3Fc573e035F953138fa2A819E3E45eF](https://book.playhunch.xyz/m/0xfeACC2dbB3Fc573e035F953138fa2A819E3E45eF) ([explorer](https://testnet.monadscan.com/address/0xfeACC2dbB3Fc573e035F953138fa2A819E3E45eF)) |
+| Question | Will MON longs pay more than -$0.00000024 per MON in funding on Perpl (MON Perp, perp 64) between block 70,436,478 and block 70,453,620? Past windows of the same length beat that in 25 of the last 47, so YES starts near a coin flip |
+| Lock (end of staking) | block 70,436,478, about 15:44 UTC (21:14 IST) on 2026-10-12 |
+| Close (end of the window) | block 70,453,620, about 17:11 UTC (22:41 IST) on 2026-10-12 |
+| Pool before you | 40 USDC YES and 40 USDC NO from 2 stakers, all ours: the deployer [0xD183…10A8](https://testnet.monadscan.com/address/0xD183a7daECF3d539683f37e1111558E3dFC210A8) and the seed wallet [0x5D6F…e381](https://testnet.monadscan.com/address/0x5D6F5E4EE2F10922b67595E5d8a649611264e381) |
+| What you add | wallet A: at least 20 USDC on YES before the lock block. Then the pool holds 100 USDC from 3 stakers and anyone can graduate it; the graduation creates its order book. Wallet B trades on that book |
+
+### The first golden path market (Kuru v1 stack)
 
 Created on 2026-10-06 with `LOCK_AT_UNIX=1791289800 MARGIN_MINUTES=120`
 ([creation tx](https://testnet.monadscan.com/tx/0x001f11a404576309bbe7953f20fd1df942bbdeb2779e6baf34b8255315f6417b)):
@@ -129,17 +148,18 @@ implied chance of 50.0%, and every line of the **Graduation rule** panel in lime
 
 **Transactions:** the same two as wallet A, with side 1 (NO).
 
-## 6. Graduate the pool to Kuru
+## 6. Graduate the pool to its order book
 
-**Do:** in the **Actions** panel, click **Graduate to Kuru** and confirm. Hunch Book's keeper
+**Do:** in the **Actions** panel, click **Graduate to the order book** and confirm. Hunch Book's keeper
 watches every pool and may graduate it first, within a minute or so; the page then simply moves on.
 
 **You should see:** the phase badge changes from **Pool** to **Trading**, the chance now comes from
-the mid price of the book, and the market shows its Kuru YES/USDC book address.
+the mid price of the book, and the market shows its YES/USDC book address (a Hunch order book on the
+`hunch` stack, a Kuru book on the Kuru v1 stack).
 
 **Transaction:** `Market.graduate()`. In one transaction the pool's 500 USDC becomes 500 YES and 500
-NO tokens held by the vault for the stakers, and the Graduator creates the market's YES/USDC book on
-Kuru at the pool's price (50%). The redemption fee per winning token is fixed now: 0.02 × 250 / 500
+NO tokens held by the vault for the stakers, and the Graduator creates the market's YES/USDC book (on
+Hunch Book's own order book, or on Kuru for the older stack) at the pool's price (50%). The redemption fee per winning token is fixed now: 0.02 × 250 / 500
 = 0.01 USDC.
 
 ## 7. Claim your tokens

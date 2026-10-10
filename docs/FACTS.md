@@ -19,6 +19,30 @@ change. This page holds the numbers that do not change, and dated snapshots of t
 | Our maker bot | [0x0f11…232A](https://testnet.monadscan.com/address/0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A) | `wallets.maker` |
 | Our keeper | [0x1f5A…5569](https://testnet.monadscan.com/address/0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569) | `wallets.keeper` |
 
+## The `hunch` stack: Hunch Book's own order book (Monad testnet)
+
+| Fact | Value | Source |
+|---|---|---|
+| Deploy block | 69,857,525 (2026-10-10) | `stacks.hunch.deployBlock` in [deployments/monad-testnet.json](../deployments/monad-testnet.json) |
+| New contracts | factory and vault, [HunchOrderBookFactory 0x0DDF…46C5](https://testnet.monadscan.com/address/0x0DDF74540B6720B348483084F749907b2c3F46C5) (it deploys the [HunchMarginAccount 0x6dDa…Ee1c](https://testnet.monadscan.com/address/0x6dDaC7a754A2A4bf2fF688B8F08eaA8ADC42Ee1c) and the book implementation), graduator, router, parlay resolver | `stacks.hunch` and its `deployTxs` |
+| Reused from the primary stack | test USDC, market implementation, the resolvers of templates 1 to 5 and 7 (none of them is tied to a factory) | the same addresses under `hunchBook` and `stacks.hunch` |
+| Templates registered | 7 (ids 1 to 7) | `addTemplate1` to `addTemplate7` in `stacks.hunch.deployTxs` |
+| Graduation rule | pool of at least 100 USDC, at least 3 stakers, chance between 3% and 97% | `factory.templateOf(id).rule`; `GRADUATION_MIN_POOL=100 GRADUATION_MIN_STAKERS=3` at deploy |
+| Trading fees on the book | 0 | `HunchOrderBookFactory` accepts fee 0 only |
+| Source verification | all 9 new contracts verified on Sourcify (exact match) | `forge verify-contract --verifier sourcify` |
+| Default for new markets | yes (`defaultStack: "hunch"`) | the deployments file |
+
+### Markets on the `hunch` stack (ours, seeded by us)
+
+Each was created by the deployer with a 50 USDC first stake on YES; four addresses derived from the deployer key
+(label "hunch-book testnet seed") staked 30 USDC YES twice and 45 USDC NO twice, so each pool held 110 USDC YES and
+90 USDC NO from 5 stakers, all ours. Each graduated in one transaction that also created its order book.
+
+| Market | Question | Book | Creation | Graduation | Closes |
+|---|---|---|---|---|---|
+| [0x2B31…Ffff](https://testnet.monadscan.com/address/0x2B31160548b1211958339BEa9b39561bA3fFFfff) | Will MON longs pay shorts on net in funding on Perpl (perp 64) between blocks 69,880,803 and 70,737,903? | [0x3f1D…37AF](https://testnet.monadscan.com/address/0x3f1D3C83515ae03D289b7F7E2A0e63Af5b4f37AF) | [tx](https://testnet.monadscan.com/tx/0x63ba5c01ccd516c35d17bfec5a3bf95870efe9d5bab62ceccc504d7920976724) | [tx](https://testnet.monadscan.com/tx/0x6a358f135309610ec9d38528ae590049cfda586a422c3a185e2bd0f5208693cf) | block 70,737,903, about 2026-10-13 17:00 UTC |
+| [0x21dc…D41B](https://testnet.monadscan.com/address/0x21dc581cBC26E7C42adA3462C35Ce9f49d9FD41B) | Will BTC longs pay shorts on net in funding on Perpl (perp 16) between blocks 69,880,937 and 73,995,017? | [0x06F5…9e12](https://testnet.monadscan.com/address/0x06F5D1375d40ADF2b3f52c410CEbcC773d2f9e12) | [tx](https://testnet.monadscan.com/tx/0x7eb3c6fe4542761748defff5029671b69e33d07f4982877e6693690a3d5c9925) | [tx](https://testnet.monadscan.com/tx/0x4b535cf1afc73d2cdeb1f5acbfc6307591e4fe8570dd2a89ec8793bbab0e915e) | block 73,995,017, about 2026-10-25 |
+
 ## Market #1 (our own, seeded by us)
 
 | Fact | Value | Source |
@@ -48,14 +72,14 @@ Opened by our own wallets to show each template working. They count as ours wher
 
 ## Protocol parameters (v0)
 
-From [PROTOCOL.md §12](./PROTOCOL.md#12-parameters-v0) and the deploy script; the same on every network.
+From [PROTOCOL.md §12](./PROTOCOL.md#12-parameters-v0) and the deploy script; the same on every network and stack except where a row says otherwise.
 
 | Parameter | Value |
 |---|---|
 | Pool fee | 2% of winnings, never more than the losing side |
 | Creator share of fees | 25% |
 | Highest redemption fee per winning token | 0.0194 USDC (2% × 97%) |
-| Graduation rule | pool of at least 500 USDC, at least 10 stakers, chance between 3% and 97% |
+| Graduation rule | pool of at least 500 USDC, at least 10 stakers, chance between 3% and 97% (testnet `hunch` stack: 100 USDC, 3 stakers) |
 | Pool cap per market | 5,000 USDC |
 | Stake cap per wallet per market | 1,000 USDC |
 | Minimum stake | 1 USDC; the creator's first stake at least 5 USDC |

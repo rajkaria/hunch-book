@@ -1,6 +1,6 @@
 # Hunch Book roadmap
 
-Last updated: 2026-10-06. Status words used below:
+Last updated: 2026-10-10. Status words used below:
 
 - **planned**: designed, not started
 - **building**: in progress
@@ -10,7 +10,7 @@ Live items link their proof in the [README](../README.md#whats-live); every addr
 
 ## What we are building, in one paragraph
 
-Anyone can start a yes/no market from a template whose answer can be read on the Monad blockchain, such as funding on Perpl or a Chainlink price. A new market starts as a **pool**: people stake USDC on YES or NO, with no market maker needed. Once a pool has proven demand, it **graduates**: in one transaction the pool's USDC becomes fully backed YES and NO tokens, split between the people who staked, and the YES token opens as a spot market on **Kuru's onchain order book**. From then on, anyone can sell before the answer is known. When the observation window closes, the market **settles itself** by reading the source contract, and winning tokens redeem for $1.
+Anyone can start a yes/no market from a template whose answer can be read on the Monad blockchain, such as funding on Perpl or a Chainlink price. A new market starts as a **pool**: people stake USDC on YES or NO, with no market maker needed. Once a pool has proven demand, it **graduates**: in one transaction the pool's USDC becomes fully backed YES and NO tokens, split between the people who staked, and the YES token opens as a spot market on an **onchain order book**: Hunch Book's own, created in that same transaction with no third party, or Kuru's. From then on, anyone can sell before the answer is known. When the observation window closes, the market **settles itself** by reading the source contract, and winning tokens redeem for $1.
 
 ## Phases at a glance
 
@@ -69,6 +69,7 @@ Tests that must pass before anything deploys:
 | C-6 | `HunchRouter`: buy YES, sell YES, buy NO (mint a pair, sell YES), sell NO (buy YES, merge), all atomic with slippage limits and deadlines; uses a vault flash loan guarded by the solvency invariant | live on testnet |
 | V-1 | Kuru integration on testnet: market creation parameters for $0.01–$0.99 outcome tokens, router order calls, fork tests | live on testnet |
 | V-2 | Maker bot v0 (open source, address published): quotes both sides of the YES book from a pricing model, inventory limits, cancels everything at close | live on testnet |
+| V-4 | **Hunch Book's own order book** ([contracts/src/venue](../contracts/src/venue)): a fully onchain price-time priority book per graduated market that anyone can create on any network, behind Kuru v1's interface so the Graduator, router, maker, keeper, indexer and app run on it unchanged; stops matching by itself at close; no fees | live on testnet (the `hunch` stack, default for new markets; [PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)); rehearsed on a mainnet fork |
 
 Graduation rules (v0 values, set per template and visible on every market):
 - pool total at least $500 and at least 10 distinct stakers
@@ -89,9 +90,9 @@ Graduation rules (v0 values, set per template and visible on every market):
 
 | ID | Deliverable | Status |
 |---|---|---|
-| O-3 | Contracts on Monad mainnet with native USDC; addresses in `deployments/monad-mainnet.json` and the README | building: rehearsed end to end on a fork of Monad mainnet ([runbook](./DEPLOY.md)); waits for the guardian multisig |
+| O-3 | Contracts on Monad mainnet with native USDC; addresses in `deployments/monad-mainnet.json` and the README | building: on Hunch Book's own order book (`VENUE=hunch`), rehearsed end to end on a fork of Monad mainnet with Circle USDC ([runbook](./DEPLOY.md)); waits for the guardian multisig and gas |
 | O-4 | Beta caps: per-market pool cap, per-wallet stake cap, total collateral cap; guardian can pause creation and graduation only (never redemption, never outcomes) | live on testnet; set by the deploy script for mainnet |
-| V-3 | Graduation to Kuru mainnet. Kuru's mainnet market creation is owner-only, so Kuru creates each YES/USDC book on request and anyone registers it (the Graduator verifies it). Until Kuru does, mainnet markets run as pools and graduation is shown on testnet | building: on Kuru v2, as Kuru asked. GraduatorV2 and HunchRouterV2 are deployed on testnet as the `kuruV2` stack ([factory](https://testnet.monadscan.com/address/0xd6994DD479d845F1ea039b6322fBE00c12Ea125A)) and rehearsed against Kuru's live v2 testnet contracts on a fork; the keeper publishes each book request; the first v2 book waits for Kuru |
+| V-3 | Graduation to Kuru mainnet. Kuru's mainnet market creation is owner-only, so Kuru creates each YES/USDC book on request and anyone registers it (the Graduator verifies it). Mainnet markets do not wait for it: they graduate into Hunch Book's own order book (V-4) | building: on Kuru v2, as Kuru asked. GraduatorV2 and HunchRouterV2 are deployed on testnet as the `kuruV2` stack ([factory](https://testnet.monadscan.com/address/0xd6994DD479d845F1ea039b6322fBE00c12Ea125A)) and rehearsed against Kuru's live v2 testnet contracts on a fork; the keeper publishes each book request; the first v2 book waits for Kuru |
 | A-3 | Mainnet app with explorer links on every action | building: every action in the app lists its transaction with an explorer link for the active network, and mainnet pages show a clear not-deployed state; waits for the mainnet deploy |
 
 ### 0.5 Proof and utility (target 2026-10-09 → 2026-10-10)

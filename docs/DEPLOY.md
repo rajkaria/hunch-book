@@ -75,7 +75,16 @@ cd contracts
 FOUNDRY_PROFILE=fork forge test --match-path test/fork/MainnetRehearsal.fork.t.sol -vv
 ```
 
-All tests must pass on the day of the deploy. The file rehearses the Kuru v1 path (Kuru v1 is live on
+The recommended mainnet launch is on Hunch Book's own order book (`VENUE=hunch`), which needs nothing
+from Kuru: books are created inside `graduate()`. Its rehearsal deploys with the real script and Circle
+USDC, fills a pool, graduates (creating the book), quotes, trades YES and NO through the router, closes,
+settles and redeems:
+
+```bash
+FOUNDRY_PROFILE=fork forge test --match-path test/fork/HunchVenueMainnet.fork.t.sol -vv
+```
+
+All tests must pass on the day of the deploy. The Kuru file rehearses the Kuru v1 path (Kuru v1 is live on
 mainnet) and the Kuru v2 launch path: a deploy with no graduator (`WIRE_KURU=0`) whose pools run and
 settle without one. The Kuru v2 contracts themselves are rehearsed on a fork of Monad testnet, against
 Kuru's live v2 contracts, with Kuru's owner impersonated for its setup steps:
@@ -97,8 +106,24 @@ forge script script/Deploy.s.sol --rpc-url "$MONAD_MAINNET_RPC" \
 Run it once without `--broadcast` first: a dry run prints every address and writes nothing. The
 broadcast run writes the addresses into `deployments/monad-mainnet.json` under `hunchBook`.
 
+**Venue.** `VENUE=hunch` (recommended for mainnet) deploys Hunch Book's own order book
+(HunchOrderBookFactory, its HunchMarginAccount and the book implementation) with the v1 Graduator and
+HunchRouter on it, and writes `hunchBook.venue`. Every market graduates into its own book on the spot,
+on any network ([PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)):
+
+```bash
+VENUE=hunch GUARDIAN=0xYourMultisig FEE_RECIPIENT=0xYourFeeAddress DEPLOYER_PRIVATE_KEY=... \
+forge script script/Deploy.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast --gas-estimate-multiplier 110
+```
+
+A Kuru stack can be added next to it later (`STACK=kuruV2 KURU_VERSION=2`), once Kuru creates books.
+`GRADUATION_MIN_POOL` and `GRADUATION_MIN_STAKERS` set the graduation rule of templates 1 and 2 (default
+500 USDC and 10 stakers); the template scripts copy template 1's.
+
+Foundry reads `.env` from the directory it runs in, so the key never goes on the command line.
+
 **Kuru version.** Mainnet defaults to Kuru v2 (`KURU_VERSION=2`): GraduatorV2 and HunchRouterV2,
-pointed at `external.kuruV2` in the deployments file ([PROTOCOL.md §8.1](./PROTOCOL.md#81-kuru)).
+pointed at `external.kuruV2` in the deployments file ([PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)).
 
 - Kuru's v2 mainnet addresses are in the file: deploy as above.
 - They are not there yet: deploy with `WIRE_KURU=0`. Everything except the graduator and router goes
@@ -165,7 +190,8 @@ shows mainnet as soon as the file has a factory address.
 
 ### 6. Books on mainnet
 
-Only Kuru can create books on mainnet. On Kuru v2 each market's tokens also need Kuru's setup first
+On a `VENUE=hunch` stack there is nothing to do: `graduate()` creates each book. The rest of this step is
+for a Kuru stack. Only Kuru can create Kuru books on mainnet. On Kuru v2 each market's tokens also need Kuru's setup first
 (a price source in the WithdrawalLimiter, enabled in AccountCore, whitelisted), which takes Kuru 1 to 2
 days for now, so the request goes out when a market is created, not when it fills. Status: the
 scripts below, the keeper's v2 steps and the request API are live on testnet, for the `kuruV2` stack;
@@ -210,7 +236,21 @@ Re-running `Deploy.s.sol` on a stack that already has a factory stops with "alre
 stack". A new deployment means a new factory, a new vault and new markets; existing markets keep
 working against the old ones.
 
-**Two stacks on testnet.** The primary stack (`hunchBook`) uses Kuru v1, where anyone can create a
+**Three stacks on testnet.** The `hunch` stack (`stacks.hunch`, the `defaultStack` for new markets)
+trades on Hunch Book's own order book. `DeployHunchStack.s.sol` deployed it next to the primary stack,
+reusing the primary stack's test USDC, market implementation and the resolvers that are not tied to a
+factory, and registered templates 1 to 7 with a 100 USDC, 3-staker rule:
+
+```bash
+cd ~/Projects/hunch-book   # the checkout with .env
+STACK=hunch GRADUATION_MIN_POOL=100 GRADUATION_MIN_STAKERS=3 \
+  forge script <root>/script/DeployHunchStack.s.sol:DeployHunchStack --root <root> \
+  --rpc-url monad_testnet --broadcast --slow --gas-estimate-multiplier 110
+```
+
+`SeedTestnetMarket.s.sol` and `TradeTestnet.s.sol` take `STACK=hunch` too.
+
+The primary stack (`hunchBook`) uses Kuru v1, where anyone can create a
 book, so markets graduate on their own. The Kuru v2 stack sits under `stacks.kuruV2`, reuses the same
 test USDC, and graduates once Kuru creates each book:
 
