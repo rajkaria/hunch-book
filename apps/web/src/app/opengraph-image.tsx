@@ -147,7 +147,7 @@ export default async function OpengraphImage() {
             : null}
         </div>
         <div style={{ display: "flex", fontSize: 20, fontWeight: 500, color: MUTED }}>
-          Monad · Kuru · Perpl · Chainlink
+          Monad · onchain order books · Perpl · Chainlink
         </div>
       </div>
     </div>,

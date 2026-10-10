@@ -20,7 +20,7 @@ import {
 import { appChain, appDeployment, appNetwork, isDeployed, usdcOf } from "./config";
 import { planSettlement } from "./market/settle";
 import type { ChainClock, MarketView } from "./market/types";
-import { routerOf } from "./stacks";
+import { defaultStack, deployBlockOf, routerOf } from "./stacks";
 import { findSettlementTx, runVerification } from "./verify/read";
 
 // React Query hooks over the read layer. Query keys never hold bigints.
@@ -111,12 +111,16 @@ export function useProtocolAddresses(market?: Pick<MarketView, "stack">) {
   });
 }
 
+/**
+ * The wallet's USDC balance and its allowance to `protocol.vault`. Each stack has its own vault, so the
+ * vault is part of the key (queryKeys.usdc(user) still refreshes every one of them).
+ */
 export function useUsdcState(
   user: Address | undefined,
   protocol: { vault: Address; usdc: Address } | null | undefined,
 ) {
   return useQuery({
-    queryKey: queryKeys.usdc(user ?? "0x"),
+    queryKey: [...queryKeys.usdc(user ?? "0x"), protocol?.vault.toLowerCase() ?? "none"],
     queryFn: () =>
       readUsdcState(
         getPublicClient(),
@@ -166,8 +170,9 @@ export function useNow(intervalMs = 1_000): number | null {
 }
 
 /**
- * A graduated market's Kuru book: levels, params and our maker's share of each level (Kuru v1 only).
- * `kuruVersion` is the market's (MarketView.kuruVersion; absent = 1).
+ * A graduated market's book: levels, params and our maker's share of each level (Kuru v1's interface:
+ * Kuru's v1 books and Hunch Book's own). `kuruVersion` is the market's (MarketView.kuruVersion; absent
+ * = 1).
  */
 export function useBook(book: Address | null, kuruVersion: 1 | 2 = 1) {
   return useQuery({
@@ -249,9 +254,7 @@ export function useSettlementTx(market: MarketView, final: boolean) {
     queryFn: async () => {
       const client = getPublicClient();
       const head = await client.getBlockNumber();
-      const from = market.window.blockClock
-        ? market.window.close
-        : BigInt(appDeployment.hunchBook.deployBlock ?? 0);
+      const from = market.window.blockClock ? market.window.close : deployBlockOf(market);
       return findSettlementTx(client, market, from, head);
     },
     enabled: deployed() && final,
@@ -262,12 +265,14 @@ export function useSettlementTx(market: MarketView, final: boolean) {
 }
 
 /**
- * Hunch Book's own test USDC with a public faucet: testnet only, the token deployed with the protocol,
- * and it answers FAUCET_LIMIT(). Resolves to the token and its limit per request.
+ * Hunch Book's own test USDC with a public faucet: testnet only, the token deployed with the protocol
+ * (the collateral of the stack new markets go to), and it answers FAUCET_LIMIT(). Resolves to the token
+ * and its limit per request.
  */
 export function useTestUsdcFaucet() {
-  const usdc = usdcOf(appDeployment);
-  const candidate = appNetwork === "monad-testnet" && Boolean(appDeployment.hunchBook.usdc) && Boolean(usdc);
+  const own = defaultStack()?.contracts.usdc ?? appDeployment.hunchBook.usdc;
+  const usdc = own ?? usdcOf(appDeployment);
+  const candidate = appNetwork === "monad-testnet" && Boolean(own) && Boolean(usdc);
   return useQuery({
     queryKey: queryKeys.faucet(),
     queryFn: async () => {

@@ -44,11 +44,23 @@ const query = (q: QueryState) => ({
 
 vi.mock("@/lib/config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/config")>();
+  // A fixed two-stack deployment: new markets go to the `hunch` stack, on Hunch Book's own order book.
+  const own = "0x00000000000000000000000000000000000000f2";
   const withFactory = {
     ...actual.appDeployment,
     hunchBook: { ...actual.appDeployment.hunchBook, factory: "0x00000000000000000000000000000000000000f1" },
+    stacks: {
+      hunch: {
+        factory: own,
+        vault: own,
+        router: own,
+        graduator: own,
+        venue: { kind: "hunch", bookFactory: own, marginAccount: own, bookImplementation: own },
+      },
+    },
+    defaultStack: "hunch",
   };
-  const without = { ...actual.appDeployment, hunchBook: {} };
+  const without = { ...actual.appDeployment, hunchBook: {}, stacks: undefined };
   return {
     ...actual,
     get appDeployment() {
@@ -318,9 +330,9 @@ describe("step 2: price templates", () => {
 });
 
 describe("step 2: parlay", () => {
-  it("lists open markets as legs and caps the choice at five", async () => {
+  it("lists open markets of the stack new markets go to as legs, and caps the choice at five", async () => {
     state.config = config([6]);
-    const legs = [1, 2, 3, 4, 5, 6].map((i) =>
+    const leg = (i: number, over: Partial<ReturnType<typeof makeMarket>> = {}) =>
       makeMarket({
         address: `0x${(0xa0 + i).toString(16).padStart(40, "0")}` as Address,
         marketId: BigInt(i),
@@ -332,11 +344,18 @@ describe("step 2: parlay", () => {
           close: BigInt(NOW + 172_800),
           settleDeadline: 0n,
         },
-      }),
-    );
-    state.markets = { data: { status: "ok", data: { markets: legs, total: legs.length } } };
+        stack: "hunch",
+        kuruVersion: 1,
+        venue: "hunch",
+        ...over,
+      });
+    const legs = [1, 2, 3, 4, 5, 6].map((i) => leg(i));
+    // An open market of the primary (Kuru) stack: the new parlay's resolver would refuse it as a leg.
+    const elsewhere = leg(7, { stack: undefined, kuruVersion: undefined, venue: undefined });
+    state.markets = { data: { status: "ok", data: { markets: [...legs, elsewhere], total: 7 } } };
     await renderWithProviders(<CreateFlow initialTemplate={6} />);
     expect(screen.getByText("Leg question 1")).toBeTruthy();
+    expect(screen.queryByText("Leg question 7")).toBeNull();
     const boxes = screen.getAllByRole("checkbox");
     for (const box of boxes.slice(0, 5)) fireEvent.click(box);
     expect(screen.getByText("Legs: 5 of 2 to 5 chosen")).toBeTruthy();
@@ -348,6 +367,28 @@ describe("step 2: parlay", () => {
     });
     expect(screen.queryByText("Leg question 1")).toBeNull();
     expect(screen.getByText("Leg question 6")).toBeTruthy();
+  });
+});
+
+describe("the preview names the venue of the stack new markets go to", () => {
+  it("says graduation opens Hunch Book's own order book, with no third party", async () => {
+    state.config = config([1], { stack: "hunch", venue: "hunch", kuruVersion: 1 });
+    state.preview = previewOk;
+    await renderWithProviders(<CreateFlow initialTemplate={1} />);
+    expect(
+      await screen.findByText(
+        /The same transaction opens its own YES\/USDC book on Hunch Book's onchain order book, so graduation waits on no third party/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("says a Kuru stack's market graduates to its own Kuru order book", async () => {
+    state.config = config([1], { stack: "primary", venue: "kuru", kuruVersion: 1 });
+    state.preview = previewOk;
+    await renderWithProviders(<CreateFlow initialTemplate={1} />);
+    expect(
+      await screen.findByText(/tokens on its own Kuru order book\. If not, it settles as a pool\./),
+    ).toBeTruthy();
   });
 });
 

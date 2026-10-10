@@ -2,12 +2,12 @@ import { addressUrl, deployments, Phase } from "@hunch-book/shared";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { isSeededByUs, type LandingRead, landingClock } from "@/lib/chain/landing";
-import { appDeployment, appNetwork, appNetworkLabel, factoryOf, isDeployed, REPO_URL } from "@/lib/config";
+import { appDeployment, appNetwork, appNetworkLabel, isDeployed, REPO_URL } from "@/lib/config";
 import { formatInt, formatUsdc, shortAddress } from "@/lib/format";
 import { chanceDisplay, lifecycleStages, marketChance, type StageState } from "@/lib/market/logic";
 import { marketTitle, type TitleClock } from "@/lib/market/title";
 import type { MarketView } from "@/lib/market/types";
-import { marketTag } from "@/lib/stacks";
+import { bookName, defaultStack, marketTag, onHunchVenue } from "@/lib/stacks";
 import { AddressLink, Badge, ButtonLink, ChanceBar, LiveDot, PhasePill } from "../ui";
 import s from "./landing.module.css";
 import { priceWords, usdcWords } from "./words";
@@ -52,9 +52,9 @@ export function StageTrack({ m }: { m: Pick<MarketView, "phase" | "graduated"> }
 
 // ---------- contract links ----------
 
+/** The factory and vault new markets use (the default stack's), and every address. */
 export function ContractLinks() {
-  const factory = factoryOf(appDeployment);
-  const vault = appDeployment.hunchBook.vault;
+  const { factory, vault } = defaultStack()?.contracts ?? {};
   return (
     <div className={s.links}>
       {factory ? (
@@ -170,10 +170,10 @@ function LiveMarketCard({ m, clock }: { m: MarketView; clock: TitleClock | null 
       <div className={s.cardFoot}>
         {m.book ? (
           <span className={s.cardBook}>
-            Kuru book <AddressLink address={m.book} />
+            {bookName(m)} <AddressLink address={m.book} />
           </span>
         ) : (
-          <span className="subtle">No Kuru book yet</span>
+          <span className="subtle">No book yet</span>
         )}
         <Link href={href} className={s.cardOpen}>
           Open market <span aria-hidden="true">→</span>
@@ -218,6 +218,9 @@ export function HeroCard({ live }: { live: LandingRead }) {
 export function Hero({ live }: { live: LandingRead }) {
   const deployed = isDeployed(appDeployment);
   const mainnetLive = isDeployed(deployments["monad-mainnet"]);
+  // New markets get their book from Hunch Book's own order book: graduation needs nobody else.
+  const stack = defaultStack();
+  const newBooksOurs = deployed && stack !== undefined && onHunchVenue(stack);
   return (
     <section className={s.hero} aria-labelledby="hero-title">
       <div className={`${s.wrap} ${s.heroGrid}`}>
@@ -234,8 +237,8 @@ export function Hero({ live }: { live: LandingRead }) {
             <span className={s.h1Line}>Settle from the chain.</span>
           </h1>
           <p className={`${s.heroSub} rise-in-2`}>
-            Stake USDC on YES or NO from the first dollar. When the pool fills, it becomes a real order book
-            you can sell into, and a contract settles it by reading the chain.
+            Stake USDC on YES or NO from the first dollar. When the pool fills, it graduates to its own
+            onchain order book you can sell into, and a contract settles it by reading the chain.
           </p>
           <div className={`${s.ctas} rise-in-2`}>
             <ButtonLink href="/markets" variant="primary" size="lg" arrow>
@@ -248,6 +251,7 @@ export function Hero({ live }: { live: LandingRead }) {
           <ul className={`${s.proofPoints} rise-in-3`}>
             <li>No one sets an outcome by hand</li>
             <li>1 YES + 1 NO is always backed by 1 USDC</li>
+            {newBooksOurs ? <li>Graduation waits on no third party</li> : null}
             <li>Open source, MIT</li>
           </ul>
           <div className={`${s.badges} rise-in-3`}>

@@ -1,8 +1,9 @@
-import { addressUrl, type Deployment, type GraduationRule } from "@hunch-book/shared";
+import { addressUrl, type Deployment, defaultStackOf, type GraduationRule } from "@hunch-book/shared";
 import type { ReactNode } from "react";
 import type { LandingStats } from "@/lib/chain/landing";
 import { appDeployment, appNetworkLabel } from "@/lib/config";
 import { formatBpsPercent, formatInt } from "@/lib/format";
+import { onHunchVenue, type VenueSource } from "@/lib/stacks";
 import { Badge } from "../ui";
 import s from "./landing.module.css";
 import { PROTOCOL, ruleWords, usdcWords } from "./words";
@@ -17,17 +18,33 @@ export interface Stage {
   more: { href: string; label: string };
 }
 
-/** The three stages, with the graduation rule and the settled count only when they were read. */
+/** What graduation opens, on the venue new markets go to. */
+export function graduationOpens(venue: VenueSource | undefined): string {
+  if (venue && onHunchVenue(venue)) {
+    return "opens its own YES/USDC order book, fully onchain, so graduation waits on no third party";
+  }
+  return venue?.kuruVersion === 2
+    ? "opens trading on its YES/USDC book on Kuru v2, which Kuru creates first"
+    : "opens a YES/USDC book on Kuru";
+}
+
+/**
+ * The three stages, with the graduation rule and the settled count only when they were read. The stages
+ * describe the stack new markets go to (deployments `defaultStack`).
+ */
 export function lifecycleSteps(
   rule: GraduationRule | null,
   stats: LandingStats | null = null,
   deployment: Deployment = appDeployment,
 ): Stage[] {
-  const { perplFunding, priceAtTime } = deployment.hunchBook.resolvers ?? {};
+  const stack = defaultStackOf(deployment);
+  const contracts = stack?.contracts ?? deployment.hunchBook;
+  const { perplFunding, priceAtTime } = contracts.resolvers ?? {};
   // Each stage is live only where the contracts behind it are in deployments/<network>.json.
-  const poolLive = Boolean(deployment.hunchBook.factory && deployment.hunchBook.vault);
-  const bookLive = Boolean(deployment.hunchBook.graduator && deployment.hunchBook.router);
+  const poolLive = Boolean(contracts.factory && contracts.vault);
+  const bookLive = Boolean(contracts.graduator && contracts.router);
   const resolversLive = Boolean(perplFunding && priceAtTime);
+  const opens = graduationOpens(stack);
   return [
     {
       key: "pool",
@@ -41,8 +58,8 @@ export function lifecycleSteps(
       key: "book",
       title: "Book",
       body: rule
-        ? `When the pool holds ${ruleWords(rule)}, anyone can graduate it. One transaction turns it into fully backed YES and NO tokens, keeps every staker's payout the same, and opens a YES/USDC book on Kuru.`
-        : "When the pool meets its graduation rule, anyone can graduate it. One transaction turns it into fully backed YES and NO tokens, keeps every staker's payout the same, and opens a YES/USDC book on Kuru.",
+        ? `When the pool holds ${ruleWords(rule)}, anyone can graduate it. One transaction turns it into fully backed YES and NO tokens, keeps every staker's payout the same, and ${opens}.`
+        : `When the pool meets its graduation rule, anyone can graduate it. One transaction turns it into fully backed YES and NO tokens, keeps every staker's payout the same, and ${opens}.`,
       facts: rule
         ? [
             `pool ≥ ${usdcWords(rule.minPool)}`,
@@ -96,7 +113,7 @@ const statusWords = (status: Stage["status"]): string =>
 export function LifecycleDiagram({ rule }: { rule: GraduationRule | null }) {
   const gradLabel = rule ? `${usdcWords(rule.minPool)}, ${formatInt(rule.minStakers)} wallets` : "rule met";
   const label =
-    "Lifecycle: a pool graduates into a Kuru order book when its rule is met, and the book settles from the chain when the window closes. A pool that never graduates settles as a pool.";
+    "Lifecycle: a pool graduates into an onchain order book when its rule is met, and the book settles from the chain when the window closes. A pool that never graduates settles as a pool.";
   return (
     <div className={s.diagram}>
       <svg className={s.diagramWide} viewBox="0 0 1000 236" role="img" aria-label={label}>
@@ -154,7 +171,7 @@ export function LifecycleDiagram({ rule }: { rule: GraduationRule | null }) {
             02 BOOK
           </text>
           <text x="416" y="108" className={s.dgTitle}>
-            Trade on Kuru
+            Trade the book
           </text>
         </g>
         <g>
@@ -213,7 +230,7 @@ export function LifecycleDiagram({ rule }: { rule: GraduationRule | null }) {
             02 BOOK
           </text>
           <text x="32" y="248" className={s.dgTitle}>
-            Trade on Kuru
+            Trade the book
           </text>
         </g>
         <path d="M135 274 V346" className={s.dgFlow} markerEnd="url(#lc-arrow-tall)" />

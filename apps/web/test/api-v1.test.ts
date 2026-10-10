@@ -823,3 +823,62 @@ describe("GET /embed/m/{address}", () => {
     );
   });
 });
+
+describe("markets on Hunch Book's own order book", () => {
+  // The testnet deployment with every stack: `hunch` trades on Hunch Book's own order book.
+  const full = deployments["monad-testnet"];
+  const OWN_BOOK = "0x0000000000000000000000000000000000003001" as Address;
+  const own = (id: number, phaseName: PhaseName, overrides: Partial<MarketInfo> = {}) =>
+    market(id, phaseName, {
+      address: addr(0x1100 + id),
+      stack: "hunch",
+      kuruVersion: 1,
+      ...(phaseName === "trading" ? { book: OWN_BOOK } : {}),
+      ...overrides,
+    });
+  const withStacks = () => deps({ deployment: full });
+
+  it("names each market's stack and venue, and keeps the same number on two stacks apart", async () => {
+    markets = [market(2, "trading"), own(2, "trading")];
+    const body = await (await getMarkets(req("/api/v1/markets"), withStacks())).json();
+    const [kuru, hunch] = body.markets;
+    expect(kuru).toMatchObject({ id: 2, stack: "primary", venue: "kuru", venueLabel: "Kuru" });
+    expect(hunch).toMatchObject({
+      id: 2,
+      address: addr(0x1102),
+      stack: "hunch",
+      venue: "hunch",
+      venueLabel: "Hunch order book",
+      book: { address: OWN_BOOK, bid: "0.368", ask: "0.399" },
+    });
+    const one = await (await getMarket(req("/x"), addr(0x1102), withStacks())).json();
+    expect(one).toMatchObject({ stack: "hunch", venue: "hunch", venueLabel: "Hunch order book" });
+    // A Kuru v2 market keeps its own label.
+    clearCache();
+    markets = [market(4, "pool", { stack: "kuruV2", kuruVersion: 2 })];
+    const v2 = (await (await getMarkets(req("/api/v1/markets"), withStacks())).json()).markets[0];
+    expect(v2).toMatchObject({ stack: "kuruV2", venue: "kuru", venueLabel: "Kuru v2" });
+  });
+
+  it("adds the stack and venue as the last CSV columns", async () => {
+    markets = [own(2, "trading")];
+    const lines = (await (await getMarkets(req("/api/v1/markets?format=csv"), withStacks())).text())
+      .trim()
+      .split("\r\n");
+    expect(lines[0]?.endsWith(",url,stack,venue")).toBe(true);
+    expect(lines[1]?.endsWith(",hunch,hunch")).toBe(true);
+  });
+
+  it("says its book's name in the embed, and reads its fills from the book's Trade logs", async () => {
+    markets = [own(2, "trading")];
+    const html = await (await getEmbed(req("/embed/m/x"), addr(0x1102), withStacks())).text();
+    expect(html).toContain("chance of YES, Hunch order book mid");
+    expect(html).not.toContain("Kuru");
+    const trades = await (await getTrades(req("/x?blocks=50"), addr(0x1102), withStacks())).json();
+    expect(trades.note).toBe(
+      "Fills from the order book's Trade logs over the last 50 blocks. Set INDEXER_URL for the full history.",
+    );
+    // Hunch Book's books emit Kuru v1's Trade event, read at the book's own address.
+    expect(getLogs).toHaveBeenCalledWith(expect.objectContaining({ address: OWN_BOOK }));
+  });
+});

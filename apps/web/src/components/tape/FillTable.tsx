@@ -116,7 +116,8 @@ export function FillTable({
                   <td className={s.market}>
                     {f.market ? (
                       <Link href={`/m/${f.market}`} title={f.question ?? undefined}>
-                        {f.marketNumber !== null ? `#${f.marketNumber}` : shortAddress(f.market)}
+                        {f.marketTag ??
+                          (f.marketNumber !== null ? `#${f.marketNumber}` : shortAddress(f.market))}
                         {f.question ? <span className={s.question}> {f.question}</span> : null}
                       </Link>
                     ) : (

@@ -12,6 +12,7 @@ import {
 } from "@hunch-book/shared";
 import { maxUint256 } from "viem";
 import { formatBpsPercent, formatChance, formatDuration, formatUsdc, formatUtc } from "../format";
+import { venueShort } from "../stacks";
 import type { BookQuote, ChainClock, MarketView } from "./types";
 
 // ---------- phases ----------
@@ -59,13 +60,14 @@ export function phaseTone(phase: Phase): "accent" | "neutral" | "warn" | "muted"
   return "neutral";
 }
 
-// ---------- Kuru book ----------
+// ---------- the book ----------
 
 export const PRICE_SCALE = 10n ** 18n;
 
 /**
- * Kuru's `bestBidAsk()` returns prices in 1e18 units. An empty bid reads as type(uint256).max and an
- * empty ask as 0 (PROTOCOL.md §8.1). Both sentinels are treated as empty on either side.
+ * Kuru v1's `bestBidAsk()` returns prices in 1e18 units, and Hunch Book's own books answer it the same
+ * way. An empty bid reads as type(uint256).max and an empty ask as 0 (PROTOCOL.md §8.1). Both sentinels
+ * are treated as empty on either side.
  */
 export function parseBestBidAsk(bid: bigint, ask: bigint): BookQuote {
   const clean = (v: bigint): bigint | null => (v === 0n || v === maxUint256 ? null : v);
@@ -96,8 +98,10 @@ export interface Chance {
   note: string;
 }
 
-/** The market's implied chance of YES: pool split before graduation, Kuru mid after. */
-export function marketChance(m: Pick<MarketView, "phase" | "outcome" | "pool" | "quote">): Chance {
+/** The market's implied chance of YES: pool split before graduation, the book's mid after. */
+export function marketChance(
+  m: Pick<MarketView, "phase" | "outcome" | "pool" | "quote" | "venue" | "kuruVersion">,
+): Chance {
   if (m.phase === Phase.Settled) {
     return m.outcome === Outcome.Yes
       ? { bps: BPS, source: "settled", note: "Settled YES" }
@@ -108,7 +112,7 @@ export function marketChance(m: Pick<MarketView, "phase" | "outcome" | "pool" | 
     const mid = bookMid(m.quote);
     return mid === null
       ? { bps: null, source: "book-empty", note: "No two-sided quote on the book yet" }
-      : { bps: priceE18ToBps(mid), source: "book", note: "Mid price on Kuru" };
+      : { bps: priceE18ToBps(mid), source: "book", note: `Mid price on ${venueShort(m)}` };
   }
   if (m.pool.total === 0n) return { bps: null, source: "empty", note: "No stakes yet" };
   return { bps: impliedChanceBps(m.pool.yes, m.pool.no), source: "pool", note: "Pool split" };

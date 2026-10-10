@@ -5,7 +5,7 @@ import { getPublicClient } from "../chain/client";
 import { appDeployment, appNetwork, isDeployed } from "../config";
 import type { ServiceHealthView, ServiceName } from "./health";
 import { readLifecycleFromIndexer } from "./lifecycle";
-import { readStatusSnapshot } from "./reads";
+import { readStatusSnapshots } from "./reads";
 
 export const statusKeys = {
   snapshot: () => ["status", "snapshot", appNetwork] as const,
@@ -13,11 +13,11 @@ export const statusKeys = {
   lifecycle: () => ["status", "lifecycle", appNetwork] as const,
 };
 
-/** Everything the chain checks need, re-read every 15 seconds. */
-export function useStatusSnapshot() {
+/** Everything the chain checks need, one snapshot per stack, re-read every 15 seconds. */
+export function useStatusSnapshots() {
   return useQuery({
     queryKey: statusKeys.snapshot(),
-    queryFn: () => readStatusSnapshot(getPublicClient() as never, appDeployment),
+    queryFn: () => readStatusSnapshots(getPublicClient() as never, appDeployment),
     enabled: isDeployed(appDeployment),
     refetchInterval: 15_000,
   });

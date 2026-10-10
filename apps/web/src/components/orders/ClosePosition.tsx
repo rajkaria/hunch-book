@@ -38,6 +38,7 @@ export function ClosePosition({ m }: { m: MarketView }) {
     book: book.data ?? null,
     wallet: { connected: wallet.isConnected, onAppChain: wallet.onAppChain },
     balances: balances.data,
+    venue: m,
   };
   const plans = [closePlan(Side.Yes, ctx), closePlan(Side.No, ctx)].filter((p): p is ClosePlan => p !== null);
   if (plans.length === 0) return null;

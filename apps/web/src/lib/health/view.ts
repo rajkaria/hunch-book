@@ -5,7 +5,7 @@ import type { ChainClock, MarketView } from "../market/types";
 import { challengeSecondsFor, type Health, marketHealth } from "./score";
 
 // The health score (score.ts) from what the app already reads about a market: the view, the chain clock
-// and, on the market page, the full Kuru book for depth.
+// and, on the market page, the full book (Kuru's or Hunch Book's own) for depth.
 
 /** The band around the mid that counts as depth, in USDC per token. */
 export const DEPTH_BAND = 0.05;

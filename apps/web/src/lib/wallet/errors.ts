@@ -18,8 +18,9 @@ import {
 import { isUserRejection } from "./network";
 
 // Plain-word messages for every revert a person can hit from this app. A router trade can revert in the
-// router, the vault, the market, Kuru's book or a token, so every call is simulated with all of their
-// errors attached (KNOWN_ERRORS_ABI) and decoded by name here.
+// router, the vault, the market, the market's book (Kuru's, or Hunch Book's own, which uses Kuru v1's
+// error names) or a token, so every call is simulated with all of their errors attached
+// (KNOWN_ERRORS_ABI) and decoded by name here.
 
 /** Errors defined in contracts but not in the interfaces the ABIs are generated from. */
 const EXTRA_ERRORS = parseAbi([
@@ -89,7 +90,7 @@ const BY_ERROR_NAME: Record<string, string> = {
   // graduation and claims
   GraduationPaused: "Graduation is paused.",
   GraduationRuleNotMet: "The pool does not meet its graduation rule yet.",
-  BookNotReady: "This market's Kuru book is not ready, so it cannot graduate yet.",
+  BookNotReady: "This market's book is not ready, so it cannot graduate yet.",
   NothingToClaim: "There is nothing to claim.",
   NotGraduated: "The pool has not graduated, so there are no tokens to claim.",
   AlreadyGraduated: "This pool graduated: its stakers hold tokens instead of a pool claim.",
@@ -121,7 +122,10 @@ const BY_ERROR_NAME: Record<string, string> = {
   InsufficientLiquidity: "The book does not hold enough orders for that amount. Try a smaller amount.",
   UnknownMarket: "This address is not a Hunch Book market.",
   AmountTooLarge: "That amount is too large for the book.",
-  MarketStateError: "Kuru has paused this book, so it cannot trade right now.",
+  MarketStateError:
+    "The book is not matching orders right now (it is paused, or its market is not trading), so nothing was traded.",
+  PostOnlyError:
+    "That limit order would cross the book. Hunch Book's order book takes resting limit orders only; trade now with a market order instead.",
   SizeError: "That amount is below the book's minimum order size.",
   PriceError: "The book refused the price.",
   // vault

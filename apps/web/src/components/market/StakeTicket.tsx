@@ -8,6 +8,7 @@ import { chanceComplementBps, formatChance, formatUsdc } from "@/lib/format";
 import { queryKeys, useProtocolAddresses, useUsdcState, useUserPosition } from "@/lib/hooks";
 import { marketChance, parseUsdcInput, previewStake, validateStake } from "@/lib/market/logic";
 import type { MarketView } from "@/lib/market/types";
+import { venueWords } from "@/lib/stacks";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, useTxRunner } from "@/lib/wallet/useTxRunner";
 import { GaslessStake } from "../account/GaslessStake";
@@ -173,7 +174,7 @@ export function StakeTicket({ m, initialSide = Side.Yes }: { m: MarketView; init
           {!open ? (
             <p className={s.validation}>
               {m.graduated
-                ? "This pool has graduated. New positions trade on the Kuru book."
+                ? `This pool has graduated. New positions trade on ${venueWords(m)}.`
                 : "This pool has locked. Stakes are final, so it now waits for settlement."}
             </p>
           ) : null}

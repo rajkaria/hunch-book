@@ -267,6 +267,7 @@ export function CreateFlow({
               existing={existingMarket}
               rule={registration.rule}
               caps={cfg.caps}
+              venue={cfg}
             />
           </div>
           <div className={s.stakeArea}>

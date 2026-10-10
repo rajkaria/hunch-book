@@ -6,7 +6,7 @@ import { getPublicClient } from "../chain/client";
 import { appDeployment, appNetwork, isDeployed } from "../config";
 import { getIndexerClient } from "../indexer/client";
 import { withIndexer } from "../indexer/source";
-import { type CreatorData, creatorFromChain, creatorFromIndexerClient, readCreatorFees } from "./read";
+import { type CreatorData, creatorFromChain, creatorFromIndexerClient, readCreatorFeesByStack } from "./read";
 
 export const creatorKeys = {
   page: (creator: Address) => ["creator", appNetwork, creator.toLowerCase()] as const,
@@ -28,11 +28,11 @@ export function useCreator(creator: Address) {
   });
 }
 
-/** vault.creatorFees(creator), live: what a withdrawal would pay now. */
+/** vault.creatorFees(creator) on every stack's vault, live: what a withdrawal from each would pay now. */
 export function useCreatorFees(creator: Address) {
   return useQuery({
     queryKey: creatorKeys.fees(creator),
-    queryFn: () => readCreatorFees(getPublicClient(), appDeployment, creator),
+    queryFn: () => readCreatorFeesByStack(getPublicClient(), appDeployment, creator),
     enabled: isDeployed(appDeployment),
     refetchInterval: 10_000,
   });

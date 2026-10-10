@@ -10,16 +10,17 @@ import { marketTag } from "@/lib/stacks";
 import {
   checkService,
   duration,
-  evaluateChain,
+  evaluateStacks,
   type Level,
   obligationsBreakdown,
   overall,
   PHASE,
   type StatusCheck,
+  stackTitle,
   supplyProblem,
 } from "@/lib/status/checks";
 import type { ServiceHealthView } from "@/lib/status/health";
-import { useIndexerLifecycle, useServiceHealth, useStatusSnapshot } from "@/lib/status/hooks";
+import { useIndexerLifecycle, useServiceHealth, useStatusSnapshots } from "@/lib/status/hooks";
 import type { Block } from "@/lib/status/incidents";
 import { type LastEvent, lifecycleFromKeeper } from "@/lib/status/lifecycle";
 import type { StatusSnapshot } from "@/lib/status/reads";
@@ -245,8 +246,43 @@ function MarketsTable({ snapshot }: { snapshot: StatusSnapshot }) {
   );
 }
 
+function MoneyPanel({ data, title }: { data: StatusSnapshot; title: string }) {
+  const breakdown = obligationsBreakdown(data);
+  return (
+    <Panel title={title} labelledBy={`status-money-${data.stack?.name ?? "primary"}`}>
+      <div className={s.figures}>
+        <Stat
+          label="USDC held"
+          value={formatUsdc(data.vault.balance)}
+          source={{ href: addressUrl(appDeployment, data.vault.address), label: "vault", external: true }}
+        />
+        <Stat label="Owed (total obligations)" value={formatUsdc(data.vault.totalObligations)} />
+        <Stat
+          label="Surplus"
+          value={formatUsdc(data.vault.surplus)}
+          tone={data.vault.surplus < 0n ? "no" : "accent"}
+          hint="must be zero or more"
+        />
+        <Stat label="In pools" value={formatUsdc(breakdown.pools)} />
+        <Stat label="Backing tokens (complete sets)" value={formatUsdc(breakdown.sets)} />
+        <Stat
+          label="Collateral cap"
+          value={formatUsdc(data.vault.collateralCap)}
+          hint={`${formatUsdc(data.vault.totalCollateral)} counted toward it`}
+        />
+        <Stat label="Protocol fees (unwithdrawn)" value={formatUsdc(data.vault.protocolFees)} />
+        <Stat
+          label="Creator fees (unwithdrawn)"
+          value={formatUsdc(breakdown.creatorFees)}
+          hint={`${data.creatorFees.length} creator${data.creatorFees.length === 1 ? "" : "s"}`}
+        />
+      </div>
+    </Panel>
+  );
+}
+
 export function StatusView({ incidents }: { incidents: Block[] }) {
-  const snapshot = useStatusSnapshot();
+  const snapshots = useStatusSnapshots();
   const keeper = useServiceHealth("keeper");
   const maker = useServiceHealth("maker");
   const indexer = useIndexerLifecycle();
@@ -254,79 +290,67 @@ export function StatusView({ incidents }: { incidents: Block[] }) {
 
   if (!isDeployed(appDeployment)) return <NotDeployed />;
 
-  const data = snapshot.data;
-  const chainChecks = data ? evaluateChain(data) : [];
+  const all = snapshots.data;
+  // The first stack is the primary one: its block heads the page, and the shared wallets come from it.
+  const data = all?.[0];
+  const several = (all?.length ?? 0) > 1;
+  // One stack reads as before; with several, each panel names its stack.
+  const named = (base: string, snap: StatusSnapshot) =>
+    several ? `${base}: ${stackTitle(snap.stack)}` : base;
+  const chainChecks = all ? evaluateStacks(all) : [];
   const nowSeconds = now ?? Math.floor(Date.now() / 1000);
   const serviceChecks = [
     ...(keeper.data ? [checkService("keeper", keeper.data, nowSeconds)] : []),
     ...(maker.data ? [checkService("maker", maker.data, nowSeconds)] : []),
   ];
   const checks = data ? [...chainChecks, ...serviceChecks] : [];
-  const level: Level = data ? overall(checks) : snapshot.isError ? "fail" : "unknown";
+  const level: Level = data ? overall(checks) : snapshots.isError ? "fail" : "unknown";
   const lifecycle = indexer.data ?? lifecycleFromKeeper(keeper.data);
-  const breakdown = data ? obligationsBreakdown(data) : null;
 
   return (
     <div className={ps.stack}>
       <Panel title={HEADLINE[level]} aside={<LevelBadge level={level} />} labelledBy="status-overall-title">
-        {snapshot.isPending ? (
+        {snapshots.isPending ? (
           <LoadingRows rows={3} label={`Reading ${appNetworkLabel}`} />
-        ) : snapshot.isError || !data ? (
-          <ErrorState title="Could not read the contracts" onRetry={() => void snapshot.refetch()} />
+        ) : snapshots.isError || !data ? (
+          <ErrorState title="Could not read the contracts" onRetry={() => void snapshots.refetch()} />
         ) : (
           <>
             <p className={s.note} style={{ marginBottom: 12 }}>
               Read live from {appNetworkLabel} at block {data.block.toLocaleString("en-US")} (
               {formatUtc(data.timestamp)}). Every number comes from the contracts listed below; it refreshes
               every 15 seconds.
+              {several
+                ? ` Each of the ${all?.length} stacks has its own factory and vault, so each is checked on its own.`
+                : ""}
             </p>
             <CheckList checks={checks} />
           </>
         )}
       </Panel>
 
-      {data && breakdown ? (
-        <Panel title="Money in the vault" labelledBy="status-money-title">
-          <div className={s.figures}>
-            <Stat
-              label="USDC held"
-              value={formatUsdc(data.vault.balance)}
-              source={{ href: addressUrl(appDeployment, data.vault.address), label: "vault", external: true }}
-            />
-            <Stat label="Owed (total obligations)" value={formatUsdc(data.vault.totalObligations)} />
-            <Stat
-              label="Surplus"
-              value={formatUsdc(data.vault.surplus)}
-              tone={data.vault.surplus < 0n ? "no" : "accent"}
-              hint="must be zero or more"
-            />
-            <Stat label="In pools" value={formatUsdc(breakdown.pools)} />
-            <Stat label="Backing tokens (complete sets)" value={formatUsdc(breakdown.sets)} />
-            <Stat
-              label="Collateral cap"
-              value={formatUsdc(data.vault.collateralCap)}
-              hint={`${formatUsdc(data.vault.totalCollateral)} counted toward it`}
-            />
-            <Stat label="Protocol fees (unwithdrawn)" value={formatUsdc(data.vault.protocolFees)} />
-            <Stat
-              label="Creator fees (unwithdrawn)"
-              value={formatUsdc(breakdown.creatorFees)}
-              hint={`${data.creatorFees.length} creator${data.creatorFees.length === 1 ? "" : "s"}`}
-            />
-          </div>
-        </Panel>
-      ) : null}
+      {all?.map((snap) => (
+        <MoneyPanel
+          key={`money-${snap.stack?.name ?? "primary"}`}
+          data={snap}
+          title={named("Money in the vault", snap)}
+        />
+      ))}
 
-      {data ? (
-        <Panel title="Markets" labelledBy="status-markets-title">
-          <MarketsTable snapshot={data} />
-          {data.partial ? (
+      {all?.map((snap) => (
+        <Panel
+          key={`markets-${snap.stack?.name ?? "primary"}`}
+          title={named("Markets", snap)}
+          labelledBy={`status-markets-${snap.stack?.name ?? "primary"}`}
+        >
+          <MarketsTable snapshot={snap} />
+          {snap.partial ? (
             <p className={s.note}>
-              Showing the first {data.markets.length} of {data.factory.marketCount} markets.
+              Showing the first {snap.markets.length} of {snap.factory.marketCount} markets.
             </p>
           ) : null}
         </Panel>
-      ) : null}
+      ))}
 
       <div className={s.services}>
         <ServicePanel
@@ -366,19 +390,23 @@ export function StatusView({ incidents }: { incidents: Block[] }) {
         ) : null}
       </Panel>
 
-      {data ? (
-        <Panel title="Guardian and roles" labelledBy="status-roles-title">
+      {all?.map((snap) => (
+        <Panel
+          key={`roles-${snap.stack?.name ?? "primary"}`}
+          title={named("Guardian and roles", snap)}
+          labelledBy={`status-roles-${snap.stack?.name ?? "primary"}`}
+        >
           <KeyValues
             items={[
-              { label: "Guardian", value: <AddressLink address={data.factory.guardian} full /> },
-              { label: "Fee recipient", value: <AddressLink address={data.factory.feeRecipient} full /> },
-              { label: "Creating markets", value: data.factory.creationPaused ? "paused" : "open" },
-              { label: "Graduation", value: data.factory.graduationPaused ? "paused" : "open" },
+              { label: "Guardian", value: <AddressLink address={snap.factory.guardian} full /> },
+              { label: "Fee recipient", value: <AddressLink address={snap.factory.feeRecipient} full /> },
+              { label: "Creating markets", value: snap.factory.creationPaused ? "paused" : "open" },
+              { label: "Graduation", value: snap.factory.graduationPaused ? "paused" : "open" },
               { label: "Settlement and redemption", value: "always open: the guardian cannot pause them" },
             ]}
           />
         </Panel>
-      ) : null}
+      ))}
 
       <Panel title="Incident log" labelledBy="status-incidents-title">
         <Incidents blocks={incidents} />

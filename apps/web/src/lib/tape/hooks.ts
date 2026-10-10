@@ -9,6 +9,7 @@ import { getIndexerClient } from "../indexer/client";
 import { TAPE_QUERY, type TradeRow } from "../indexer/queries";
 import { type Sourced, withIndexer } from "../indexer/source";
 import type { MarketView } from "../market/types";
+import { marketTag } from "../stacks";
 import { type BookInfo, byNewest, type Fill, fillFromRow, isBetweenOthers, TapeScanner } from "./fills";
 
 /** The tape polls this often, in milliseconds. */
@@ -33,6 +34,7 @@ export function booksOf(markets: readonly MarketView[]): BookInfo[] {
             marketNumber: Number(m.marketId),
             question: m.description,
             kuruVersion: m.kuruVersion ?? 1,
+            tag: marketTag(m),
           },
         ]
       : [],

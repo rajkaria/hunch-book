@@ -3,6 +3,7 @@ import { formatChance, formatUsdc } from "../format";
 import { chanceDisplay, marketChance } from "../market/logic";
 import { templateLabel } from "../market/params";
 import type { MarketView } from "../market/types";
+import { marketTag, venueShort } from "../stacks";
 
 // What a market's share card (app/m/[address]/opengraph-image.tsx) says, as plain data, so the words and
 // colours are tested without rendering an image.
@@ -38,12 +39,15 @@ export function fitQuestion(text: string): { question: string; size: number } {
   return { question, size };
 }
 
-export function phaseColor(m: Pick<MarketView, "phase" | "outcome">): { label: string; color: string } {
+export function phaseColor(m: Pick<MarketView, "phase" | "outcome" | "venue" | "kuruVersion">): {
+  label: string;
+  color: string;
+} {
   switch (m.phase) {
     case Phase.Pool:
       return { label: "Pool filling", color: CARD_COLORS.cyan };
     case Phase.Graduated:
-      return { label: "Trading on Kuru", color: CARD_COLORS.lime };
+      return { label: `Trading on ${venueShort(m)}`, color: CARD_COLORS.lime };
     case Phase.PoolLocked:
       return { label: "Pool locked", color: CARD_COLORS.warn };
     case Phase.Closed:
@@ -72,7 +76,7 @@ export function shareCard(m: MarketView | null, headline: string | null): ShareC
   const { question, size } = fitQuestion(headline ?? "A Hunch Book market");
   const chance = marketChance(m);
   const shown = chanceDisplay(chance);
-  const meta = [templateLabel(m.templateId), `Market #${m.marketId.toString()}`];
+  const meta = [templateLabel(m.templateId), `Market ${marketTag(m)}`];
   if (m.phase === Phase.Pool || m.phase === Phase.PoolLocked) {
     meta.push(
       `Pool ${formatUsdc(m.pool.total)} USDC, ${m.pool.stakers} ${m.pool.stakers === 1 ? "staker" : "stakers"}`,

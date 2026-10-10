@@ -7,6 +7,7 @@ import {
   type PhaseName,
   type Window,
 } from "@hunch-book/sdk";
+import { stackNamed, type Venue, venueLabel } from "@hunch-book/shared";
 import { type Address, getAddress, isAddress, isAddressEqual } from "viem";
 import { challengeSecondsFor, type Health, marketHealth } from "../../../../lib/health/score";
 import { friendlyQuestion } from "../../../../lib/market/title";
@@ -16,6 +17,9 @@ import type { ApiDeps } from "./deps";
 // How the data API writes a market: amounts as exact decimal strings in USDC ("690" or "12.5"),
 // prices as decimal strings in USDC per token ("0.399"), chances in basis points, times as ISO 8601
 // UTC (estimated from the measured block time for block-clock markets), and links back to the app.
+// Each market names its stack and its book's venue: "hunch" (Hunch Book's own onchain order book) or
+// "kuru", with a label ("Hunch order book", "Kuru" or "Kuru v2"). Each stack's factory numbers its
+// markets from 1, so `id` alone is unique only within a stack.
 
 export const PHASE_NAMES: readonly PhaseName[] = [
   "pool",
@@ -133,6 +137,34 @@ export function isOurs(deps: Pick<ApiDeps, "deployment">, who: string): boolean 
   return isAddress(who) && ourWallets(deps).some((a) => isAddressEqual(a, who));
 }
 
+export interface MarketVenue {
+  /** "primary" or a key under `stacks` in deployments/<network>.json. */
+  stack: string;
+  venue: Venue;
+  /** "Hunch order book", "Kuru" or "Kuru v2". */
+  venueLabel: string;
+}
+
+/** The market's stack and its book's venue, from deployments/<network>.json. */
+export function stackVenue(
+  m: Pick<MarketInfo, "stack" | "kuruVersion">,
+  deps: Pick<ApiDeps, "deployment">,
+): MarketVenue {
+  const stack = stackNamed(deps.deployment, m.stack ?? "primary");
+  const venue: Venue = stack?.venue ?? "kuru";
+  const kuruVersion = m.kuruVersion ?? stack?.kuruVersion ?? 1;
+  return {
+    stack: stack?.name ?? m.stack ?? "primary",
+    venue,
+    venueLabel: venueLabel({ venue, kuruVersion }),
+  };
+}
+
+/** What to call the market's book in a phrase: "Hunch order book", "Kuru v2 book" or "Kuru book". */
+export function bookWords(v: Pick<MarketVenue, "venue" | "venueLabel">): string {
+  return v.venue === "hunch" ? v.venueLabel : `${v.venueLabel} book`;
+}
+
 export function marketUrl(deps: Pick<ApiDeps, "siteUrl">, address: Address): string {
   return `${deps.siteUrl}/m/${address}`;
 }
@@ -145,10 +177,14 @@ export function embedUrl(deps: Pick<ApiDeps, "siteUrl">, address: Address): stri
 export function marketJson(m: MarketInfo, deps: ApiDeps, clock: ChainClock | null) {
   const mid =
     m.prices?.bidE6 != null && m.prices.askE6 != null ? (m.prices.bidE6 + m.prices.askE6) / 2n : null;
+  const venue = stackVenue(m, deps);
   return {
     id: m.id,
     address: m.address,
     network: deps.network,
+    stack: venue.stack,
+    venue: venue.venue,
+    venueLabel: venue.venueLabel,
     url: marketUrl(deps, m.address),
     embedUrl: embedUrl(deps, m.address),
     explorer: addressUrl(deps.deployment, m.address),
@@ -280,6 +316,8 @@ export const MARKET_CSV_COLUMNS = [
   "health_score",
   "rule",
   "url",
+  "stack",
+  "venue",
 ] as const;
 
 export function marketCsvRow(j: MarketJson): Record<string, unknown> {
@@ -308,5 +346,7 @@ export function marketCsvRow(j: MarketJson): Record<string, unknown> {
     health_score: j.health.score,
     rule: j.rule,
     url: j.url,
+    stack: j.stack,
+    venue: j.venue,
   };
 }

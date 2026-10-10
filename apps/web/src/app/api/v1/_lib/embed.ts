@@ -1,7 +1,15 @@
 import { formatBps, formatUsdc, type MarketInfo } from "@hunch-book/sdk";
 import type { ApiDeps } from "./deps";
 import { type FundingView, wholePercent } from "./funding";
-import { type ChainClock, marketTitleText, marketUrl, pointTime, priceString } from "./markets";
+import {
+  bookWords,
+  type ChainClock,
+  marketTitleText,
+  marketUrl,
+  pointTime,
+  priceString,
+  stackVenue,
+} from "./markets";
 
 // The embeddable cards: one market (/embed/m/<address>) and a Perpl perp's funding market
 // (/embed/funding/<asset>). Each is one self-contained HTML page with no script, in the main Hunch app's
@@ -86,17 +94,18 @@ const TONE: Record<string, string> = {
   voided: "muted",
 };
 
-function chanceText(m: MarketInfo): { value: string; label: string } {
+function chanceText(m: MarketInfo, deps: Pick<ApiDeps, "deployment">): { value: string; label: string } {
   if (m.phaseName === "settled") return { value: m.outcomeLabel.toUpperCase(), label: "won" };
   if (m.phaseName === "voided") return { value: "Void", label: "redeems at 0.50" };
   if (m.chance.bps === null)
     return { value: "n/a", label: m.chance.source === "empty" ? "no stakes yet" : "no price yet" };
+  const book = bookWords(stackVenue(m, deps));
   const source =
     m.chance.source === "pool"
       ? "pool split"
       : m.chance.source === "book"
-        ? "Kuru book mid"
-        : "Kuru book, one side";
+        ? `${book} mid`
+        : `${book}, one side`;
   return { value: formatBps(m.chance.bps) ?? "n/a", label: `chance of YES, ${source}` };
 }
 
@@ -126,10 +135,10 @@ const BRAND = `<span class="brand"><i aria-hidden="true"></i>Hunch Book</span>`;
 
 export function renderMarketCard(
   m: MarketInfo,
-  deps: Pick<ApiDeps, "siteUrl" | "network">,
+  deps: Pick<ApiDeps, "siteUrl" | "network" | "deployment">,
   clock: ChainClock | null,
 ): string {
-  const chance = chanceText(m);
+  const chance = chanceText(m, deps);
   const bar = chanceBar(m.chance.bps);
   const line =
     m.phaseName === "trading" && m.book

@@ -5,6 +5,7 @@ import { formatFixed, formatInt, formatUsdc, formatUtc } from "@/lib/format";
 import { chanceDisplay, graduationProgress, marketChance, voidTerms, windowMoment } from "@/lib/market/logic";
 import { describeSource, templateLabel } from "@/lib/market/params";
 import type { ChainClock, MarketView } from "@/lib/market/types";
+import { bookName, marketVenueLabel, onHunchVenue, stackOf, venueWords } from "@/lib/stacks";
 import { AddressLink, ChanceBar, KeyValues, Panel, Progress, Stat } from "../ui";
 import s from "./market.module.css";
 
@@ -34,8 +35,8 @@ export function ChancePanel({ m }: { m: MarketView }) {
       )}
       {onBook ? (
         <div className={s.bookQuote}>
-          <Stat label="Best bid (Kuru)" value={priceE18(m.quote?.bid ?? null)} />
-          <Stat label="Best ask (Kuru)" value={priceE18(m.quote?.ask ?? null)} />
+          <Stat label={`Best bid (${marketVenueLabel(m)})`} value={priceE18(m.quote?.bid ?? null)} />
+          <Stat label={`Best ask (${marketVenueLabel(m)})`} value={priceE18(m.quote?.ask ?? null)} />
         </div>
       ) : null}
       <div className={s.stats}>
@@ -50,7 +51,7 @@ export function ChancePanel({ m }: { m: MarketView }) {
       </div>
       {onBook ? (
         <p className={s.trust}>
-          After graduation the chance is the mid price of the YES/USDC book on Kuru
+          After graduation the chance is the mid price of the YES/USDC book on {venueWords(m)}
           {m.book ? (
             <>
               {" "}
@@ -99,7 +100,13 @@ export function GraduationPanel({ m }: { m: MarketView }) {
       </ul>
       <p className={s.trust}>
         When every line is met before lock, anyone can graduate the pool into fully backed YES and NO tokens
-        on a Kuru order book. Each staker's payout stays exactly what the pool would have paid.
+        that trade on {venueWords(m)}.
+        {onHunchVenue(m)
+          ? " The same transaction opens the book, so graduation waits on no third party."
+          : m.kuruVersion === 2
+            ? " Kuru creates the book first."
+            : ""}{" "}
+        Each staker's payout stays exactly what the pool would have paid.
       </p>
     </Panel>
   );
@@ -221,6 +228,8 @@ export function VoidTermsPanel({ m }: { m: MarketView }) {
 }
 
 export function ContractsPanel({ m }: { m: MarketView }) {
+  const stack = stackOf(m);
+  const venue = stack?.contracts.venue;
   return (
     <Panel title="Contracts" labelledBy="contracts-title">
       <KeyValues
@@ -229,9 +238,20 @@ export function ContractsPanel({ m }: { m: MarketView }) {
           { label: "YES token", value: <AddressLink address={m.tokens.yes} full /> },
           { label: "NO token", value: <AddressLink address={m.tokens.no} full /> },
           {
-            label: "Kuru book",
+            label: bookName(m),
             value: m.book ? <AddressLink address={m.book} full /> : <span className="subtle">none yet</span>,
           },
+          ...(stack
+            ? [
+                {
+                  label: "Stack",
+                  value: `${stack.primary ? "primary" : stack.name} (${marketVenueLabel(m)})`,
+                },
+              ]
+            : []),
+          ...(venue?.kind === "hunch"
+            ? [{ label: "Order book factory", value: <AddressLink address={venue.bookFactory} full /> }]
+            : []),
           { label: "Creator", value: <AddressLink address={m.creator} full /> },
           { label: "Template", value: `${templateLabel(m.templateId)} (id ${m.templateId})` },
           { label: "Market id", value: <span className="mono">{m.marketId.toString()}</span> },

@@ -1,4 +1,4 @@
-import { addressUrl, blockUrl } from "@hunch-book/shared";
+import { addressUrl, blockUrl, stacksOf } from "@hunch-book/shared";
 import type { LandingRead, LandingSnapshot } from "@/lib/chain/landing";
 import { appDeployment, appNetwork, appNetworkLabel, factoryOf } from "@/lib/config";
 import { TESTNET_MONEY } from "@/lib/copy";
@@ -31,6 +31,8 @@ export function graduatedHint(data: Pick<LandingSnapshot, "stats" | "marketCount
 function Tiles({ data }: { data: LandingSnapshot }) {
   const factory = factoryOf(appDeployment);
   const vault = appDeployment.hunchBook.vault;
+  // With several stacks the counts add up every stack's factory and vault: the status page lists them.
+  const several = stacksOf(appDeployment).length > 1;
   const { stats } = data;
   return (
     <div className={s.tiles}>
@@ -41,30 +43,34 @@ function Tiles({ data }: { data: LandingSnapshot }) {
           value={formatInt(data.marketCount)}
           hint={stats ? `${formatInt(stats.open)} open now` : undefined}
           source={
-            factory
-              ? { href: addressUrl(appDeployment, factory), label: "factory.marketCount", external: true }
-              : undefined
+            several
+              ? { href: "/status", label: "marketCount of every stack's factory" }
+              : factory
+                ? { href: addressUrl(appDeployment, factory), label: "factory.marketCount", external: true }
+                : undefined
           }
         />
       </div>
       <div className={s.tile}>
         <Stat
           size="lg"
-          label="USDC in the vault"
+          label={several ? "USDC in the vaults" : "USDC in the vault"}
           value={data.vault ? formatUsdc(data.vault.balance) : "n/a"}
           tone={data.vault ? undefined : "muted"}
           hint={vaultHint(data)}
           source={
-            vault
-              ? { href: addressUrl(appDeployment, vault), label: "USDC.balanceOf(vault)", external: true }
-              : undefined
+            several
+              ? { href: "/status", label: "USDC.balanceOf(each stack's vault)" }
+              : vault
+                ? { href: addressUrl(appDeployment, vault), label: "USDC.balanceOf(vault)", external: true }
+                : undefined
           }
         />
       </div>
       <div className={s.tile}>
         <Stat
           size="lg"
-          label="Graduated to Kuru"
+          label="Graduated to a book"
           value={stats ? formatInt(stats.graduated) : "n/a"}
           tone={stats ? undefined : "muted"}
           hint={graduatedHint(data)}

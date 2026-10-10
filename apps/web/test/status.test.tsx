@@ -14,6 +14,7 @@ import {
   checkSolvency,
   checkSupply,
   evaluateChain,
+  evaluateStacks,
   obligationsBreakdown,
   overall,
   PHASE,
@@ -22,7 +23,12 @@ import { fetchServiceHealth, healthUrl, sanitizeHealth } from "../src/lib/status
 import { readIncidentLog } from "../src/lib/status/incidentLog";
 import { hasIncidents, parseIncidents, parseInline } from "../src/lib/status/incidents";
 import { lifecycleFromKeeper, readLifecycleFromIndexer } from "../src/lib/status/lifecycle";
-import { readStatusSnapshot, type StatusMarket, type StatusSnapshot } from "../src/lib/status/reads";
+import {
+  readStatusSnapshot,
+  readStatusSnapshots,
+  type StatusMarket,
+  type StatusSnapshot,
+} from "../src/lib/status/reads";
 import { USDC } from "./fixtures";
 import { renderWithProviders } from "./render";
 
@@ -345,62 +351,93 @@ describe("contract links", () => {
     expect(labels).toContain("Perpl Exchange");
     expect(groups.flatMap((g) => g.items).every((i) => /^0x[0-9a-fA-F]{40}$/.test(i.address))).toBe(true);
   });
+
+  it("lists each testnet stack with its venue contracts, and says where new markets go", () => {
+    const testnet = deployments["monad-testnet"];
+    const groups = contractGroups(testnet);
+    const titles = groups.map((g) => g.title);
+    expect(titles).toContain("Hunch Book core: primary stack (Kuru v1)");
+    expect(titles).toContain("Stack kuruV2 (Kuru v2)");
+    expect(titles).toContain("Stack hunch (Hunch order book, new markets)");
+    const own = groups.find((g) => g.title === "Stack hunch (Hunch order book, new markets)");
+    const venue = testnet.stacks?.hunch?.venue;
+    expect(own?.items).toEqual(
+      expect.arrayContaining([
+        { label: "Order book factory", address: venue?.bookFactory },
+        { label: "Margin account", address: venue?.marginAccount },
+        { label: "Order book implementation", address: venue?.bookImplementation },
+        // Its parlay resolver reads its own factory, so it is listed; resolvers shared with the primary are not.
+        { label: "Resolver 6: parlay", address: testnet.stacks?.hunch?.resolvers?.marketOutcome },
+      ]),
+    );
+    expect(own?.items.map((i) => i.label)).not.toContain("Resolver 1: Perpl funding");
+    expect(own?.items.map((i) => i.label)).not.toContain("Kuru router");
+    const primary = groups.find((g) => g.title === "Hunch Book core: primary stack (Kuru v1)");
+    expect(primary?.items).toEqual(
+      expect.arrayContaining([{ label: "Kuru router", address: testnet.external.kuru.router }]),
+    );
+  });
 });
+
+/** A chain that answers the status reads by function name, recording each multicall. */
+function statusClient(calls: { functionName: string; address?: string }[][]) {
+  return {
+    getBlock: vi.fn(async ({ blockNumber }: { blockNumber?: bigint } = {}) =>
+      blockNumber
+        ? { number: blockNumber, timestamp: BigInt(NOW - 4_000) }
+        : { number: 50_000n, timestamp: BigInt(NOW) },
+    ),
+    getBalance: vi.fn(async () => 3n * MON),
+    multicall: vi.fn(async ({ contracts }: { contracts: { functionName: string }[] }) => {
+      calls.push(contracts);
+      return contracts.map((c) => {
+        switch (c.functionName) {
+          case "balanceOf":
+            return USDC(700);
+          case "totalObligations":
+            return USDC(695);
+          case "surplus":
+            return USDC(5);
+          case "marketCount":
+            return 1n;
+          case "marketAt":
+            return "0x00000000000000000000000000000000000000a1";
+          case "tokens":
+            return [
+              "0x00000000000000000000000000000000000000c1",
+              "0x00000000000000000000000000000000000000c2",
+            ];
+          case "window":
+            return { blockClock: true, lock: 1n, close: 2n, settleDeadline: 3n };
+          case "creator":
+            return "0x00000000000000000000000000000000000000c9";
+          case "ledger":
+            return { status: 1, pool: 0n, sets: USDC(690) };
+          case "totalSupply":
+            return USDC(690);
+          case "creatorFees":
+            return USDC(2);
+          case "creationPaused":
+          case "graduationPaused":
+          case "graduated":
+          case "graduationRuleMet":
+            return false;
+          case "guardian":
+          case "pendingGuardian":
+          case "feeRecipient":
+            return ZERO;
+          default:
+            return 1n;
+        }
+      });
+    }),
+  };
+}
 
 describe("chain reads", () => {
   it("reads the vault, the factory, every market and the creators at one block", async () => {
     const calls: { functionName: string }[][] = [];
-    const client = {
-      getBlock: vi.fn(async ({ blockNumber }: { blockNumber?: bigint } = {}) =>
-        blockNumber
-          ? { number: blockNumber, timestamp: BigInt(NOW - 4_000) }
-          : { number: 50_000n, timestamp: BigInt(NOW) },
-      ),
-      getBalance: vi.fn(async () => 3n * MON),
-      multicall: vi.fn(async ({ contracts }: { contracts: { functionName: string }[] }) => {
-        calls.push(contracts);
-        return contracts.map((c) => {
-          switch (c.functionName) {
-            case "balanceOf":
-              return USDC(700);
-            case "totalObligations":
-              return USDC(695);
-            case "surplus":
-              return USDC(5);
-            case "marketCount":
-              return 1n;
-            case "marketAt":
-              return "0x00000000000000000000000000000000000000a1";
-            case "tokens":
-              return [
-                "0x00000000000000000000000000000000000000c1",
-                "0x00000000000000000000000000000000000000c2",
-              ];
-            case "window":
-              return { blockClock: true, lock: 1n, close: 2n, settleDeadline: 3n };
-            case "creator":
-              return "0x00000000000000000000000000000000000000c9";
-            case "ledger":
-              return { status: 1, pool: 0n, sets: USDC(690) };
-            case "totalSupply":
-              return USDC(690);
-            case "creatorFees":
-              return USDC(2);
-            case "creationPaused":
-            case "graduationPaused":
-            case "graduated":
-            case "graduationRuleMet":
-              return false;
-            case "guardian":
-            case "pendingGuardian":
-            case "feeRecipient":
-              return ZERO;
-            default:
-              return 1n;
-          }
-        });
-      }),
-    };
+    const client = statusClient(calls);
     const s = await readStatusSnapshot(client as never, deployments["monad-testnet"]);
     expect(s.markets).toHaveLength(1);
     expect(s.markets[0]?.yesSupply).toBe(USDC(690));
@@ -409,18 +446,49 @@ describe("chain reads", () => {
     expect(s.partial).toBe(false);
     expect(calls).toHaveLength(5);
   });
+
+  it("reads one snapshot per stack, each from its own factory and vault", async () => {
+    const calls: { functionName: string; address?: string }[][] = [];
+    const testnet = deployments["monad-testnet"];
+    const all = await readStatusSnapshots(statusClient(calls) as never, testnet);
+    expect(all.map((x) => x.stack?.name)).toEqual(["primary", "kuruV2", "hunch"]);
+    const own = all.find((x) => x.stack?.name === "hunch");
+    expect(own?.stack).toEqual({
+      name: "hunch",
+      primary: false,
+      venue: "hunch",
+      kuruVersion: 1,
+      isDefault: true,
+    });
+    expect(own?.vault.address).toBe(testnet.stacks?.hunch?.vault);
+    expect(own?.factory.address).toBe(testnet.stacks?.hunch?.factory);
+    // Its markets carry the venue, so their tags tell them apart from the primary stack's.
+    expect(own?.markets[0]).toMatchObject({ venue: "hunch", kuruVersion: 1 });
+    expect(all[0]?.markets[0]?.venue).toBeUndefined();
+    const checks = evaluateStacks(all);
+    expect(checks.map((c) => c.id)).toContain("hunch:solvency");
+    expect(checks.filter((c) => c.id === "keeper-gas")).toHaveLength(1);
+    expect(evaluateStacks(all.slice(0, 1)).map((c) => c.id)).toEqual(
+      evaluateChain(all[0] as StatusSnapshot).map((c) => c.id),
+    );
+  });
 });
 
 // ---------------------------------------------------------------- the page
 
-const state = vi.hoisted(() => ({ snapshot: undefined as unknown, keeper: undefined as unknown }));
+const state = vi.hoisted(() => ({
+  snapshot: undefined as unknown,
+  /** Snapshots of more stacks, after the first. */
+  more: [] as unknown[],
+  keeper: undefined as unknown,
+}));
 
 vi.mock("@/lib/status/hooks", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/status/hooks")>();
   return {
     ...actual,
-    useStatusSnapshot: () => ({
-      data: state.snapshot,
+    useStatusSnapshots: () => ({
+      data: state.snapshot === undefined ? undefined : [state.snapshot, ...state.more],
       isPending: state.snapshot === undefined,
       isError: false,
       refetch: vi.fn(),
@@ -440,6 +508,7 @@ vi.mock("@/lib/hooks", async (importOriginal) => {
 describe("status page", () => {
   beforeEach(() => {
     state.snapshot = snapshot();
+    state.more = [];
     state.keeper = { service: "keeper", configured: false, reachable: false };
   });
 
@@ -456,6 +525,42 @@ describe("status page", () => {
     expect(screen.getByRole("heading", { name: "Every contract" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Keeper (ours)" })).toBeTruthy();
     expect(screen.getAllByText(/No health URL is set for the keeper/).length).toBeGreaterThan(0);
+  });
+
+  it("checks every stack on its own, and names each one", async () => {
+    const own = snapshot({
+      stack: { name: "hunch", primary: false, venue: "hunch", kuruVersion: 1, isDefault: true },
+      vault: {
+        ...snapshot().vault,
+        address: "0x00000000000000000000000000000000000000ac",
+        balance: USDC(1),
+        surplus: -USDC(694),
+      },
+      markets: [
+        market({
+          marketId: 1n,
+          address: "0x00000000000000000000000000000000000000a2",
+          venue: "hunch",
+          kuruVersion: 1,
+        }),
+      ],
+    });
+    state.snapshot = snapshot({
+      stack: { name: "primary", primary: true, venue: "kuru", kuruVersion: 1, isDefault: false },
+    });
+    state.more = [own];
+    await renderWithProviders(<StatusPage />);
+    // The hunch stack's vault is short, so the page is red even though the primary one is fine.
+    expect(screen.getByRole("heading", { name: "A check is failing" })).toBeTruthy();
+    expect(screen.getByText("Solvency: Stack hunch (Hunch order book, new markets)")).toBeTruthy();
+    expect(screen.getByText("Solvency: Primary stack (Kuru v1)")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Money in the vault: Primary stack (Kuru v1)" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Markets: Stack hunch (Hunch order book, new markets)" }),
+    ).toBeTruthy();
+    // Market #1 on each stack, told apart by venue.
+    expect(screen.getByRole("link", { name: "#1 · Kuru" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "#1" })).toBeTruthy();
   });
 
   it("turns red when the vault is short", async () => {

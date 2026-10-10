@@ -34,14 +34,16 @@ const state = vi.hoisted(() => ({
 
 vi.mock("@/lib/config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/config")>();
+  // One stack each way, so the routes do not move when deployments/*.json gains a stack.
   const withFactory = {
     ...actual.appDeployment,
+    stacks: undefined,
     hunchBook: {
       factory: "0x00000000000000000000000000000000000000f1",
       vault: "0x00000000000000000000000000000000000000aa",
     },
   };
-  const without = { ...actual.appDeployment, hunchBook: {} };
+  const without = { ...actual.appDeployment, hunchBook: {}, stacks: undefined };
   return {
     ...actual,
     get appDeployment() {
@@ -232,7 +234,9 @@ describe("with no contracts deployed", () => {
     expect(footer.getByText("Monad testnet: live")).toBeTruthy();
     expect(footer.getByText("Monad mainnet: planned")).toBeTruthy();
     expect(
-      footer.getByText("Built on Monad, trades on Kuru, settles from Perpl and Chainlink."),
+      footer.getByText(
+        "Built on Monad, trades on onchain order books (Hunch Book's own and Kuru's), settles from Perpl and Chainlink.",
+      ),
     ).toBeTruthy();
     expect(footer.getByRole("link", { name: "MIT licensed" }).getAttribute("href")).toMatch(/LICENSE$/);
 
@@ -621,7 +625,16 @@ describe("with contracts deployed", () => {
 
   it("/creator/[address] shows the markets, live fees and a withdraw button for the creator", async () => {
     state.creator = { data: creatorData() };
-    state.creatorFees = { data: USDC(1.5) };
+    state.creatorFees = {
+      data: [
+        {
+          stack: "primary",
+          label: "Kuru",
+          vault: "0x00000000000000000000000000000000000000aa",
+          fees: USDC(1.5),
+        },
+      ],
+    };
     await renderWithProviders(await CreatorPage(params(USER)), { connected: true });
     expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(/^Creator 0x/);
     expect(screen.getByText("1.50")).toBeTruthy();
@@ -643,13 +656,48 @@ describe("with contracts deployed", () => {
         withdrawals: [{ amount: USDC(1), time: 1_799_000_000, block: 100n, tx: `0x${"77".repeat(32)}` }],
       }),
     };
-    state.creatorFees = { data: 0n };
+    state.creatorFees = {
+      data: [
+        { stack: "primary", label: "Kuru", vault: "0x00000000000000000000000000000000000000aa", fees: 0n },
+      ],
+    };
     await renderWithProviders(await CreatorPage(params("0x00000000000000000000000000000000000000d1")), {
       connected: true,
     });
     expect(screen.queryByRole("button", { name: "Withdraw my fees" })).toBeNull();
     expect(screen.getByText("2.50")).toBeTruthy();
     expect(screen.getAllByText("1.00").length).toBeGreaterThan(0);
+  });
+
+  it("/creator/[address] offers one withdraw per stack vault that owes fees", async () => {
+    state.creator = { data: creatorData() };
+    state.creatorFees = {
+      data: [
+        {
+          stack: "primary",
+          label: "Kuru",
+          vault: "0x00000000000000000000000000000000000000aa",
+          fees: USDC(1),
+        },
+        { stack: "kuruV2", label: "Kuru v2", vault: "0x00000000000000000000000000000000000000ad", fees: 0n },
+        {
+          stack: "hunch",
+          label: "Hunch order book",
+          vault: "0x00000000000000000000000000000000000000ac",
+          fees: USDC(0.5),
+        },
+      ],
+    };
+    await renderWithProviders(await CreatorPage(params(USER)), { connected: true });
+    // The total adds every vault.
+    expect(screen.getByText("1.50")).toBeTruthy();
+    expect(screen.getByText(/from 2 vaults: one transaction each/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Withdraw my fees from the Kuru vault" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Withdraw my fees from the Hunch order book vault" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Kuru v2 vault/ })).toBeNull();
+    expect(screen.getByRole("link", { name: /on each stack's vault/ }).getAttribute("href")).toBe("/status");
   });
 
   it("/creator/[address] is a 404 for anything that is not an address", async () => {

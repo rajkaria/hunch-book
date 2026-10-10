@@ -32,7 +32,8 @@ export const createKeys = {
   spot: (key: string) => ["create", "spot", appNetwork, key] as const,
   preview: (resolver: Address, params: Hex) =>
     ["create", "preview", appNetwork, resolver.toLowerCase(), params] as const,
-  marketOf: (key: Hex) => ["create", "market-of", appNetwork, key] as const,
+  marketOf: (factory: Address, key: Hex) =>
+    ["create", "market-of", appNetwork, factory.toLowerCase(), key] as const,
   resolverView: (resolver: Address, view: string) =>
     ["create", "resolver-view", appNetwork, resolver.toLowerCase(), view] as const,
 };
@@ -47,6 +48,7 @@ export function useDebounced<T>(value: T, ms = 400): T {
   return settled;
 }
 
+/** The default stack's factory settings, vault and USDC: where every new market is created. */
 export function useCreateConfig() {
   return useQuery({
     queryKey: createKeys.config(),
@@ -138,7 +140,7 @@ export function useExistingMarket(
   const settled = useDebounced(params);
   const key = templateId !== null && settled !== null ? marketKey(templateId, settled) : null;
   const query = useQuery({
-    queryKey: createKeys.marketOf(key ?? "0x"),
+    queryKey: createKeys.marketOf(factory ?? "0x", key ?? "0x"),
     queryFn: () => readMarketOf(getPublicClient(), factory as Address, key as Hex),
     enabled: deployed() && Boolean(factory) && key !== null,
     staleTime: 10_000,

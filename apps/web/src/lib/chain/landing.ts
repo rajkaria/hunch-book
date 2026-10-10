@@ -2,6 +2,7 @@ import {
   collateralOf,
   collateralVaultAbi,
   type Deployment,
+  defaultStackOf,
   type GraduationRule,
   hunchBookFactoryAbi,
   Phase,
@@ -28,7 +29,7 @@ export interface VaultBooks {
 export interface LandingStats {
   /** How many markets the counts cover. Equal to marketCount unless there are more than the limit. */
   listed: number;
-  /** Markets that graduated into their own Kuru book. */
+  /** Markets that graduated into their own order book (Hunch Book's or Kuru's). */
   graduated: number;
   /** Of those, how many were created by Hunch Book's own wallets. */
   graduatedByUs: number;
@@ -53,7 +54,10 @@ export interface LandingSnapshot {
    * (USDC.balanceOf(vault)) and what it owes (vault.totalObligations: pools, sets and fees).
    */
   vault: VaultBooks | null;
-  /** The graduation rule new Perpl funding markets get, from factory.templateOf. */
+  /**
+   * The graduation rule new Perpl funding markets get, from templateOf on the factory of the stack new
+   * markets go to.
+   */
   rule: GraduationRule | null;
   /** Average block time over the last 10,000 blocks, in milliseconds. */
   msPerBlock: number | null;
@@ -101,7 +105,7 @@ const PHASE_RANK: Record<Phase, number> = {
 
 /**
  * The market to put in the hero: the most active one by a simple, stated rule. A market trading on
- * its Kuru book beats a pool, a pool beats one waiting to settle, and within a phase the bigger pool
+ * its order book beats a pool, a pool beats one waiting to settle, and within a phase the bigger pool
  * wins (newest first on a tie).
  */
 export function pickFeatured(markets: readonly MarketView[]): MarketView | null {
@@ -188,11 +192,12 @@ export async function readLandingSnapshot(
   deployment: Deployment,
   timeoutMs = 6_000,
 ): Promise<LandingRead> {
-  const factory = deployment.hunchBook.factory;
-  if (!factory) return { status: "not-deployed" };
+  // New markets go to the default stack, so its factory says what rule they graduate by.
+  const factory = defaultStackOf(deployment)?.contracts.factory;
+  if (!deployment.hunchBook.factory || !factory) return { status: "not-deployed" };
 
   const work = (async (): Promise<LandingRead> => {
-    // Markets of every stack (testnet: the Kuru v2 stack next to the primary one).
+    // Markets of every stack (testnet: the Hunch order book and Kuru v2 stacks next to the primary one).
     const counts = await Promise.all(
       stacksOf(deployment).map(async (s) =>
         Number(

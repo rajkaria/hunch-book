@@ -5,9 +5,17 @@ import type { ReactNode } from "react";
 import type { Address } from "viem";
 import { appNetwork } from "@/lib/config";
 import type { FormResult } from "@/lib/create/build";
-import { capLines, FEE_LINES, ruleLines, voidLines, windowPoints } from "@/lib/create/preview";
+import {
+  capLines,
+  FEE_LINES,
+  graduationLine,
+  ruleLines,
+  voidLines,
+  windowPoints,
+} from "@/lib/create/preview";
 import type { Preview } from "@/lib/create/reads";
 import { type CreateTemplate, networkCaveat } from "@/lib/create/templates";
+import type { VenueSource } from "@/lib/stacks";
 import { ButtonLink, KeyValues, Notice, Panel, Skeleton } from "../ui";
 import s from "./create.module.css";
 import { When } from "./When";
@@ -25,6 +33,7 @@ export function PreviewPanel({
   existing,
   rule,
   caps,
+  venue,
 }: {
   template: CreateTemplate;
   result: FormResult;
@@ -34,6 +43,8 @@ export function PreviewPanel({
   existing: Address | null;
   rule: GraduationRule;
   caps: MarketCaps;
+  /** The venue of the stack new markets go to (CreateConfig). */
+  venue: VenueSource;
 }) {
   const window: Window | null = preview?.window ?? null;
   const caveat = networkCaveat(template.kind, appNetwork);
@@ -128,10 +139,7 @@ export function PreviewPanel({
               <li key={line}>{line}</li>
             ))}
           </ul>
-          <p className={s.small}>
-            If the pool meets every line before the lock, anyone can graduate it into fully backed YES and NO
-            tokens on its own Kuru order book. If not, it settles as a pool.
-          </p>
+          <p className={s.small}>{graduationLine(venue)}</p>
         </div>
 
         <div className={s.block}>

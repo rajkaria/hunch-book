@@ -27,6 +27,7 @@ import { formatInt } from "@/lib/format";
 import { useChainClock } from "@/lib/hooks";
 import type { PortfolioEntry } from "@/lib/market/types";
 import { peripheryMessage } from "@/lib/periphery";
+import { marketTag } from "@/lib/stacks";
 import { isUserRejection } from "@/lib/wallet/network";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, type TxStep, useTxRunner } from "@/lib/wallet/useTxRunner";
@@ -60,7 +61,14 @@ function approveStep(need: ApprovalNeed, redeemer: Address, label: string): TxSt
 }
 
 /** The portfolio's auto-redeem switch (AutoRedeemer, K-3), and which of the wallet's markets it covers. */
-export function AutoRedeemPanel({ entries }: { entries: PortfolioEntry[] }) {
+export function AutoRedeemPanel({
+  entries,
+  elsewhere = 0,
+}: {
+  entries: PortfolioEntry[];
+  /** Positions on other stacks, which this auto-redeemer cannot redeem. */
+  elsewhere?: number;
+}) {
   const redeemer = autoRedeemerAddress();
   const wallet = useAppChain();
   const user = wallet.address;
@@ -95,7 +103,7 @@ export function AutoRedeemPanel({ entries }: { entries: PortfolioEntry[] }) {
   const counts = coverageCounts(entries, data);
   const label = (market: Address): string => {
     const e = entries.find((x) => x.market.address === market);
-    return e ? `#${e.market.marketId.toString()}` : "a market";
+    return e ? marketTag(e.market) : "a market";
   };
   const busy = tx.busy || signing;
   const ready = wallet.onAppChain && data !== null && !busy;
@@ -338,6 +346,13 @@ export function AutoRedeemPanel({ entries }: { entries: PortfolioEntry[] }) {
         </p>
       )}
 
+      {elsewhere > 0 ? (
+        <p className={s.note}>
+          {formatInt(elsewhere)} of your {elsewhere === 1 ? "markets is" : "markets are"} on another stack,
+          which this auto-redeemer does not cover. Redeem {elsewhere === 1 ? "it" : "them"} from the market
+          page after settlement.
+        </p>
+      ) : null}
       <p className={s.note}>
         Anyone may trigger a redemption for a wallet that opted in, and the USDC always goes to that wallet.
         Hunch's keeper job that runs them after each settlement is building. Turning it off stops new

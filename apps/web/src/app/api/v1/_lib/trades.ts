@@ -1,15 +1,19 @@
 import { formatUsdc, type MarketInfo } from "@hunch-book/sdk";
-import { kuruOrderBookAbi } from "@hunch-book/shared";
+import { kuruOrderBookAbi, type Venue } from "@hunch-book/shared";
 import { type Address, getAbiItem, type Hex, isAddressEqual } from "viem";
 import { kuruSwapEvent, routersOf, routerTradeEvent } from "@/lib/tape/fills";
 import { cached } from "./cache";
 import type { ApiDeps } from "./deps";
-import { isOurs } from "./markets";
+import { isOurs, stackVenue } from "./markets";
 
-// Fills on a market's Kuru book. From the indexer when one is configured (complete history); else from
-// Kuru's Trade logs over the last blocks, read in 100-block windows because public Monad RPCs answer
-// eth_getLogs for at most 100 blocks. Kuru's Trade event: isBuy is the taker's side (true when the
-// taker bought YES), price has 18 decimals, filledSize is in YES base units (docs/INDEXER.md).
+/** Whose logs the fills come from, in a note. */
+const logsOf = (venue: Venue): string => (venue === "hunch" ? "the order book's Trade logs" : "Kuru's logs");
+
+// Fills on a market's book (Kuru's, or Hunch Book's own). From the indexer when one is configured
+// (complete history); else from the book's Trade logs over the last blocks, read in 100-block windows
+// because public Monad RPCs answer eth_getLogs for at most 100 blocks. Kuru v1's Trade event, which
+// Hunch Book's own books emit too: isBuy is the taker's side (true when the taker bought YES), price has
+// 18 decimals, filledSize is in YES base units (docs/INDEXER.md).
 
 export interface ApiTrade {
   block: string;
@@ -161,13 +165,18 @@ async function swapsFromLogs(
   });
 }
 
-/** Fills from Kuru's logs over a range of blocks (at most MAX_LOOKBACK), newest first. */
+/**
+ * Fills from the book's logs over a range of blocks (at most MAX_LOOKBACK), newest first. `kuruVersion`
+ * and `venue` are the market's: a Kuru v2 book logs swaps, a v1 book (Kuru's or Hunch Book's own) logs
+ * Trade events.
+ */
 export async function tradesFromLogs(
   deps: ApiDeps,
   book: Address,
   range: BlockRange,
   limit: number,
   kuruVersion: 1 | 2 = 1,
+  venue: Venue = "kuru",
 ): Promise<TradesResult> {
   const client = deps.sdk.context.publicClient;
   const head = await client.getBlockNumber();
@@ -224,8 +233,8 @@ export async function tradesFromLogs(
     toBlock: to.toString(),
     note:
       range.fromBlock === null
-        ? `Fills from Kuru's logs over the last ${range.blocks} blocks. Set INDEXER_URL for the full history.`
-        : `Fills from Kuru's logs in blocks ${from} to ${to}.`,
+        ? `Fills from ${logsOf(venue)} over the last ${range.blocks} blocks. Set INDEXER_URL for the full history.`
+        : `Fills from ${logsOf(venue)} in blocks ${from} to ${to}.`,
     trades: kept.map((l) =>
       shape(deps, {
         block: l.blockNumber as bigint,
@@ -301,8 +310,8 @@ export async function tradesFromIndexer(
 }
 
 /**
- * The market's fills: the indexer's latest when one is configured, else (or when it fails) Kuru's logs
- * over the range. An explicit `fromBlock` always reads that range from the logs. Cached for 15 seconds.
+ * The market's fills: the indexer's latest when one is configured, else (or when it fails) the book's
+ * logs over the range. An explicit `fromBlock` always reads that range from the logs. Cached for 15 seconds.
  */
 export async function marketTrades(
   deps: ApiDeps,
@@ -319,6 +328,7 @@ export async function marketTrades(
       note: "This market has no book yet.",
     };
   const book = m.book;
+  const { venue } = stackVenue(m, deps);
   return cached(
     `trades:${deps.network}:${m.address}:${range.blocks}:${range.fromBlock ?? "head"}:${limit}`,
     15_000,
@@ -327,14 +337,14 @@ export async function marketTrades(
         try {
           return await tradesFromIndexer(deps, m.address, limit);
         } catch (e) {
-          const fallback = await tradesFromLogs(deps, book, range, limit, m.kuruVersion ?? 1);
+          const fallback = await tradesFromLogs(deps, book, range, limit, m.kuruVersion ?? 1, venue);
           return {
             ...fallback,
             note: `The indexer failed (${e instanceof Error ? e.message : "unknown error"}); ${fallback.note}`,
           };
         }
       }
-      return tradesFromLogs(deps, book, range, limit, m.kuruVersion ?? 1);
+      return tradesFromLogs(deps, book, range, limit, m.kuruVersion ?? 1, venue);
     },
     deps.now(),
   );

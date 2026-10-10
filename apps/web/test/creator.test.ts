@@ -1,7 +1,12 @@
 import { deployments } from "@hunch-book/shared";
 import type { Address, Hex } from "viem";
 import { describe, expect, it, vi } from "vitest";
-import { creatorFromChain, creatorFromIndexer, readCreatorFees } from "../src/lib/creator/read";
+import {
+  creatorFromChain,
+  creatorFromIndexer,
+  readCreatorFees,
+  readCreatorFeesByStack,
+} from "../src/lib/creator/read";
 import type { CreatorResult } from "../src/lib/indexer/queries";
 import { deployed, marketHandlers, notDeployed, stubClient } from "./chain";
 import { USDC } from "./fixtures";
@@ -103,6 +108,7 @@ describe("creatorFromChain", () => {
     expect(mine.markets).toHaveLength(3);
     expect(mine.markets[0]).toMatchObject({
       number: 2,
+      tag: "#2 · Kuru",
       stage: "Pool",
       pool: USDC(400),
       stakers: 4,
@@ -136,5 +142,34 @@ describe("readCreatorFees", () => {
       }),
     );
     expect(await readCreatorFees({ readContract } as never, notDeployed, CREATOR)).toBeNull();
+  });
+});
+
+describe("readCreatorFeesByStack", () => {
+  it("asks every stack's vault, since each stack's markets pay fees into their own vault", async () => {
+    const ownVault = "0x00000000000000000000000000000000000000a7" as Address;
+    const twoStacks = {
+      ...deployed,
+      stacks: {
+        hunch: {
+          factory: "0x00000000000000000000000000000000000000f7" as Address,
+          vault: ownVault,
+          venue: {
+            kind: "hunch" as const,
+            bookFactory: ownVault,
+            marginAccount: ownVault,
+            bookImplementation: ownVault,
+          },
+        },
+      },
+    };
+    const readContract = vi.fn(async ({ address }: { address: Address }) =>
+      address === ownVault ? USDC(2) : 0n,
+    );
+    expect(await readCreatorFeesByStack({ readContract } as never, twoStacks, CREATOR)).toEqual([
+      { stack: "primary", label: "Kuru", vault: deployed.hunchBook.vault, fees: 0n },
+      { stack: "hunch", label: "Hunch order book", vault: ownVault, fees: USDC(2) },
+    ]);
+    expect(await readCreatorFeesByStack({ readContract } as never, notDeployed, CREATOR)).toEqual([]);
   });
 });

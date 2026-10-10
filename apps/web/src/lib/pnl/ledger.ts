@@ -97,7 +97,7 @@ const NOTE = {
   extraHeld:
     "Holds tokens the history does not explain (received by transfer, or history not indexed); they count at zero cost.",
   movedOut:
-    "Some tokens left the wallet by plain transfer (for example into Kuru's margin account); their cost is left out.",
+    "Some tokens left the wallet by plain transfer (for example into an order book's margin account); their cost is left out.",
   openPool: "An open pool has no price until it graduates or settles.",
   noBook: "No two-sided book, so the tokens have no mid price right now.",
 } as const;

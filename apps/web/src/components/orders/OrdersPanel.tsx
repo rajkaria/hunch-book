@@ -37,7 +37,11 @@ export function OrdersPanel({ m }: { m: MarketView }) {
           <OrderList m={m} contract={contract} />
         </>
       ) : (
-        <p className={s.sub}>Conditional orders are not deployed on {appNetworkLabel} yet.</p>
+        <p className={s.sub}>
+          {m.stack && m.stack !== "primary"
+            ? "Conditional orders are not deployed for this market's stack yet. Closing a position works without them."
+            : `Conditional orders are not deployed on ${appNetworkLabel} yet.`}
+        </p>
       )}
     </Panel>
   );

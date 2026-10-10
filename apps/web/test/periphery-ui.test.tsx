@@ -1,4 +1,5 @@
 import {
+  defaultStackOf,
   deployments,
   encodeParlayParams,
   encodePriceAtTimeParams,
@@ -292,10 +293,23 @@ describe("/ladder", () => {
 
 describe("/parlay", () => {
   it("multiplies the picked legs' chances and prefills a template 6 market", async () => {
-    const a = priceMarket(110_000n, 5_000);
-    const b = priceMarket(120_000n, 4_000);
-    state.markets = listOf([a, b]);
+    // Legs come from the stack new markets go to: a new parlay's resolver reads that factory only.
+    const fresh = defaultStackOf(deployments["monad-testnet"]);
+    const onFresh = { stack: fresh?.name, kuruVersion: fresh?.kuruVersion, venue: fresh?.venue };
+    const a = { ...priceMarket(110_000n, 5_000), ...onFresh };
+    const b = { ...priceMarket(120_000n, 4_000), ...onFresh };
+    const older = {
+      ...priceMarket(130_000n, 3_000),
+      stack: "kuruV2",
+      kuruVersion: 2 as const,
+      venue: "kuru" as const,
+    };
+    state.markets = listOf([a, b, older]);
     await renderWithProviders(<ParlayRoute />);
+    expect(screen.queryByRole("checkbox", { name: literal(older.description as string) })).toBeNull();
+    expect(
+      screen.getByText(/1 open market is on another stack, which new parlays cannot use as legs/),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: literal(a.description as string) }));
     expect(screen.getByText("pick at least 2 legs")).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: literal(b.description as string) }));
@@ -592,7 +606,7 @@ describe("Auto-redeem panel", () => {
     expect(screen.getByText("Covered")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Leave this market out" }));
     expect(state.run).toHaveBeenCalledWith(
-      `Switch off auto-redeem on #${entry.market.marketId}`,
+      `Switch off auto-redeem on #${entry.market.marketId} · Kuru`,
       expect.objectContaining({ functionName: "setMarketOptOut", args: [entry.market.address, true] }),
       ME,
     );

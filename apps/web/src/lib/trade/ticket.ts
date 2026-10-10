@@ -19,6 +19,7 @@ import type { Address } from "viem";
 import { type BookSnapshot, BookState } from "../chain/kuru";
 import type { WalletBalances } from "../chain/reads";
 import { formatFixed, formatUsdc } from "../format";
+import { onHunchVenue, type VenueSource } from "../stacks";
 
 // The trade ticket as pure logic: which router path, the quote, the limit after slippage, the approval it
 // needs, and the one reason (if any) the trade cannot be sent. The component only renders this.
@@ -98,6 +99,19 @@ export interface TicketContext {
   book: BookSnapshot | null;
   wallet: { connected: boolean; onAppChain: boolean };
   balances: WalletBalances | null;
+  /** The market's venue (absent = Kuru), for why a book that is not active cannot trade. */
+  venue?: VenueSource;
+}
+
+/**
+ * Why a book that is not active cannot fill, in plain words. Hunch Book's own book matches only while
+ * its market is trading and stops by itself outside that (cancels only, nobody can pause it); Kuru can
+ * pause its books.
+ */
+export function inactiveBookWords(venue: VenueSource | undefined): string {
+  return venue && onHunchVenue(venue)
+    ? "This book matches only while the market is trading. The market has not graduated yet or has closed, so the book accepts cancels only."
+    : "Kuru has paused this book. Orders cannot fill until Kuru resumes it.";
 }
 
 export interface TicketState {
@@ -137,7 +151,11 @@ function marketBlocker(ctx: TicketContext): string | null {
     return "Trading through the router stopped at close. Winning tokens redeem after settlement.";
   }
   if (!ctx.book) return "Reading the book...";
-  if (ctx.book.state !== BookState.Active) return "Kuru has paused this book, so it cannot trade right now.";
+  if (ctx.book.state !== BookState.Active) {
+    return ctx.venue && onHunchVenue(ctx.venue)
+      ? "This book matches only while the market is trading, so it cannot trade right now."
+      : "Kuru has paused this book, so it cannot trade right now.";
+  }
   return null;
 }
 

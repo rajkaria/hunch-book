@@ -142,6 +142,9 @@ vi.mock("@/lib/config", async (importOriginal) => {
     ...actual,
     appDeployment: {
       ...actual.appDeployment,
+      // One stack, so the links' legs are on the stack new markets go to.
+      stacks: undefined,
+      defaultStack: undefined,
       hunchBook: { ...actual.appDeployment.hunchBook, factory: "0x00000000000000000000000000000000000000f1" },
     },
   };

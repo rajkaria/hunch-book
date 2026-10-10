@@ -8,11 +8,11 @@ import { parseAddressParam } from "@/lib/address";
 export const metadata: Metadata = {
   title: "Trade tape",
   description:
-    "Every fill on Hunch Book's Kuru order books as it happens: price, size, side, block and transaction, with Hunch's own maker labelled.",
+    "Every fill on Hunch Book's onchain order books as it happens: price, size, side, block and transaction, with Hunch's own maker labelled.",
 };
 
 const TAPE_WILL_SHOW = [
-  "Every fill on each graduated market's Kuru book, newest first, updated every two seconds.",
+  "Every fill on each graduated market's order book, newest first, updated every two seconds.",
   "Price, size, side, block number and transaction, with Hunch's own maker bot labelled.",
 ];
 

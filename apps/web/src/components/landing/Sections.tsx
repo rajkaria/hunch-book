@@ -6,6 +6,7 @@ import type { VaultBooks } from "@/lib/chain/landing";
 import { appDeployment, appNetwork, appNetworkLabel, isDeployed, REPO_URL } from "@/lib/config";
 import { TESTNET_MONEY } from "@/lib/copy";
 import { formatBpsPercent, formatUsdc } from "@/lib/format";
+import { defaultStack, onHunchVenue, venueSentences } from "@/lib/stacks";
 import { AddressLink, ButtonLink, LineIcon } from "../ui";
 import s from "./landing.module.css";
 import { blockTimeWords, PROTOCOL, PROTOCOL_URL } from "./words";
@@ -103,7 +104,7 @@ export function Audiences() {
       title: "Hedge funding. Sell before the answer.",
       points: [
         "Get paid back if funding on Perpl stays high this week, from a market that settles on Perpl's own numbers.",
-        "Once a market graduates, sell your YES or NO on its Kuru book whenever you like.",
+        "Once a market graduates, sell your YES or NO on its order book whenever you like.",
         "You can lose at most what you put in. No margin, no liquidation.",
       ],
       cta: { href: "/markets", label: "Browse markets", external: false },
@@ -181,7 +182,8 @@ interface Role {
 
 export function Safety({ vault }: { vault: VaultBooks | null }) {
   const guardian = appDeployment.hunchBook.guardian;
-  const vaultAddress = appDeployment.hunchBook.vault;
+  // The vault new markets use; the figures below add up every stack's vault.
+  const vaultAddress = defaultStack()?.contracts.vault ?? appDeployment.hunchBook.vault;
   const roles: Role[] = [
     {
       who: "Anyone",
@@ -303,8 +305,9 @@ export function Safety({ vault }: { vault: VaultBooks | null }) {
             <span className={s.safetyIcon}>{icons.code}</span>
             <h3 className={s.cardHeading}>Tested in the open</h3>
             <p className={s.cardText}>
-              Every contract is public, with unit, fuzz and invariant tests, and fork tests against live Kuru,
-              Perpl and Chainlink contracts. The known limits are written down.
+              Every contract is public, Hunch Book's own order book included, with unit, fuzz and invariant
+              tests, and fork tests against live Kuru, Perpl and Chainlink contracts. The known limits are
+              written down.
             </p>
             <a className={s.stageMore} href={PROTOCOL.limitations} target="_blank" rel="noreferrer">
               Known limitations<span aria-hidden="true"> ↗</span>
@@ -319,11 +322,15 @@ export function Safety({ vault }: { vault: VaultBooks | null }) {
 // ---------- why Monad ----------
 
 export function WhyMonad({ msPerBlock }: { msPerBlock: number | null }) {
+  const stack = defaultStack();
   const points = [
     {
       icon: icons.book,
-      title: "Kuru: an order book that lives onchain",
-      body: "A pool graduates into a real YES/USDC book that anyone can quote, not into a matching engine on our server.",
+      title: "An order book that lives onchain",
+      body:
+        stack && onHunchVenue(stack)
+          ? "A pool graduates into a real YES/USDC book that anyone can quote, not into a matching engine on our server. New markets get theirs from Hunch Book's own order book contracts, and Kuru's books are supported too."
+          : "A pool graduates into a real YES/USDC book on Kuru that anyone can quote, not into a matching engine on our server.",
     },
     {
       icon: icons.history,
@@ -379,8 +386,9 @@ export function faqItems(): FaqItem[] {
         <>
           In a pool, winners pay 2% of their winnings, never more than the losing side put in. After
           graduation, each winning token redeems for 1 USDC less a fee fixed at graduation, at most 1.94
-          cents. Kuru's own trading fees go to Kuru. Minting, merging and void refunds are free.{" "}
-          {creatorShare} of Hunch Book's fee goes to the market's creator.{" "}
+          cents. Hunch Book's own order book charges no trading fee; on a Kuru book, Kuru's own trading fees
+          go to Kuru. Minting, merging and void refunds are free. {creatorShare} of Hunch Book's fee goes to
+          the market's creator.{" "}
           <a href={PROTOCOL.fees} target="_blank" rel="noreferrer">
             Fee table
           </a>
@@ -394,11 +402,11 @@ export function faqItems(): FaqItem[] {
     },
     {
       q: "Can I sell before the answer?",
-      a: "Not from a pool: stakes are final until settlement, which is what keeps a pool safe without a market maker. Once a market graduates, you can sell YES or NO on its Kuru book at any time until the window closes.",
+      a: "Not from a pool: stakes are final until settlement, which is what keeps a pool safe without a market maker. Once a market graduates, you can sell YES or NO on its order book at any time until the window closes.",
     },
     {
       q: "Who is on the other side of my trade?",
-      a: "In a pool, everyone who staked the other side. On a book, whoever has orders on Kuru, and anyone can quote. Until outside makers join, many quotes come from our own open-source maker bot. Its address is published and every fill against it is counted as ours.",
+      a: "In a pool, everyone who staked the other side. On a book, whoever has orders resting on it, and anyone can quote. Until outside makers join, many quotes come from our own open-source maker bot. Its address is published and every fill against it is counted as ours.",
     },
     {
       q: "Who decides the outcome?",
@@ -409,7 +417,7 @@ export function faqItems(): FaqItem[] {
       a: (
         <>
           {testnetLive
-            ? "On Monad testnet: the contracts, pools, graduation into Kuru books, and trading YES and NO through the router. "
+            ? `On Monad testnet: the contracts, pools, graduation into order books, and trading YES and NO through the router. ${venueSentences(deployments["monad-testnet"]).join(" ")} `
             : "Nothing is deployed yet. "}
           {appNetwork === "monad-testnet" ? `${TESTNET_MONEY} ` : null}
           {mainnetLive ? "Monad mainnet is live with real USDC." : "Mainnet with real USDC is planned."} Every

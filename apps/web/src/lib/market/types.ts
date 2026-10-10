@@ -6,6 +6,7 @@ import type {
   Phase,
   PriceAtTimeParams,
   SnapshotParams,
+  Venue,
   Window,
 } from "@hunch-book/shared";
 import type { Address, Hex } from "viem";
@@ -17,7 +18,10 @@ export type DecodedParams =
   | { kind: "snapshot"; params: SnapshotParams }
   | { kind: "unknown"; raw: Hex };
 
-/** Kuru's best bid and ask for the YES/USDC book, in 1e18 price units. Null means that side is empty. */
+/**
+ * The best bid and ask of the market's YES/USDC book (Kuru's or Hunch Book's own, both read through Kuru
+ * v1's `bestBidAsk()`), in 1e18 price units. Null means that side is empty.
+ */
 export interface BookQuote {
   bid: bigint | null;
   ask: bigint | null;
@@ -34,7 +38,7 @@ export interface MarketView {
   pool: { yes: bigint; no: bigint; total: bigint; stakers: number };
   window: Window;
   tokens: { yes: Address; no: Address };
-  /** Kuru YES/USDC book, or null before one is set. */
+  /** The YES/USDC book on the market's venue (`venue`), or null before one is set. */
   book: Address | null;
   resolver: Address;
   creator: Address;
@@ -45,17 +49,22 @@ export interface MarketView {
   evidenceHash: Hex;
   /** The resolver's own sentence for the rule, or null if the call failed. */
   description: string | null;
-  /** Kuru best bid/ask once graduated and a book is set. */
+  /** The book's best bid/ask once graduated and a book is set. */
   quote: BookQuote | null;
   /** IMarket.graduationRuleMet(), ignoring book readiness and pauses. */
   ruleMet: boolean | null;
   /**
-   * The deployment stack the market belongs to ("primary" or a name under `stacks`) and its Kuru
-   * version. Absent means the primary stack on Kuru v1. The stack gives the market's vault, router and
-   * periphery (lib/stacks.ts).
+   * The deployment stack the market belongs to ("primary" or a name under `stacks`) and the Kuru
+   * interface its book speaks. Absent means the primary stack on Kuru v1. The stack gives the market's
+   * vault, router and periphery (lib/stacks.ts).
    */
   stack?: string;
   kuruVersion?: 1 | 2;
+  /**
+   * Where the book is: "hunch" for Hunch Book's own onchain order book (which speaks Kuru v1's
+   * interface, so `kuruVersion` is 1), "kuru" for Kuru's. Absent means Kuru. lib/stacks.ts names it.
+   */
+  venue?: Venue;
   /**
    * Kuru v2 pools: whether GraduatorV2 has this market's book registered yet (only Kuru creates v2
    * books, so a pool can meet its rule before it can graduate). Absent elsewhere.

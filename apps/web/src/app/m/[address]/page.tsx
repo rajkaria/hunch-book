@@ -11,6 +11,9 @@ import { shortAddress } from "@/lib/format";
 
 type Props = { params: Promise<{ address: string }> };
 
+const MARKET_PAGE_DESCRIPTION =
+  "A Hunch Book market on Monad: stake USDC on YES or NO, trade it on its onchain order book once it graduates, settled by reading the chain.";
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const address = parseAddressParam((await params).address);
   if (!address) return { title: "Market not found" };
@@ -20,9 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = headline ?? `Market ${shortAddress(address)}`;
   return {
     title,
-    description: headline
-      ? `${headline} A Hunch Book market on Monad: stake USDC on YES or NO, trade it on Kuru once it graduates, settled by reading the chain.`
-      : "A Hunch Book market on Monad: stake USDC on YES or NO, trade it on Kuru once it graduates, settled by reading the chain.",
+    description: headline ? `${headline} ${MARKET_PAGE_DESCRIPTION}` : MARKET_PAGE_DESCRIPTION,
   };
 }
 

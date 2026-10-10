@@ -10,6 +10,7 @@ import {
   Side,
 } from "@hunch-book/shared";
 import { formatInt, formatUsdc, formatUtc } from "../format";
+import { onHunchVenue, venueShort } from "../stacks";
 import type { MarketView } from "./types";
 
 // Which lifecycle calls a market accepts right now, and why the others wait. Pure functions of the
@@ -138,14 +139,16 @@ export function lifecycleActions(
     const waitingForKuru = m.kuruVersion === 2 && m.bookReady !== true;
     actions.push({
       id: "graduate",
-      label: "Graduate to Kuru",
+      label: `Graduate to ${venueShort(m)}`,
       enabled: m.ruleMet === true && !waitingForKuru,
       reason: waitingForKuru
         ? m.ruleMet === true
           ? "The rule is met. Kuru creates this market's book first (on Kuru v2 that can take a day or two); the keeper asked for it and graduates the pool once it is registered. If it never arrives, the pool settles as a pool."
           : "The pool does not meet its graduation rule yet. Kuru is creating this market's book meanwhile (Kuru v2)."
         : m.ruleMet === true
-          ? "The rule is met. Anyone can graduate the pool into YES and NO tokens on a Kuru book."
+          ? onHunchVenue(m)
+            ? "The rule is met. Anyone can graduate the pool into YES and NO tokens; the same transaction opens its book on Hunch Book's own order book."
+            : "The rule is met. Anyone can graduate the pool into YES and NO tokens on a Kuru book."
           : "The pool does not meet its graduation rule yet.",
     });
   }

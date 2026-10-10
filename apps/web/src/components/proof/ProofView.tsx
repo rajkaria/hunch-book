@@ -1,6 +1,6 @@
 "use client";
 
-import { addressUrl, blockUrl } from "@hunch-book/shared";
+import { addressUrl, blockUrl, stacksOf } from "@hunch-book/shared";
 import Link from "next/link";
 import { type ReactNode, useMemo } from "react";
 import type { Address } from "viem";
@@ -18,6 +18,7 @@ import type { DataSource } from "@/lib/indexer/source";
 import { latestFinal } from "@/lib/proof/chain";
 import { type ProofView as ProofModel, useChainTimings, useProof } from "@/lib/proof/hooks";
 import type { MarketSolvency, SettlementTiming, VaultBalance } from "@/lib/proof/metrics";
+import { marketVenueLabel } from "@/lib/stacks";
 import { tapeStats } from "@/lib/tape/fills";
 import { booksOf, useTape } from "@/lib/tape/hooks";
 import { INDEXER_DOCS_URL, QUERIES_URL, SourceTag } from "../indexer/SourceTag";
@@ -35,6 +36,13 @@ const fromIndexer = (field: string): StatSource => ({
 
 const onExplorer = (address: Address | undefined, label: string): StatSource | undefined =>
   address ? { href: addressUrl(appDeployment, address), label, external: true } : undefined;
+
+/**
+ * The source of a figure that adds up every stack (each has its own factory and vault): the one
+ * contract when there is one stack, else the status page, which lists each.
+ */
+const everyStack = (address: Address | undefined, label: string, many: string): StatSource | undefined =>
+  stacksOf(appDeployment).length > 1 ? { href: "/status", label: many } : onExplorer(address, label);
 
 /** A figure the chain alone cannot give. The page explains why once, at the top. */
 function NeedsIndexer({ what, children }: { what: string; children?: ReactNode }) {
@@ -81,7 +89,7 @@ function MarketsPanel({ data, source }: { data: ProofModel; source: DataSource }
           source={
             source === "indexer"
               ? fromIndexer("ProtocolStats.marketsCreated")
-              : onExplorer(factory, "factory.marketCount()")
+              : everyStack(factory, "factory.marketCount()", "marketCount() of every stack's factory")
           }
         />
         <Stat
@@ -422,12 +430,16 @@ function VaultFigures({
         size="lg"
         tone={shown.margin < 0n ? "no" : "accent"}
         hint="USDC held minus everything owed"
-        source={onExplorer(vaultAddress, "live: USDC.balanceOf(vault) − vault.totalObligations()")}
+        source={everyStack(
+          vaultAddress,
+          "live: USDC.balanceOf(vault) − vault.totalObligations()",
+          "live: every stack's vault, USDC held minus owed",
+        )}
       />
       <Stat
         label="USDC held"
         value={formatUsdc(shown.balance)}
-        source={onExplorer(vaultAddress, "the vault on the explorer")}
+        source={everyStack(vaultAddress, "the vault on the explorer", "every stack's vault")}
       />
       <Stat label="Owed" value={formatUsdc(shown.obligations)} hint="pools, sets and unpaid fees" />
       {source === "indexer" && vault ? (
@@ -629,6 +641,7 @@ function OurWallets() {
   const { maker, keeper } = appDeployment.wallets;
   const { guardian, feeRecipient } = appDeployment.hunchBook;
   const factory = factoryOf(appDeployment);
+  const stacks = stacksOf(appDeployment);
   return (
     <Panel title="Our own wallets" labelledBy="proof-ours">
       <p className={s.note}>
@@ -644,14 +657,27 @@ function OurWallets() {
           ...(feeRecipient && feeRecipient !== guardian
             ? [{ label: "Fee recipient (ours)", value: <AddressLink address={feeRecipient} full /> }]
             : []),
-          {
-            label: "Factory",
-            value: factory ? (
-              <AddressLink address={factory} full />
-            ) : (
-              <span className="subtle">not deployed yet</span>
-            ),
-          },
+          ...(stacks.length > 1
+            ? stacks.flatMap((st) =>
+                st.contracts.factory
+                  ? [
+                      {
+                        label: `Factory (${st.primary ? "primary" : st.name}, ${marketVenueLabel(st)})`,
+                        value: <AddressLink address={st.contracts.factory} full />,
+                      },
+                    ]
+                  : [],
+              )
+            : [
+                {
+                  label: "Factory",
+                  value: factory ? (
+                    <AddressLink address={factory} full />
+                  ) : (
+                    <span className="subtle">not deployed yet</span>
+                  ),
+                },
+              ]),
         ]}
       />
     </Panel>

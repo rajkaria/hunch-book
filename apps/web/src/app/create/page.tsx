@@ -24,7 +24,7 @@ export default async function CreatePage({
       <PageHeader eyebrow={<ActiveNetworkLabel />} title="Create a market">
         <p>
           Pick a template, set its parameters and read the exact rule the resolver will apply. Then make the
-          first stake: the market starts as a USDC pool, and graduates to its own Kuru order book once it
+          first stake: the market starts as a USDC pool, and graduates to its own onchain order book once it
           proves demand.
         </p>
       </PageHeader>

@@ -1,6 +1,7 @@
 import { type GraduationRule, type MarketCaps, PriceSource, type Window } from "@hunch-book/shared";
 import { formatBpsPercent, formatUsdc } from "../format";
 import { voidTerms } from "../market/logic";
+import { onHunchVenue, type VenueSource } from "../stacks";
 import { type Head, type Pace, timeAt, uncertaintySeconds } from "./clock";
 import type { TemplateKind } from "./templates";
 
@@ -86,6 +87,23 @@ export function ruleLines(rule: GraduationRule): string[] {
     "Stakes on both YES and NO",
     `A pool chance of YES between ${formatBpsPercent(rule.minChanceBps)} and ${formatBpsPercent(rule.maxChanceBps)}`,
   ];
+}
+
+/**
+ * What graduation opens, on the venue of the stack new markets go to: Hunch Book's own order book (the
+ * same transaction creates the book, so it waits on no one), a Kuru v1 book, or a Kuru v2 book that Kuru
+ * creates first.
+ */
+export function graduationLine(venue: VenueSource): string {
+  const start =
+    "If the pool meets every line before the lock, anyone can graduate it into fully backed YES and NO tokens";
+  if (onHunchVenue(venue)) {
+    return `${start}. The same transaction opens its own YES/USDC book on Hunch Book's onchain order book, so graduation waits on no third party. If not, it settles as a pool.`;
+  }
+  if (venue.kuruVersion === 2) {
+    return `${start} on its own Kuru v2 order book, once Kuru has created that book. If not, it settles as a pool.`;
+  }
+  return `${start} on its own Kuru order book. If not, it settles as a pool.`;
 }
 
 /** The limits every market created now copies (§10.3). */

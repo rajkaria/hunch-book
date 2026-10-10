@@ -35,7 +35,7 @@ export function blockTimeWords(msPerBlock: number): string {
   return `${(msPerBlock / 1000).toFixed(2)} seconds`;
 }
 
-/** A Kuru 1e18 price as USDC per YES token with three decimals: "0.380". */
+/** A book's 1e18 price (Kuru v1's scale) as USDC per YES token with three decimals: "0.380". */
 export function priceWords(priceE18: bigint): string {
   return formatFixed(priceE18, 18, { minDecimals: 3, maxDecimals: 3 });
 }

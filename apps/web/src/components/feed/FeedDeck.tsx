@@ -26,6 +26,7 @@ import { useChainClock, useMarkets, useNow } from "@/lib/hooks";
 import { chanceDisplay, marketChance, PRICE_SCALE } from "@/lib/market/logic";
 import { templateLabel } from "@/lib/market/params";
 import type { ChainClock, MarketView } from "@/lib/market/types";
+import { bookName } from "@/lib/stacks";
 import { formatPriceE6 } from "@/lib/trade/ticket";
 import { StakeTicket } from "../market/StakeTicket";
 import { Countdown, marketHeadline } from "../markets/MarketCard";
@@ -64,7 +65,7 @@ function Venue({ m }: { m: MarketView }) {
     return (
       <div className={s.venue}>
         <div className={s.venueRow}>
-          <span>Kuru book</span>
+          <span>{bookName(m)}</span>
           <span>Trading</span>
         </div>
         <span className="mono">

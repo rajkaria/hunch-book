@@ -1,7 +1,7 @@
 import { addressUrl, describeError, type MarketInfo, type Verification } from "@hunch-book/sdk";
 import { cached, peek, remember } from "./cache";
 import type { ApiDeps } from "./deps";
-import { type ChainClock, isOurs, marketTitleText, marketUrl } from "./markets";
+import { type ChainClock, isOurs, marketTitleText, marketUrl, stackVenue } from "./markets";
 
 // The settlement archive: every settled or voided market with the exact read that settled it (the
 // evidence, what it decodes to, the transaction and who sent it) and whether that read still reproduces
@@ -115,6 +115,7 @@ export function settlementRecord(
   return {
     id: m.id,
     market: m.address,
+    ...stackVenue(m, deps),
     title: marketTitleText(m, clock),
     rule: m.rule,
     template: { id: m.templateId, name: m.template },

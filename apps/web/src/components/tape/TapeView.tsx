@@ -9,6 +9,7 @@ import { formatChance, formatInt, formatUsdc } from "@/lib/format";
 import { useMarkets, useNow } from "@/lib/hooks";
 import type { MarketView } from "@/lib/market/types";
 import { useFriendlyQuestions } from "@/lib/market/useQuestion";
+import { marketTag } from "@/lib/stacks";
 import { type Fill, tapeStats } from "@/lib/tape/fills";
 import { booksOf, TAPE_POLL_MS, type TapeData, useTape } from "@/lib/tape/hooks";
 import { useTxTimings } from "@/lib/wallet/txTiming";
@@ -96,7 +97,7 @@ export function TapeView({ market }: { market?: Address }) {
 
   return (
     <Panel
-      title={market ? `Fills on market ${focus ? `#${focus.marketId.toString()}` : ""}`.trim() : "Every fill"}
+      title={market ? `Fills on market ${focus ? marketTag(focus) : ""}`.trim() : "Every fill"}
       labelledBy="tape-title"
       aside={
         tape.data ? (
@@ -130,7 +131,7 @@ export function TapeView({ market }: { market?: Address }) {
         <>
           <TapeStats fills={fills} />
           {books.length === 0 && data?.window === null && tape.data?.source === "chain" ? (
-            <p className={s.empty}>No market has graduated to a Kuru book yet, so there are no fills.</p>
+            <p className={s.empty}>No market has graduated to a book yet, so there are no fills.</p>
           ) : fills.length === 0 ? (
             <p className={s.empty}>
               {othersOnly ? "No fills between other parties" : "No fills"}{" "}
@@ -143,7 +144,7 @@ export function TapeView({ market }: { market?: Address }) {
               user={user}
               timings={timings}
               showMarket={!market}
-              caption="Fills on Hunch Book's Kuru books, newest first"
+              caption="Fills on Hunch Book's order books, newest first"
             />
           )}
           {data && tape.data?.source === "chain" ? (

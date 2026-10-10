@@ -156,8 +156,9 @@ export function parseMarketResults(address: Address, results: CallResult[], offs
 }
 
 /**
- * Second pass: the resolver's rule sentence for each market, Kuru's best bid/ask once graduated, and for
- * Kuru v2 pools whether the stack's GraduatorV2 (`graduator`) has the book registered.
+ * Second pass: the resolver's rule sentence for each market, its book's best bid/ask once graduated (Kuru
+ * v1's `bestBidAsk()`, which Hunch Book's own books answer too), and for Kuru v2 pools whether the
+ * stack's GraduatorV2 (`graduator`) has the book registered.
  */
 async function readExtras(
   client: ReadClient,
@@ -217,10 +218,13 @@ async function readExtras(
   });
 }
 
-/** The stack fields a view carries (absent for the primary stack on Kuru v1, as before stacks existed). */
-function stackTag(stack: Stack | undefined): Pick<MarketView, "stack" | "kuruVersion"> {
-  if (!stack || (stack.primary && stack.kuruVersion === 1)) return {};
-  return { stack: stack.name, kuruVersion: stack.kuruVersion };
+/**
+ * The stack fields a view carries: its name, Kuru version and venue. Absent for the primary stack on
+ * Kuru v1, as before stacks existed.
+ */
+export function stackTag(stack: Stack | undefined): Pick<MarketView, "stack" | "kuruVersion" | "venue"> {
+  if (!stack || (stack.primary && stack.kuruVersion === 1 && stack.venue === "kuru")) return {};
+  return { stack: stack.name, kuruVersion: stack.kuruVersion, venue: stack.venue };
 }
 
 /**

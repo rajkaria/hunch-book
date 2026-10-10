@@ -5,7 +5,7 @@ import Link from "next/link";
 import { type Abi, type Address, isAddressEqual } from "viem";
 import { appDeployment, appNetworkLabel } from "@/lib/config";
 import { creatorKeys, useCreator, useCreatorFees } from "@/lib/creator/hooks";
-import type { CreatorData } from "@/lib/creator/read";
+import type { CreatorData, StackFees } from "@/lib/creator/read";
 import { formatBpsPercent, formatInt, formatUsdc, formatUtc, shortAddress } from "@/lib/format";
 import { useFriendlyQuestions } from "@/lib/market/useQuestion";
 import { useAppChain } from "@/lib/wallet/useAppChain";
@@ -19,18 +19,17 @@ import s from "./creator.module.css";
 
 const SHARE = formatBpsPercent(CREATOR_SHARE_BPS);
 
-function Withdraw({ creator, owed }: { creator: Address; owed: bigint | null }) {
+/** One withdraw button: `withdrawCreatorFees` on one stack's vault. */
+function WithdrawFrom({ creator, entry, named }: { creator: Address; entry: StackFees; named: boolean }) {
   const wallet = useAppChain();
   const tx = useTxRunner([creatorKeys.fees(creator), creatorKeys.page(creator)]);
-  const vault = appDeployment.hunchBook.vault;
-  const isCreator = Boolean(wallet.address && isAddressEqual(wallet.address, creator));
-  if (!isCreator || !vault) return null;
+  const label = named ? `Withdraw my fees from the ${entry.label} vault` : "Withdraw my fees";
   const send = () => {
     if (!wallet.address) return;
     void tx.run(
-      "Withdraw creator fees",
+      named ? `Withdraw creator fees from the ${entry.label} vault` : "Withdraw creator fees",
       {
-        address: vault,
+        address: entry.vault,
         abi: collateralVaultAbi as Abi,
         functionName: "withdrawCreatorFees",
         args: [wallet.address],
@@ -39,24 +38,10 @@ function Withdraw({ creator, owed }: { creator: Address; owed: bigint | null }) 
     );
   };
   return (
-    <div className={s.withdraw}>
-      <div>
-        <p className={s.withdrawTitle}>This is your creator page</p>
-        <p className={s.note}>
-          {owed && owed > 0n
-            ? `Withdraw sends ${formatUsdc(owed)} USDC from the vault to your wallet.`
-            : "Nothing to withdraw right now. Fees arrive as your markets' winners redeem and pools pay out."}
-        </p>
-      </div>
-      {wallet.wrongNetwork ? (
-        <span className={s.note}>
-          Switch your wallet to {appNetworkLabel} to withdraw. <ConnectButton />
-        </span>
-      ) : (
-        <Button variant="primary" disabled={!owed || owed === 0n || tx.busy} loading={tx.busy} onClick={send}>
-          {tx.busy ? stageText(tx.stage) : "Withdraw my fees"}
-        </Button>
-      )}
+    <div>
+      <Button variant="primary" disabled={entry.fees === 0n || tx.busy} loading={tx.busy} onClick={send}>
+        {tx.busy ? stageText(tx.stage) : label}
+      </Button>
       {tx.error ? (
         <p className={s.error} role="alert">
           {tx.error}
@@ -67,10 +52,48 @@ function Withdraw({ creator, owed }: { creator: Address; owed: bigint | null }) 
   );
 }
 
+/**
+ * The creator's withdraw buttons: one per stack vault that owes fees (each stack's markets pay into
+ * their own vault), or a single one when only one vault exists or owes anything.
+ */
+function Withdraw({ creator, fees }: { creator: Address; fees: StackFees[] | null }) {
+  const wallet = useAppChain();
+  const isCreator = Boolean(wallet.address && isAddressEqual(wallet.address, creator));
+  if (!isCreator || !fees || fees.length === 0) return null;
+  const owed = fees.reduce((sum, f) => sum + f.fees, 0n);
+  const owing = fees.filter((f) => f.fees > 0n);
+  // With nothing owed anywhere, one (disabled) button on the first vault; otherwise one per vault that owes.
+  const shown = owing.length > 0 ? owing : fees.slice(0, 1);
+  return (
+    <div className={s.withdraw}>
+      <div>
+        <p className={s.withdrawTitle}>This is your creator page</p>
+        <p className={s.note}>
+          {owed > 0n
+            ? owing.length > 1
+              ? `Withdraw sends ${formatUsdc(owed)} USDC to your wallet, from ${formatInt(owing.length)} vaults: one transaction each.`
+              : `Withdraw sends ${formatUsdc(owed)} USDC from the vault to your wallet.`
+            : "Nothing to withdraw right now. Fees arrive as your markets' winners redeem and pools pay out."}
+        </p>
+      </div>
+      {wallet.wrongNetwork ? (
+        <span className={s.note}>
+          Switch your wallet to {appNetworkLabel} to withdraw. <ConnectButton />
+        </span>
+      ) : (
+        shown.map((entry) => (
+          <WithdrawFrom key={entry.vault} creator={creator} entry={entry} named={shown.length > 1} />
+        ))
+      )}
+    </div>
+  );
+}
+
 function Earnings({ creator, data }: { creator: Address; data: CreatorData | undefined }) {
   const fees = useCreatorFees(creator);
-  const vault = appDeployment.hunchBook.vault;
-  const owed = fees.data ?? null;
+  const list = fees.data ?? null;
+  const owed = list ? list.reduce((sum, f) => sum + f.fees, 0n) : null;
+  const only = list && list.length === 1 ? list[0] : undefined;
   return (
     <Panel title="Earnings" labelledBy="creator-earnings">
       <div className={s.grid}>
@@ -79,15 +102,17 @@ function Earnings({ creator, data }: { creator: Address; data: CreatorData | und
           value={fees.isPending ? "..." : owed === null ? "n/a" : formatUsdc(owed)}
           size="lg"
           tone="accent"
-          hint="USDC, live from the vault"
+          hint={list && list.length > 1 ? "USDC, live from every stack's vault" : "USDC, live from the vault"}
           source={
-            vault
+            only
               ? {
-                  href: addressUrl(appDeployment, vault),
+                  href: addressUrl(appDeployment, only.vault),
                   label: "vault.creatorFees(creator)",
                   external: true,
                 }
-              : undefined
+              : list && list.length > 1
+                ? { href: "/status", label: "vault.creatorFees(creator) on each stack's vault" }
+                : undefined
           }
         />
         <Stat
@@ -117,7 +142,7 @@ function Earnings({ creator, data }: { creator: Address; data: CreatorData | und
         A market's creator earns {SHARE} of Hunch Book's fee on it: the 2% taken from winnings, charged when
         winners redeem or a pool pays out. The vault keeps it until the creator withdraws.
       </p>
-      <Withdraw creator={creator} owed={owed} />
+      <Withdraw creator={creator} fees={list} />
     </Panel>
   );
 }
@@ -217,7 +242,7 @@ function Markets({ data }: { data: CreatorData }) {
                 <tr key={m.market}>
                   <td className={s.market}>
                     <Link href={`/m/${m.market}`} title={friendly(m.question) ?? m.market}>
-                      {m.number !== null ? `#${m.number}` : shortAddress(m.market)}
+                      {m.tag ?? (m.number !== null ? `#${m.number}` : shortAddress(m.market))}
                       {m.question ? <span className={s.question}> {friendly(m.question)}</span> : null}
                     </Link>
                   </td>

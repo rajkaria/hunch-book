@@ -1,10 +1,12 @@
 import {
   type Deployment,
+  defaultStackOf,
   type GraduationRule,
   hunchBookFactoryAbi,
   type MarketCaps,
   PriceSource,
   perplExchangeAbi,
+  type Venue,
   type Window,
 } from "@hunch-book/shared";
 import {
@@ -66,6 +68,11 @@ export interface RegisteredTemplate {
 }
 
 export interface CreateConfig {
+  /** The stack new markets go to (deployments `defaultStack`): "primary" or a name under `stacks`. */
+  stack: string;
+  /** Where that stack's books are, for the flow's copy (lib/stacks.ts names it). */
+  venue: Venue;
+  kuruVersion: 1 | 2;
   factory: Address;
   vault: Address;
   usdc: Address;
@@ -75,13 +82,17 @@ export interface CreateConfig {
   templates: Record<number, RegisteredTemplate>;
 }
 
-/** Whether creation is paused, the caps new markets copy, and which template ids are registered. */
+/**
+ * The stack new markets go to (deployments `defaultStack`): whether creation is paused on its factory,
+ * the caps new markets copy, and which template ids are registered there, with its vault and USDC.
+ */
 export async function readCreateConfig(
   client: ReadClient,
   deployment: Deployment,
 ): Promise<CreateConfig | null> {
-  const factory = deployment.hunchBook.factory;
-  if (!factory) return null;
+  const stack = defaultStackOf(deployment);
+  const factory = stack?.contracts.factory;
+  if (!stack || !factory) return null;
   const abi = hunchBookFactoryAbi as Abi;
   const [results, protocol] = await Promise.all([
     multicall(client, [
@@ -89,7 +100,7 @@ export async function readCreateConfig(
       { address: factory, abi, functionName: "caps" },
       ...TEMPLATE_IDS.map((id) => ({ address: factory, abi, functionName: "templateOf", args: [id] })),
     ]),
-    readProtocolAddresses(client, deployment),
+    readProtocolAddresses(client, deployment, stack.name),
   ]);
   const paused = ok<boolean>(results[0]);
   const caps = ok<MarketCaps>(results[1]);
@@ -112,6 +123,9 @@ export async function readCreateConfig(
     }
   });
   return {
+    stack: stack.name,
+    venue: stack.venue,
+    kuruVersion: stack.kuruVersion,
     factory,
     vault: protocol.vault,
     usdc: protocol.usdc,

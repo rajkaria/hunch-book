@@ -24,7 +24,7 @@ import {
 import { parseUsdcInput } from "@/lib/market/logic";
 import type { SettlePlan } from "@/lib/market/settle";
 import type { MarketView } from "@/lib/market/types";
-import { vaultOf } from "@/lib/stacks";
+import { vaultOf, venueShort } from "@/lib/stacks";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, type TxStep, useTxRunner } from "@/lib/wallet/useTxRunner";
 import { Button, Panel } from "../ui";
@@ -56,7 +56,9 @@ function steps(m: MarketView, action: LifecycleAction): TxStep[] {
   const market = { address: m.address, abi: marketAbi as Abi };
   switch (action.id) {
     case "graduate":
-      return [{ label: "Graduate the pool to Kuru", request: { ...market, functionName: "graduate" } }];
+      return [
+        { label: `Graduate the pool to ${venueShort(m)}`, request: { ...market, functionName: "graduate" } },
+      ];
     case "claimTokens":
       return [{ label: "Claim YES and NO tokens", request: { ...market, functionName: "claimTokens" } }];
     case "void":

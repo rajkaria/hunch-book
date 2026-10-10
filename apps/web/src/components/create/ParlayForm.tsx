@@ -17,6 +17,7 @@ import { type ParlayLinked, toExactLocalInput } from "@/lib/create/linked";
 import { parlayCandidates, searchCandidates } from "@/lib/create/parlay";
 import { formatDuration } from "@/lib/format";
 import { useMarkets } from "@/lib/hooks";
+import { onDefaultStack } from "@/lib/stacks";
 import { Badge, Button, Field, fieldA11y, Input, Notice, Panel, Skeleton } from "../ui";
 import s from "./create.module.css";
 import { When } from "./When";
@@ -51,7 +52,12 @@ export function ParlayForm({
   const [dropped, setDropped] = useState<Address[] | null>(linked ? null : []);
   const [query, setQuery] = useState("");
 
-  const list = markets.data?.status === "ok" ? markets.data.data.markets : null;
+  // The parlay is created on the stack new markets go to, and its resolver takes that factory's markets
+  // only (MarketOutcomeResolver), so legs come from that stack.
+  const list = useMemo(
+    () => (markets.data?.status === "ok" ? markets.data.data.markets.filter((m) => onDefaultStack(m)) : null),
+    [markets.data],
+  );
   const candidates = useMemo(
     () =>
       list && clock.data && fast.data !== undefined
@@ -153,7 +159,8 @@ export function ParlayForm({
           </legend>
           <p className={s.small} id="parlay-legs-hint">
             YES only if every leg settles YES; NO as soon as any leg settles NO. A leg can only be a market
-            that has not settled and has not locked yet, because the parlay must lock first.
+            that has not settled and has not locked yet, because the parlay must lock first. Legs come from
+            the stack new markets go to, the only one this parlay's resolver reads.
           </p>
           <Input
             type="search"

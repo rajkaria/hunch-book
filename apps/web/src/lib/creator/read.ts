@@ -1,4 +1,4 @@
-import { collateralVaultAbi, type Deployment, splitFee, stackNamed } from "@hunch-book/shared";
+import { collateralVaultAbi, type Deployment, splitFee, stackNamed, stacksOf } from "@hunch-book/shared";
 import { type Address, type Hex, isAddressEqual } from "viem";
 import type { ReadClient } from "../chain/client";
 import { isSeededByUs } from "../chain/landing";
@@ -7,15 +7,18 @@ import type { IndexerClient } from "../indexer/client";
 import { address, big, hash } from "../indexer/parse";
 import { CREATOR_QUERY, type CreatorResult } from "../indexer/queries";
 import { phaseLabel } from "../market/logic";
+import { marketTag, marketVenueLabel } from "../stacks";
 
 // A creator's page (C-7): the markets an address created, their state and volume, and the creator's
-// share of Hunch Book's fee (CREATOR_SHARE_BPS of every fee). What the vault owes the creator now is
-// always read live from the vault; the all-time totals, per-market earnings and withdrawals come from
-// the indexer.
+// share of Hunch Book's fee (CREATOR_SHARE_BPS of every fee). What the vaults owe the creator now is
+// always read live from each stack's vault (a market's fees accrue in its own stack's vault); the
+// all-time totals, per-market earnings and withdrawals come from the indexer.
 
 export interface CreatorMarket {
   market: Address;
   number: number | null;
+  /** Read from the chain: "#3", "#3 · Kuru" (lib/stacks.ts marketTag), which tells stacks apart. */
+  tag?: string;
   question: string | null;
   stage: string;
   /** USDC staked in the pool. */
@@ -123,6 +126,7 @@ export async function creatorFromChain(
       .map((m) => ({
         market: m.address,
         number: Number(m.marketId),
+        tag: marketTag(m),
         question: m.description,
         stage: phaseLabel(m.phase),
         pool: m.pool.total,
@@ -155,4 +159,41 @@ export async function readCreatorFees(
     functionName: "creatorFees",
     args: [creator],
   });
+}
+
+/** What one stack's vault owes the creator. */
+export interface StackFees {
+  /** "primary" or a key under `stacks`. */
+  stack: string;
+  /** "Kuru", "Kuru v2" or "Hunch order book": the stack's venue, to tell vaults apart. */
+  label: string;
+  vault: Address;
+  fees: bigint;
+}
+
+/** What every stack's vault owes the creator right now: what `withdrawCreatorFees` on each would pay. */
+export async function readCreatorFeesByStack(
+  client: Pick<ReadClient, "readContract">,
+  deployment: Deployment,
+  creator: Address,
+): Promise<StackFees[]> {
+  const stacks = stacksOf(deployment).flatMap((st) =>
+    st.contracts.vault ? [{ stack: st, vault: st.contracts.vault }] : [],
+  );
+  const fees = await Promise.all(
+    stacks.map(({ vault }) =>
+      client.readContract({
+        address: vault,
+        abi: collateralVaultAbi,
+        functionName: "creatorFees",
+        args: [creator],
+      }),
+    ),
+  );
+  return stacks.map(({ stack, vault }, i) => ({
+    stack: stack.name,
+    label: marketVenueLabel(stack),
+    vault,
+    fees: fees[i] ?? 0n,
+  }));
 }

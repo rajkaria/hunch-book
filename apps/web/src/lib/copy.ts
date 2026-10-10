@@ -3,20 +3,21 @@
 
 /** The one-sentence description: page metadata, the footer and the share card. */
 export const DESCRIPTION =
-  "Prediction markets on Monad that start as USDC pools, graduate to Kuru's onchain order book, and settle by reading the chain.";
+  "Prediction markets on Monad that start as USDC pools, graduate to an onchain order book, and settle by reading the chain.";
 
 /** The three stages, as the landing headline and the share card say them. */
 export const TAGLINE = ["Start as a pool.", "Graduate to a book.", "Settle from the chain."] as const;
 
 /** Where each part comes from. */
-export const BUILT_ON = "Built on Monad, trades on Kuru, settles from Perpl and Chainlink.";
+export const BUILT_ON =
+  "Built on Monad, trades on onchain order books (Hunch Book's own and Kuru's), settles from Perpl and Chainlink.";
 
 /** Said wherever testnet money could be mistaken for real money. */
 export const TESTNET_MONEY = "Testnet: stakes use Hunch Book's own test USDC, not real money.";
 
 export const MARKETS_WILL_SHOW = [
   "Every market from the factory, newest first, with its rule in one sentence.",
-  "Its phase: pool filling, trading on Kuru, settling or settled.",
+  "Its phase: pool filling, trading on its order book, settling or settled.",
   "The implied chance of YES, the pool size and the time left to lock or close.",
 ];
 

@@ -26,6 +26,7 @@ import {
   parlayView,
   parlayWindow,
 } from "@/lib/parlay/math";
+import { marketTag, onDefaultStack } from "@/lib/stacks";
 import { marketHeadline } from "../markets/MarketCard";
 import { EmptyState, ErrorState, LoadingRows, NotDeployed } from "../states";
 import { Badge, ButtonLink, Input, Notice, Panel, PhasePill, type Tone } from "../ui";
@@ -62,9 +63,13 @@ export function ParlayBuilder({
   const [picked, setPicked] = useState<Address[]>([]);
   const [query, setQuery] = useState("");
   const searchId = useId();
-  const candidates = markets.filter(
+  const open = markets.filter(
     (m) => m.phase === Phase.Pool || m.phase === Phase.PoolLocked || m.phase === Phase.Graduated,
   );
+  // A new parlay is created on the stack new markets go to, and its resolver takes legs of that stack's
+  // factory only (MarketOutcomeResolver), so open markets of other stacks cannot be legs.
+  const candidates = open.filter((m) => onDefaultStack(m));
+  const elsewhere = open.length - candidates.length;
   const shown = candidates.filter((m) => {
     const q = query.trim().toLowerCase();
     return (
@@ -100,6 +105,9 @@ export function ParlayBuilder({
         A parlay pays YES only if every leg settles YES, and NO as soon as any leg settles NO. Pick{" "}
         {PARLAY_MIN_LEGS} to {PARLAY_MAX_LEGS} open markets. A parlay must lock before every one of its legs
         does.
+        {elsewhere > 0
+          ? ` ${formatInt(elsewhere)} open ${elsewhere === 1 ? "market is" : "markets are"} on another stack, which new parlays cannot use as legs, so ${elsewhere === 1 ? "it is" : "they are"} not listed.`
+          : ""}
       </p>
 
       <div className={s.summary} aria-live="polite">
@@ -197,7 +205,7 @@ export function ParlayBuilder({
                 <label htmlFor={id} className={s.optionBody}>
                   <span className={s.optionTitle}>{marketHeadline(m, clock)}</span>
                   <span className={s.optionMeta} id={`${id}-note`}>
-                    #{m.marketId.toString()} · {chanceDisplay(marketChance(m)).value}
+                    {marketTag(m)} · {chanceDisplay(marketChance(m)).value}
                     {lock !== null && lock > now ? ` · locks in about ${formatDuration(lock - now)}` : ""}
                     {blocker ? ` · ${blocker}` : full ? " · five legs at most" : ""}
                   </span>

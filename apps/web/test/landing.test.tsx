@@ -41,6 +41,9 @@ vi.mock("@/lib/config", async (importOriginal) => {
     ...actual,
     appDeployment: {
       ...actual.appDeployment,
+      // One stack: the venue tests below build their own.
+      stacks: undefined,
+      defaultStack: undefined,
       hunchBook: {
         factory: "0x00000000000000000000000000000000000000f1",
         vault: "0x00000000000000000000000000000000000000aa",
@@ -317,6 +320,7 @@ describe("words and stages", () => {
   it("says settlement is live only where resolvers are deployed, and how many have settled", () => {
     const withResolvers = {
       ...deployments["monad-testnet"],
+      stacks: undefined,
       hunchBook: { resolvers: { perplFunding: RESOLVER, priceAtTime: RESOLVER } },
     };
     const live = lifecycleSteps(RULE, { ...STATS, settled: 0 }, withResolvers)[2];
@@ -328,8 +332,42 @@ describe("words and stages", () => {
     expect(lifecycleSteps(RULE, null, { ...withResolvers, hunchBook: {} })[2]?.status).toBe("building");
   });
 
+  it("describes graduation on the venue of the stack new markets go to", () => {
+    const own = {
+      ...deployments["monad-testnet"],
+      hunchBook: { factory: FACTORY, vault: FACTORY },
+      stacks: {
+        hunch: {
+          factory: RESOLVER,
+          vault: RESOLVER,
+          graduator: RESOLVER,
+          router: RESOLVER,
+          venue: {
+            kind: "hunch" as const,
+            bookFactory: RESOLVER,
+            marginAccount: RESOLVER,
+            bookImplementation: RESOLVER,
+          },
+        },
+      },
+      defaultStack: "hunch",
+    };
+    const [, book] = lifecycleSteps(RULE, null, own);
+    expect(book?.body).toMatch(/and opens its own YES\/USDC order book, fully onchain, so graduation/);
+    expect(book?.body).toMatch(/waits on no third party/);
+    expect(book?.body).not.toMatch(/Kuru/);
+    // The book stage is live because the default stack has a graduator and a router.
+    expect(book?.status).toBe("live");
+    const kuru = {
+      ...own,
+      defaultStack: undefined,
+      hunchBook: { ...own.hunchBook, graduator: FACTORY, router: FACTORY },
+    };
+    expect(lifecycleSteps(RULE, null, kuru)[1]?.body).toMatch(/opens a YES\/USDC book on Kuru\.$/);
+  });
+
   it("calls a stage live only when the contracts behind it are deployed", () => {
-    const none = { ...deployments["monad-testnet"], hunchBook: {} };
+    const none = { ...deployments["monad-testnet"], hunchBook: {}, stacks: undefined };
     expect(lifecycleSteps(RULE, null, none).map((x) => x.status)).toEqual([
       "building",
       "building",
@@ -438,7 +476,28 @@ describe("landing page", () => {
     expect(card.getByText("500 USDC")).toBeTruthy();
     expect(card.getAllByText("75.0%").length).toBeGreaterThan(0);
     expect(card.getByText("Pool split")).toBeTruthy();
-    expect(card.getByText("No Kuru book yet")).toBeTruthy();
+    expect(card.getByText("No book yet")).toBeTruthy();
+    // A primary-stack market carries its venue in its tag.
+    expect(card.getByText("Market #3 · Kuru")).toBeTruthy();
+  });
+
+  it("names a market on Hunch Book's own order book by its venue", () => {
+    const own = makeMarket({
+      marketId: 3n,
+      phase: Phase.Graduated,
+      graduated: true,
+      book: BOOK,
+      stack: "hunch",
+      kuruVersion: 1,
+      venue: "hunch",
+      quote: { bid: 380_000_000_000_000_000n, ask: 420_000_000_000_000_000n },
+    });
+    render(<Landing live={snapshot({ featured: own })} />);
+    const card = within(screen.getByRole("complementary", { name: "Most active market, live" }));
+    expect(card.getByText("Market #3")).toBeTruthy();
+    expect(card.getByText("Mid price on the order book")).toBeTruthy();
+    expect(card.getByText(/Hunch order book/)).toBeTruthy();
+    expect(card.queryByText(/Kuru/)).toBeNull();
   });
 
   it("shows live numbers read from the chain, each linked to its source", () => {
@@ -471,7 +530,7 @@ describe("landing page", () => {
     render(<Landing live={snapshot()} />);
     // Two drawings of the same lifecycle (wide and tall); CSS shows one of them.
     expect(
-      screen.getAllByRole("img", { name: /Lifecycle: a pool graduates into a Kuru order book/ }),
+      screen.getAllByRole("img", { name: /Lifecycle: a pool graduates into an onchain order book/ }),
     ).toHaveLength(2);
     expect(
       screen.getByText(/at least 500 USDC from at least 10 wallets, with a chance between 3% and 97%/),

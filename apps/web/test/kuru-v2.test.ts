@@ -216,15 +216,29 @@ describe("v2 book snapshot", () => {
 });
 
 describe("status page", () => {
-  it("lists each extra stack and Kuru's v2 contracts", () => {
+  it("lists each stack with the Kuru contracts its books live on", () => {
     const groups = contractGroups({
       ...twoStacks,
       external: { ...testnet.external, kuruV2: testnet.external.kuruV2 },
     });
     const v2 = groups.find((g) => g.title === "Stack kuruV2 (Kuru v2)");
-    expect(v2?.items.map((i) => i.label)).toEqual(["Factory", "Collateral vault", "Graduator", "Router"]);
+    expect(v2?.items.map((i) => i.label)).toEqual([
+      "Factory",
+      "Collateral vault",
+      "Graduator",
+      "Router",
+      "Kuru v2 SpotRouter",
+      "Kuru v2 AccountCore",
+      "Kuru v2 WithdrawalLimiter",
+    ]);
+    // No defaultStack names a stack here, so new markets go to the primary one.
+    const primary = groups.find((g) => g.title === "Hunch Book core: primary stack (Kuru v1, new markets)");
+    expect(primary?.items.map((i) => i.label)).toEqual(
+      expect.arrayContaining(["Factory", "Router", "Kuru router", "Kuru margin account"]),
+    );
     const outside = groups.find((g) => g.title.startsWith("Outside"));
-    expect(outside?.items.map((i) => i.label)).toContain("Kuru v2 AccountCore");
+    expect(outside?.items.map((i) => i.label)).not.toContain("Kuru v2 AccountCore");
+    expect(outside?.items.map((i) => i.label)).toContain("Perpl Exchange");
   });
 });
 

@@ -2,15 +2,21 @@ import {
   collateralOf,
   collateralVaultAbi,
   type Deployment,
+  defaultStackOf,
   hunchBookFactoryAbi,
   marketAbi,
+  type Stack,
+  stackNamed,
+  stacksOf,
+  type Venue,
   type Window,
 } from "@hunch-book/shared";
 import { type Abi, type Address, type ContractFunctionParameters, erc20Abi, zeroAddress } from "viem";
 import { MULTICALL3 } from "../chain/client";
 
-// One snapshot of everything the status page checks, read from the contracts in
-// deployments/<network>.json with a few multicalls at a single block. No indexer, no server.
+// One snapshot of everything the status page checks, per stack, read from the contracts in
+// deployments/<network>.json with a few multicalls at a single block. No indexer, no server. Each stack
+// has its own factory and vault, so each is checked on its own.
 
 /** The most markets the page reads; beyond this the breakdown is marked partial. */
 export const STATUS_MARKET_LIMIT = 400;
@@ -31,9 +37,24 @@ export interface StatusMarket {
   ledger: { status: number; pool: bigint; sets: bigint };
   yesSupply: bigint;
   noSupply: bigint;
+  /** The stack's Kuru version and venue (lib/stacks.ts marketTag), absent on the primary Kuru v1 stack. */
+  kuruVersion?: 1 | 2;
+  venue?: Venue;
+}
+
+/** Which stack a snapshot read: its name ("primary" or a key under `stacks`) and where its books are. */
+export interface StatusStack {
+  name: string;
+  primary: boolean;
+  venue: Venue;
+  kuruVersion: 1 | 2;
+  /** The stack new markets go to (deployments `defaultStack`). */
+  isDefault: boolean;
 }
 
 export interface StatusSnapshot {
+  /** The stack read; absent means the primary one (older callers and tests). */
+  stack?: StatusStack;
   block: bigint;
   /** Unix seconds of `block`. */
   timestamp: number;
@@ -92,10 +113,19 @@ const MARKET_FIELDS = [
   "tokens",
 ] as const;
 
-export async function readStatusSnapshot(client: Client, deployment: Deployment): Promise<StatusSnapshot> {
-  const { factory, vault } = deployment.hunchBook;
-  const usdc = collateralOf(deployment);
-  if (!factory || !vault || !usdc) throw new Error(`Hunch Book is not deployed on ${deployment.network}.`);
+/** The snapshot of one stack (default: the primary one). */
+export async function readStatusSnapshot(
+  client: Client,
+  deployment: Deployment,
+  stackName = "primary",
+): Promise<StatusSnapshot> {
+  const stack = stackNamed(deployment, stackName);
+  const { factory, vault } = stack?.contracts ?? {};
+  const usdc = stack?.contracts.usdc ?? collateralOf(deployment);
+  if (!stack || !factory || !vault || !usdc) {
+    throw new Error(`Hunch Book is not deployed on ${deployment.network}.`);
+  }
+  const tag = stack.primary && stack.kuruVersion === 1 && stack.venue === "kuru" ? {} : venueTag(stack);
 
   const head = await client.getBlock();
   const blockNumber = head.number;
@@ -166,6 +196,7 @@ export async function readStatusSnapshot(client: Client, deployment: Deployment)
       ledger: { status: Number(ledger.status), pool: BigInt(ledger.pool), sets: BigInt(ledger.sets) },
       yesSupply: second[i * 3 + 1] as bigint,
       noSupply: second[i * 3 + 2] as bigint,
+      ...tag,
     };
   });
 
@@ -181,6 +212,13 @@ export async function readStatusSnapshot(client: Client, deployment: Deployment)
   ]);
 
   return {
+    stack: {
+      name: stack.name,
+      primary: stack.primary,
+      venue: stack.venue,
+      kuruVersion: stack.kuruVersion,
+      isDefault: stack.name === defaultStackOf(deployment)?.name,
+    },
     block: head.number,
     timestamp: Number(head.timestamp),
     secondsPerBlock: earlier ? Number(head.timestamp - earlier.timestamp) / 10_000 : null,
@@ -208,4 +246,16 @@ export async function readStatusSnapshot(client: Client, deployment: Deployment)
     creatorFees: creators.map((creator, i) => ({ creator, fees: fees[i] ?? 0n })),
     wallets: { keeper, maker },
   };
+}
+
+const venueTag = (stack: Stack): Pick<StatusMarket, "kuruVersion" | "venue"> => ({
+  kuruVersion: stack.kuruVersion,
+  venue: stack.venue,
+});
+
+/** One snapshot per stack with a factory and a vault, the primary first. */
+export async function readStatusSnapshots(client: Client, deployment: Deployment): Promise<StatusSnapshot[]> {
+  const stacks = stacksOf(deployment).filter((s) => s.contracts.factory && s.contracts.vault);
+  if (stacks.length === 0) throw new Error(`Hunch Book is not deployed on ${deployment.network}.`);
+  return Promise.all(stacks.map((s) => readStatusSnapshot(client, deployment, s.name)));
 }

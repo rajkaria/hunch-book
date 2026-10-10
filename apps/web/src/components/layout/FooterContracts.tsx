@@ -3,8 +3,9 @@
 import { addressUrl } from "@hunch-book/shared";
 import type { ReactNode } from "react";
 import type { Address } from "viem";
-import { appDeployment, appNetwork, appNetworkLabel, factoryOf, REPO_URL } from "@/lib/config";
+import { appDeployment, appNetwork, appNetworkLabel, REPO_URL } from "@/lib/config";
 import { shortAddress } from "@/lib/format";
+import { defaultStack } from "@/lib/stacks";
 import { useAppNetwork } from "@/lib/wallet/appNetwork";
 import s from "./layout.module.css";
 
@@ -35,11 +36,13 @@ function ContractLink({ name, address }: { name: string; address: Address }) {
   );
 }
 
-/** The footer's contract links, for the active network: they follow a switch made in this browser. */
+/**
+ * The footer's contract links, for the active network: they follow a switch made in this browser. They
+ * are the stack new markets go to (deployments `defaultStack`); the status page lists every stack.
+ */
 export function FooterContracts() {
   useAppNetwork();
-  const factory = factoryOf(appDeployment);
-  const { vault, router } = appDeployment.hunchBook;
+  const { factory, vault, router, venue } = defaultStack()?.contracts ?? {};
   return (
     <nav className={s.footerCol} aria-label="Contracts">
       <h2 className={s.footerHeading}>Contracts on {appNetworkLabel}</h2>
@@ -50,6 +53,9 @@ export function FooterContracts() {
       )}
       {vault ? <ContractLink name="Vault" address={vault} /> : null}
       {router ? <ContractLink name="Router" address={router} /> : null}
+      {venue?.kind === "hunch" ? (
+        <ContractLink name="Order book factory" address={venue.bookFactory} />
+      ) : null}
       <ExternalLink href={`${REPO_URL}/blob/main/deployments/${appNetwork}.json`}>Every address</ExternalLink>
     </nav>
   );

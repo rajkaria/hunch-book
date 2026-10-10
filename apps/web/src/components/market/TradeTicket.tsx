@@ -9,7 +9,7 @@ import { formatUsdc } from "@/lib/format";
 import { useBook, useProtocolAddresses, useWalletBalances, walletQueryKeys } from "@/lib/hooks";
 import { parseUsdcInput } from "@/lib/market/logic";
 import type { MarketView } from "@/lib/market/types";
-import { routerOf } from "@/lib/stacks";
+import { bookName, routerOf } from "@/lib/stacks";
 import {
   amountUnit,
   DEFAULT_SLIPPAGE_BPS,
@@ -35,7 +35,10 @@ import t from "./trade.module.css";
 
 const SIDE_NAME: Record<Side, string> = { [Side.Yes]: "YES", [Side.No]: "NO" };
 
-/** Buy or sell YES or NO on a graduated market's Kuru book, through the Hunch router. */
+/**
+ * Buy or sell YES or NO on a graduated market's book, through its stack's Hunch router. The router and
+ * the book speak Kuru v1's interface on Hunch Book's own order book too, so the path is the same.
+ */
 export function TradeTicket({ m, initialSide = Side.Yes }: { m: MarketView; initialSide?: Side }) {
   const [tab, setTab] = useState<TradeTab>("buy");
   const [side, setSide] = useState<Side>(initialSide);
@@ -64,6 +67,7 @@ export function TradeTicket({ m, initialSide = Side.Yes }: { m: MarketView; init
     book: book.data ?? null,
     wallet: { connected: wallet.isConnected, onAppChain: wallet.onAppChain },
     balances: balances.data ?? null,
+    venue: m,
   });
   const lines = quoteLines(state, slippageBps);
   const held = balances.data
@@ -332,7 +336,7 @@ export function TradeTicket({ m, initialSide = Side.Yes }: { m: MarketView; init
       <TxList txs={tx.txs} />
       {m.book ? (
         <p className={s.laterNote}>
-          Trades go through the Hunch router to this market's Kuru book (<AddressLink address={m.book} />
+          Trades go through the Hunch router to this market's {bookName(m)} (<AddressLink address={m.book} />
           ). Some resting orders are from Hunch maker (ours), our own maker bot.
         </p>
       ) : null}

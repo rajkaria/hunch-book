@@ -12,8 +12,9 @@ import type { TradeRow } from "../indexer/queries";
 
 const ZERO_ADDRESS: Address = "0x0000000000000000000000000000000000000000";
 
-// Fills on Hunch Book's Kuru books, for the trade tape. Two sources: the indexer's Trade entity, or
-// Kuru's events read straight from recent blocks. Kuru v1's Trade event (as the indexer reads it,
+// Fills on Hunch Book's books (Kuru's, or Hunch Book's own, which emit Kuru v1's Trade event), for the
+// trade tape. Two sources: the indexer's Trade entity, or the books' events read straight from recent
+// blocks. Kuru v1's Trade event (as the indexer reads it,
 // indexer/src/handlers/kuru.ts): isBuy is the taker's side (true when the taker bought YES from a
 // resting ask), price has 18 decimals, filledSize is YES base units, takerAddress is our router for
 // router trades (txOrigin is then the trader). Kuru v2 books emit one SpotSwap per taker swap (amount
@@ -26,6 +27,8 @@ export interface Fill {
   book: Address;
   market: Address | null;
   marketNumber: number | null;
+  /** Read from logs: the market's tag ("#3", "#3 · Kuru"), which tells stacks apart. */
+  marketTag?: string;
   question: string | null;
   block: bigint;
   logIndex: number;
@@ -61,6 +64,8 @@ export interface BookInfo {
   question: string | null;
   /** The book's Kuru version (absent = 1). */
   kuruVersion?: 1 | 2;
+  /** The market's tag (lib/stacks.ts marketTag). */
+  tag?: string;
 }
 
 const PRICE_E18_TO_E6 = 10n ** 12n;
@@ -130,6 +135,7 @@ export function fillFromSwapLog(
     book: getAddress(log.address),
     market: info?.market ?? null,
     marketNumber: info?.marketNumber ?? null,
+    ...(info?.tag ? { marketTag: info.tag } : {}),
     question: info?.question ?? null,
     block: log.blockNumber,
     logIndex: log.logIndex,
@@ -227,6 +233,7 @@ export function fillFromLog(
     book: getAddress(log.address),
     market: info?.market ?? null,
     marketNumber: info?.marketNumber ?? null,
+    ...(info?.tag ? { marketTag: info.tag } : {}),
     question: info?.question ?? null,
     block: log.blockNumber,
     logIndex: log.logIndex,

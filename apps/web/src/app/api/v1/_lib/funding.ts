@@ -2,6 +2,7 @@ import { addressUrl, type Deployment, formatBps, formatUsdc, type MarketInfo } f
 import { blockWindowWords, type TitleClock } from "../../../../lib/market/title";
 import type { ApiDeps } from "./deps";
 import {
+  bookWords,
   type ChainClock,
   embedUrl,
   isOurs,
@@ -9,6 +10,7 @@ import {
   marketUrl,
   pointTime,
   priceString,
+  stackVenue,
 } from "./markets";
 
 // "What does the market think?" for one Perpl perp: the open Hunch Book market that asks whether that
@@ -148,16 +150,16 @@ export function wholePercent(bps: number | null): string | null {
   return `${Math.round(bps / 100)}%`;
 }
 
-const CHANCE_WORDS: Record<string, string> = {
-  pool: "the pool's split",
-  book: "the Kuru book's mid",
-  "book-one-sided": "the one side of the Kuru book with orders",
-  "book-empty": "no orders on the book yet",
-  empty: "no stakes yet",
-};
-
-export function chanceWords(source: string): string {
-  return CHANCE_WORDS[source] ?? source;
+/** Where the chance comes from, in words; `book` names the market's book ("Kuru book", "Hunch order book"). */
+export function chanceWords(source: string, book = "Kuru book"): string {
+  const words: Record<string, string> = {
+    pool: "the pool's split",
+    book: `the ${book}'s mid`,
+    "book-one-sided": `the one side of the ${book} with orders`,
+    "book-empty": "no orders on the book yet",
+    empty: "no stakes yet",
+  };
+  return words[source] ?? source;
 }
 
 const FALLBACK_MS_PER_BLOCK = 400;
@@ -197,7 +199,7 @@ export function fundingMarketJson(
       bps: m.chance.bps,
       percent: formatBps(m.chance.bps),
       source: m.chance.source,
-      words: chanceWords(m.chance.source),
+      words: chanceWords(m.chance.source, bookWords(stackVenue(m, deps))),
     },
     window: {
       startBlock: start.toString(),

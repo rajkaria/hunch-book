@@ -6,7 +6,8 @@ import { appDeployment } from "@/lib/config";
 import { formatChance, formatFixed, formatInt } from "@/lib/format";
 import { useBook, useNow } from "@/lib/hooks";
 import type { MarketView } from "@/lib/market/types";
-import { bookPriceE6, formatPriceE6 } from "@/lib/trade/ticket";
+import { bookName, onHunchVenue, venueWords } from "@/lib/stacks";
+import { bookPriceE6, formatPriceE6, inactiveBookWords } from "@/lib/trade/ticket";
 import { AddressLink, Panel } from "../ui";
 import s from "./market.module.css";
 import t from "./trade.module.css";
@@ -168,7 +169,7 @@ export function BookLadder({ book, nowSeconds }: { book: BookSnapshot; nowSecond
   );
 }
 
-/** Depth ladder for a graduated market's Kuru book, refreshed every few seconds. */
+/** Depth ladder for a graduated market's book (Hunch Book's own or Kuru's), refreshed every few seconds. */
 export function BookPanel({ m }: { m: MarketView }) {
   const book = useBook(m.book, m.kuruVersion);
   const now = useNow();
@@ -179,7 +180,7 @@ export function BookPanel({ m }: { m: MarketView }) {
       labelledBy="book-title"
       aside={
         <a className="subtle" href={addressUrl(appDeployment, m.book)} target="_blank" rel="noreferrer">
-          Kuru book on the explorer
+          {bookName(m)} on the explorer
         </a>
       }
     >
@@ -190,16 +191,16 @@ export function BookPanel({ m }: { m: MarketView }) {
       ) : (
         <>
           {book.data.state !== BookState.Active ? (
-            <p className={s.validation}>
-              Kuru has paused this book. Orders cannot fill until Kuru resumes it.
-            </p>
+            <p className={s.validation}>{inactiveBookWords(m)}</p>
           ) : null}
           <BookLadder book={book.data} nowSeconds={now} />
           <p className={s.trust}>
-            Resting orders on Kuru's YES/USDC book, read with getL2Book(). The mid of the best bid and the
-            best ask is the market's chance. NO trades through the same book: buying NO sells YES into the
-            bids. After close the Hunch router and Hunch maker (ours) stop, but orders other people left can
-            still fill.
+            Resting orders on the YES/USDC book on {venueWords(m)}, read with getL2Book(). The mid of the best
+            bid and the best ask is the market's chance. NO trades through the same book: buying NO sells YES
+            into the bids.{" "}
+            {onHunchVenue(m)
+              ? "The book stops matching at close by itself: from then on resting orders can only be cancelled. It charges no trading fee."
+              : "After close the Hunch router and Hunch maker (ours) stop, but orders other people left can still fill."}
           </p>
         </>
       )}

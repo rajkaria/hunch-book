@@ -9,7 +9,7 @@ import { parsePhaseGroup } from "@/lib/market/logic";
 export const metadata: Metadata = {
   title: "Markets",
   description:
-    "Yes/no markets on Monad that start as USDC pools and graduate to Kuru's onchain order book. Filter by pools filling, trading, settling and settled.",
+    "Yes/no markets on Monad that start as USDC pools and graduate to an onchain order book. Filter by pools filling, trading, settling and settled.",
 };
 
 export default async function MarketsPage({
@@ -24,8 +24,8 @@ export default async function MarketsPage({
       <PageHeader eyebrow={<ActiveNetworkLabel />} title="Markets">
         <p>
           Yes/no questions that settle by reading the chain. Each one starts as a USDC pool. Once the pool
-          proves demand, it graduates to its own YES/USDC order book on Kuru, so you can sell before the
-          answer.
+          proves demand, it graduates to its own YES/USDC order book, fully onchain, so you can sell before
+          the answer.
         </p>
       </PageHeader>
       <DeployedGate willShow={MARKETS_WILL_SHOW}>

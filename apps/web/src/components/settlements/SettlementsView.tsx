@@ -14,6 +14,10 @@ import s from "./settlements.module.css";
 export interface ArchiveRecord {
   id: number;
   market: string;
+  /** The market's stack and book venue (the API names them; older answers leave them out). */
+  stack?: string;
+  venue?: "kuru" | "hunch";
+  venueLabel?: string;
   title: string;
   template: { id: number; name: string };
   status: "settled" | "voided";
@@ -107,7 +111,10 @@ export function SettlementRow({ r, checking = false }: { r: ArchiveRecord; check
       <div className={s.meta}>
         <Badge tone={result.tone}>{result.text}</Badge>
         <span>{r.template.name}</span>
-        <span className="mono">#{r.id}</span>
+        <span className="mono">
+          #{r.id}
+          {r.venueLabel && r.venue !== "hunch" ? ` · ${r.venueLabel}` : ""}
+        </span>
         <span className={s.metaRight}>
           <Badge tone={checking ? "muted" : check.tone}>
             {checking ? "Checking the read..." : check.text}

@@ -6,7 +6,7 @@ import { appDeployment } from "@/lib/config";
 
 const TITLE = "Hunch Book: prediction markets that graduate to an onchain order book";
 const DESCRIPTION =
-  "Prediction markets on Monad that start as USDC pools and graduate to Kuru's onchain order book, so you can sell before the answer. They settle by reading the chain; no one decides the outcome by hand.";
+  "Prediction markets on Monad that start as USDC pools and graduate to an onchain order book, so you can sell before the answer. They settle by reading the chain; no one decides the outcome by hand.";
 
 export const metadata: Metadata = {
   title: { absolute: TITLE },

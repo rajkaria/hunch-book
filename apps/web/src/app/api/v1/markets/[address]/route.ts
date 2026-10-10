@@ -2,7 +2,8 @@ import { apiDeps } from "../../_lib/deps";
 import { getMarket } from "../../_lib/handlers";
 import { preflight } from "../../_lib/http";
 
-// GET /api/v1/markets/{address}: one market in full (docs/API.md).
+// GET /api/v1/markets/{address}: one market in full, with its `stack`, `venue` and `venueLabel`
+// (docs/API.md).
 
 export async function GET(
   request: Request,

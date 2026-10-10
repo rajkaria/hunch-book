@@ -1,7 +1,8 @@
 import { formatEther } from "viem";
 import { formatUsdc } from "../format";
+import { marketTag } from "../stacks";
 import type { ServiceHealthView, ServiceName } from "./health";
-import type { StatusMarket, StatusSnapshot } from "./reads";
+import type { StatusMarket, StatusSnapshot, StatusStack } from "./reads";
 
 // The status page's rules. Pure functions of one chain snapshot and the services' health, so every
 // rule is unit-tested. The thresholds match the watchdog (services/watchdog/src/checks.ts), so the
@@ -53,7 +54,16 @@ export function duration(seconds: number): string {
   return `${s} s`;
 }
 
-const label = (m: StatusMarket) => `Market #${m.marketId.toString()} (${m.address})`;
+const label = (m: StatusMarket) => `Market ${marketTag(m)} (${m.address})`;
+
+/** "Primary stack (Kuru v1)", "Stack hunch (Hunch order book, new markets)": a stack in a heading. */
+export function stackTitle(stack: StatusStack | undefined): string {
+  if (!stack) return "Primary stack";
+  const venue =
+    stack.venue === "hunch" ? "Hunch order book" : stack.kuruVersion === 2 ? "Kuru v2" : "Kuru v1";
+  const tags = [venue, ...(stack.isDefault ? ["new markets"] : [])].join(", ");
+  return `${stack.primary ? "Primary stack" : `Stack ${stack.name}`} (${tags})`;
+}
 
 export function checkSolvency(s: StatusSnapshot): StatusCheck {
   const v = s.vault;
@@ -309,6 +319,30 @@ export function overall(checks: readonly StatusCheck[]): Level {
   let worst: Level = "ok";
   for (const c of checks) if (c.level !== "unknown" && RANK[c.level] > RANK[worst]) worst = c.level;
   return worst;
+}
+
+/**
+ * Every chain check over every stack. One stack reads as before; with several, each stack's vault,
+ * supply, settlement, graduation and pause checks carry its name, and the wallets' gas (shared by every
+ * stack) is checked once.
+ */
+export function evaluateStacks(snapshots: readonly StatusSnapshot[]): StatusCheck[] {
+  const [first] = snapshots;
+  if (!first) return [];
+  if (snapshots.length === 1) return evaluateChain(first);
+  const perStack = snapshots.flatMap((s) => {
+    const name = s.stack?.name ?? "primary";
+    const title = stackTitle(s.stack);
+    return [
+      checkSolvency(s),
+      checkObligations(s),
+      checkSupply(s),
+      checkSettlement(s),
+      checkGraduation(s),
+      checkGuardian(s),
+    ].map((c) => ({ ...c, id: `${name}:${c.id}`, title: `${c.title}: ${title}` }));
+  });
+  return [...perStack, checkGas("keeper", first.wallets.keeper), checkGas("maker", first.wallets.maker)];
 }
 
 export function evaluateChain(s: StatusSnapshot): StatusCheck[] {
