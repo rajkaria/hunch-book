@@ -10,6 +10,7 @@ import {
 } from "./inventory.js";
 import {
   type BookInfo,
+  bookStateStatus,
   findOwnOrders,
   MarketState,
   readL2Book,
@@ -32,8 +33,9 @@ import {
 } from "./quotes.js";
 import { accountAddress, sendTx, type TxContext } from "./tx.js";
 
-// One market's quoting, cancelling and unwinding against its Kuru book. Market discovery and pricing
-// live elsewhere; this module is what the integration test drives directly.
+// One market's quoting, cancelling and unwinding against its v1 book: Kuru's, or Hunch Book's own order
+// book, which has the same interface (no fees, no AMM vault, every limit order post-only). Market
+// discovery and pricing live elsewhere; this module is what the integration test drives directly.
 
 export interface MakerDeps {
   tx: TxContext;
@@ -176,6 +178,24 @@ async function sendBatch(
   }
   // Unknown outcome: re-read the book next cycle instead of guessing which ids still rest.
   if (result.status === "unknown") rt.synced = false;
+  if (result.status === "skipped" && result.reason === "PostOnlyError") {
+    // A quote would have crossed the book, so the whole batch (its cancels too) did not go out: Kuru
+    // refuses a crossing post-only order, and a Hunch order book refuses every crossing limit order.
+    // The bot never prices a quote through the book it read, so the book moved after that read, or an
+    // order of ours rests untracked. Re-adopt our orders from the book; the next cycle requotes from a
+    // fresh read (lastQuoteAt is unchanged, so the requote is still due).
+    rt.synced = false;
+    log(
+      "quote-crossed",
+      {
+        market: rt.market,
+        book: rt.book,
+        reason,
+        note: "a quote would cross the book; nothing was sent, requoting from a fresh book next cycle",
+      },
+      "warn",
+    );
+  }
   return false;
 }
 
@@ -200,8 +220,11 @@ export async function quoteMarket(
   ]);
   rt.health = { ...rt.health, fair: input.fair, detail: input.detail, balances, error: undefined };
   if (state !== MarketState.Active) {
-    rt.health.status = "book-paused";
-    await cancelMarket(deps, rt, "book paused");
+    // Cancels work in every state; placing does not. 1 is cancels only (Kuru's soft pause, or a Hunch
+    // order book whose market is not trading), 2 Kuru's hard pause.
+    const { status, reason } = bookStateStatus(state);
+    rt.health.status = status;
+    await cancelMarket(deps, rt, reason);
     return;
   }
 

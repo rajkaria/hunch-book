@@ -64,7 +64,7 @@ export class Notifier {
     if (this.config.indexerUrl) {
       try {
         return {
-          markets: await readMarketsFromIndexer(this.config.indexerUrl, this.deps.fetchImpl),
+          markets: await readMarketsFromIndexer(this.config.indexerUrl, this.deps.fetchImpl, this.deployment),
           source: "indexer",
         };
       } catch (error) {

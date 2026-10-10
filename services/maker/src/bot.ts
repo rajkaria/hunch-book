@@ -7,6 +7,8 @@ import {
   PHASE_LABEL,
   Phase,
   Side,
+  type Venue,
+  venueOf,
 } from "@hunch-book/shared";
 import {
   type Account,
@@ -23,6 +25,7 @@ import {
   zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { marginVerifiedMarketAbi } from "./abis.js";
 import type { MakerConfig } from "./config.js";
 import { MarketDirectory, type MarketView, secondsToClose } from "./discovery.js";
 import { type ChainNow, type FairResult, FairValues, NoModelError, PRICED_TEMPLATES } from "./fair.js";
@@ -56,6 +59,15 @@ import {
 
 // The long-running bot: discovers markets, prices them, quotes graduated ones, and leaves each market
 // before close. Everything it sends goes through sendTx, which honours the kill switch.
+//
+// One bot quotes one stack. A stack on Kuru v2 gets the v2 maker (src/v2.ts). A stack on Kuru v1 or on
+// Hunch Book's own order book gets the v1 maker: the Hunch book speaks Kuru v1's interface, and on that
+// stack's view of the deployment (deploymentForStack) `external.kuru.marginAccount` is Hunch Book's own
+// margin account. What differs there is handled where it shows: the book takes orders only while its
+// market trades (marketState 1, cancels only, before graduation and from close on), it charges no fees,
+// it has no AMM vault, and every limit order is post-only. The bot never prices a quote through the book
+// it read; when the book moves before the batch lands, the batch reverts PostOnlyError, nothing goes out,
+// and the next cycle requotes from a fresh read (maker.ts, sendBatch).
 
 const LOW_MON = 500_000_000_000_000_000n; // 0.5 MON
 
@@ -150,12 +162,18 @@ export class Maker {
       mode: config.mode,
       stack: this.stackName,
       kuruVersion: this.kuruVersion,
+      venue: this.venue,
     });
   }
 
   /** This stack's Kuru version (deployments file `kuruVersion`; absent = 1). */
   get kuruVersion(): 1 | 2 {
     return this.deployment.hunchBook.kuruVersion === 2 ? 2 : 1;
+  }
+
+  /** Where this stack's books are: "kuru", or "hunch" for Hunch Book's own order book. */
+  get venue(): Venue {
+    return venueOf(this.deployment.hunchBook);
   }
 
   private marketHealth() {
@@ -465,7 +483,11 @@ export class Maker {
     if (this.config.enabled) this.settledChecked.add(market.address);
   }
 
-  /** Cancels every order of ours on every known book and pulls margin balances back to the wallet. */
+  /**
+   * Cancels every order of ours on every known book and pulls margin balances back to the wallet.
+   * `extraBooks` (cancel-all --book) are v1 books handed in by hand: each is handled only if this bot's
+   * margin account lists it, so with Kuru and Hunch stacks side by side every book goes to its own bot.
+   */
   async cancelEverything(reason: string, extraBooks: Address[] = []): Promise<void> {
     if (this.paper) {
       log("paper-stop-all", { reason, note: "paper mode has no orders on any book" });
@@ -479,7 +501,7 @@ export class Maker {
     }
     for (const rt of this.runtimes.values()) books.set(rt.book, true);
     for (const rt of this.runtimesV2.values()) books.set(rt.book, true);
-    for (const book of extraBooks) books.set(book, true);
+    for (const book of await this.ownBooks(extraBooks)) books.set(book, true);
     for (const book of books.keys()) {
       try {
         if (this.depsV2)
@@ -498,5 +520,34 @@ export class Maker {
       rt.health = { ...rt.health, status: reason, bids: [], asks: [], openOrders: 0 };
     }
     this.health.update({ markets: this.marketHealth() });
+  }
+
+  /** The books among `books` that this bot's v1 margin account lists; none on a Kuru v2 stack. */
+  private async ownBooks(books: Address[]): Promise<Address[]> {
+    if (books.length === 0) return [];
+    if (this.depsV2) {
+      log("cancel-skip", { books, reason: "--book is for Kuru v1 and Hunch order books" });
+      return [];
+    }
+    const listed = await this.client.multicall({
+      allowFailure: true,
+      contracts: books.map((book) => ({
+        address: this.deps.marginAccount,
+        abi: marginVerifiedMarketAbi,
+        functionName: "verifiedMarket" as const,
+        args: [book] as const,
+      })),
+    });
+    const out = books.filter((_, i) => listed[i]?.status === "success" && listed[i]?.result === true);
+    const others = books.filter((b) => !out.includes(b));
+    if (others.length > 0) {
+      log("cancel-skip", {
+        books: others,
+        marginAccount: this.deps.marginAccount,
+        reason:
+          "this stack's margin account does not list these books; the bot of their own stack cancels them",
+      });
+    }
+    return out;
   }
 }

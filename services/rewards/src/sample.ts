@@ -1,13 +1,14 @@
 import { type HunchContext, type MarketInfo, readBook } from "@hunch-book/sdk";
-import { decodeL2Book, kuruOrderBookAbi, type L2Level } from "@hunch-book/shared";
+import { decodeL2Book, kuruOrderBookAbi, type L2Level, stackNamed } from "@hunch-book/shared";
 import { type Abi, type Address, getAddress, type Hex } from "viem";
 import { type BookEvent, OrderBookState, sameLevels, sortEvents } from "./orders.js";
 import type { Sample } from "./score.js";
 import { blockTimes, bookEvents, graduationBlock, mapLimit } from "./sources.js";
 
-// Samples of a market's book every N blocks: each maker's resting orders (rebuilt from Kuru's events
-// from the book's first order on) and, with `check`, whether the rebuilt book equals what getL2Book
-// returned at that block, so a sample is never scored from a book that drifted from the chain's.
+// Samples of a market's book every N blocks: each maker's resting orders (rebuilt from the book's
+// events from its first order on) and, with `check`, whether the rebuilt book equals what getL2Book
+// returned at that block, so a sample is never scored from a book that drifted from the chain's. Kuru v1
+// books and Hunch Book's own order books emit the same events (OrderCreated, Trade, OrdersCanceled).
 
 export interface SampleOptions {
   /** First block to sample. */
@@ -16,7 +17,7 @@ export interface SampleOptions {
   to: bigint;
   /** Blocks between samples. */
   every: bigint;
-  /** Where to start replaying Kuru's events; default: the block the market graduated. */
+  /** Where to start replaying the book's events; default: the block the market graduated. */
   replayFrom?: bigint;
   /** Compare every sample with getL2Book at its block (needs an RPC that keeps past state). */
   check?: boolean;
@@ -50,6 +51,15 @@ async function l2At(
   }
 }
 
+/**
+ * The block the market's own stack was deployed at: where the search for its graduation starts. Each
+ * stack has its own deploy block (the `hunch` stack on testnet came long after the primary one).
+ */
+export function stackDeployBlock(ctx: HunchContext, m: Pick<MarketInfo, "stack">): bigint {
+  const stack = stackNamed(ctx.deployment, m.stack ?? "primary");
+  return BigInt(stack?.contracts.deployBlock ?? ctx.deployment.hunchBook.deployBlock ?? 0);
+}
+
 /** Replays a market's book and samples it every `every` blocks in [from, to]. */
 export async function sampleMarket(
   ctx: HunchContext,
@@ -61,7 +71,7 @@ export async function sampleMarket(
   const params = (await readBook(ctx, book, m.address)).params;
   const replayFrom =
     options.replayFrom ??
-    (await graduationBlock(ctx, m.address, BigInt(ctx.deployment.hunchBook.deployBlock ?? 0), options.to)) ??
+    (await graduationBlock(ctx, m.address, stackDeployBlock(ctx, m), options.to)) ??
     options.from;
   const events = sortEvents(
     await bookEvents(ctx, book, replayFrom, options.to, { pricePrecision: params.pricePrecision }),

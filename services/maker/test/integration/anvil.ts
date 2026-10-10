@@ -1,7 +1,11 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import type { Abi, Hex } from "viem";
 
-// Starts a local anvil fork of Monad testnet (Foundry 1.8+, `--network monad` for Monad's EVM rules).
-// Returns null when anvil is missing or the fork does not come up, so the suite can skip cleanly.
+// Starts a local anvil fork of Monad testnet (Foundry 1.8+, `--network monad` for Monad's EVM rules), or
+// a fresh local chain with Hunch Book's contracts from contracts/out (run `forge build` in contracts/).
+// Returns null when anvil is missing or the chain does not come up, so the suite can skip cleanly.
 
 export interface Anvil {
   url: string;
@@ -69,4 +73,52 @@ export async function startAnvilFork(
   }
   console.warn(`anvil could not fork ${forkUrl} (${error}): skipping the fork tests`);
   return null;
+}
+
+/**
+ * A fresh local anvil chain (no fork) with Monad testnet's chain id, starting at `genesisBlock` (viem
+ * reads through Multicall3 only at blocks after the one where Monad testnet's copy was created).
+ */
+export async function startAnvil(
+  chainId: number,
+  genesisBlock = 0,
+  timeoutMs = 20_000,
+): Promise<Anvil | null> {
+  if (!anvilInstalled()) {
+    console.warn("anvil is not installed: skipping the local chain tests");
+    return null;
+  }
+  const port = 20_000 + Math.floor(Math.random() * 20_000);
+  const child: ChildProcess = spawn(
+    "anvil",
+    ["--chain-id", String(chainId), "--number", String(genesisBlock), "--port", String(port), "--silent"],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+  let stderr = "";
+  child.stderr?.on("data", (chunk: Buffer) => {
+    stderr = (stderr + chunk.toString()).slice(-500);
+  });
+  const url = `http://127.0.0.1:${port}`;
+  const stop = () => {
+    if (child.exitCode === null) child.kill("SIGTERM");
+  };
+  if (await ready(url, Date.now() + timeoutMs, () => child.exitCode !== null)) return { url, stop };
+  stop();
+  console.warn(`anvil did not start (${stderr.trim() || "no answer"}): skipping the local chain tests`);
+  return null;
+}
+
+export interface Artifact {
+  abi: Abi;
+  bytecode: Hex;
+}
+
+const OUT = fileURLToPath(new URL("../../../../contracts/out/", import.meta.url));
+
+/** contracts/out/<file>/<contract>.json, or null when contracts/ has not been built. */
+export function artifact(file: string, contract: string): Artifact | null {
+  const path = `${OUT}${file}/${contract}.json`;
+  if (!existsSync(path)) return null;
+  const json = JSON.parse(readFileSync(path, "utf8")) as { abi: Abi; bytecode: { object: Hex } };
+  return { abi: json.abi, bytecode: json.bytecode.object };
 }

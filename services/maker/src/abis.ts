@@ -113,3 +113,18 @@ export const chainlinkAggregatorAbi = [
     ],
   },
 ] as const;
+
+/**
+ * A v1 margin account's book registry: Kuru's MarginAccount and Hunch Book's HunchMarginAccount both list
+ * the books they settle for (IKuruMarginAccount.verifiedMarket). The bot asks before it acts on a book it
+ * was handed, so a book is only ever handled by the bot whose margin account holds its funds.
+ */
+export const marginVerifiedMarketAbi = [
+  {
+    type: "function",
+    name: "verifiedMarket",
+    stateMutability: "view",
+    inputs: [{ name: "market", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;

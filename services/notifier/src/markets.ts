@@ -1,4 +1,13 @@
-import { type Deployment, hunchBookFactoryAbi, marketAbi, resolverAbi, stacksOf } from "@hunch-book/shared";
+import {
+  type Deployment,
+  hunchBookFactoryAbi,
+  marketAbi,
+  resolverAbi,
+  type Stack,
+  stackNamed,
+  stacksOf,
+  type Venue,
+} from "@hunch-book/shared";
 import {
   type Abi,
   type Address,
@@ -10,9 +19,10 @@ import {
   zeroAddress,
 } from "viem";
 
-// What the notifier knows about each market at one moment, read from the chain (the factory and each
-// market, with Kuru's best bid and ask for the book price) or, when INDEXER_URL is set, from the
-// indexer with the chain as the fallback.
+// What the notifier knows about each market at one moment, read from the chain (every stack's factory
+// and each market, with the book's best bid and ask for the price) or, when INDEXER_URL is set, from
+// the indexer with the chain as the fallback. Each market carries its stack's venue, so a message can
+// say where it trades: Hunch Book's own order book, or Kuru's.
 
 export const Phase = { Pool: 0, PoolLocked: 1, Graduated: 2, Closed: 3, Settled: 4, Voided: 5 } as const;
 export const Outcome = { Unresolved: 0, Yes: 1, No: 2 } as const;
@@ -31,7 +41,15 @@ export interface MarketState {
   question: string | null;
   yes: Address;
   no: Address;
+  /** Where the market's book is, from its stack: "kuru" or "hunch". Absent when the stack is unknown. */
+  venue?: Venue;
+  /** The stack's Kuru version (1 on a Hunch venue). Absent when the stack is unknown. */
+  kuruVersion?: 1 | 2;
 }
+
+/** The venue fields a market gets from its stack. */
+const venueOfStack = (stack: Stack | undefined): Pick<MarketState, "venue" | "kuruVersion"> =>
+  stack ? { venue: stack.venue, kuruVersion: stack.kuruVersion } : {};
 
 export interface Position {
   stakeYes: bigint;
@@ -111,7 +129,7 @@ export async function readMarketsFromChain(
   limit = 500,
 ): Promise<MarketState[]> {
   const addresses: Address[] = [];
-  const version = new Map<string, 1 | 2>();
+  const stackOf = new Map<string, Stack>();
   for (const stack of stacksOf(deployment)) {
     const factory = stack.contracts.factory as Address;
     const count = Number(
@@ -133,7 +151,7 @@ export async function readMarketsFromChain(
       const a = ok<Address>(r);
       if (!a) continue;
       addresses.push(a);
-      version.set(a.toLowerCase(), stack.kuruVersion);
+      stackOf.set(a.toLowerCase(), stack);
     }
   }
   const fields = await client.multicall({
@@ -181,9 +199,10 @@ export async function readMarketsFromChain(
     const sentence = m.resolver && m.params ? ok<string>(extra[i * 2]) : undefined;
     const quote = m.book ? ok<readonly [bigint, bigint]>(extra[i * 2 + 1]) : undefined;
     const total = m.yesTotal + m.noTotal;
+    const stack = stackOf.get(m.address.toLowerCase());
     const chanceBps = m.graduated
       ? quote
-        ? midBps(quote[0], quote[1], version.get(m.address.toLowerCase()) ?? 1)
+        ? midBps(quote[0], quote[1], stack?.kuruVersion ?? 1)
         : null
       : total > 0n
         ? Number((m.yesTotal * 10_000n) / total)
@@ -199,6 +218,7 @@ export async function readMarketsFromChain(
       question: sentence?.trim() ? sentence.trim() : null,
       yes: m.yes,
       no: m.no,
+      ...venueOfStack(stack),
     };
   });
 }
@@ -213,16 +233,20 @@ const OUTCOME: Record<string, number> = { Unresolved: Outcome.Unresolved, Yes: O
 
 export const INDEXER_MARKETS_QUERY = `query NotifierMarkets {
   Market(order_by: {number: asc}, limit: 500) {
-    id number stage outcome graduated impliedChanceBps lastPriceE6 question poolTotal yesToken noToken
+    id number stack stage outcome graduated impliedChanceBps lastPriceE6 question poolTotal yesToken noToken
   }
 }`;
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
-/** The same states from the indexer. Pool-locked and closed read as their stage (Pool, Graduated). */
+/**
+ * The same states from the indexer. Pool-locked and closed read as their stage (Pool, Graduated). Each
+ * market's venue comes from its `stack` in `deployment`, when given.
+ */
 export async function readMarketsFromIndexer(
   indexerUrl: string,
   fetchImpl: Fetch = fetch,
+  deployment?: Deployment,
 ): Promise<MarketState[]> {
   const res = await fetchImpl(indexerUrl, {
     method: "POST",
@@ -236,6 +260,7 @@ export async function readMarketsFromIndexer(
       Market?: {
         id: string;
         number: number;
+        stack?: string | null;
         stage: string;
         outcome: string;
         graduated: boolean;
@@ -267,6 +292,7 @@ export async function readMarketsFromIndexer(
     question: m.question,
     yes: getAddress(m.yesToken),
     no: getAddress(m.noToken),
+    ...venueOfStack(deployment && m.stack ? stackNamed(deployment, m.stack) : undefined),
   }));
 }
 

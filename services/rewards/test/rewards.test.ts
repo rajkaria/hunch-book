@@ -1,5 +1,5 @@
-import { verifyRewardProof } from "@hunch-book/sdk";
-import { deployments, merkleDistributorAbi } from "@hunch-book/shared";
+import { type HunchContext, verifyRewardProof } from "@hunch-book/sdk";
+import { type Deployment, deployments, merkleDistributorAbi } from "@hunch-book/shared";
 import {
   type Address,
   concat,
@@ -19,9 +19,9 @@ import {
   protocolShare,
   referralCredit,
 } from "../src/referrals.js";
-import { sampleFromLine, sampleToLine } from "../src/sample.js";
+import { sampleFromLine, sampleToLine, stackDeployBlock } from "../src/sample.js";
 import { makerRewards, scoreMarket, scoreSample } from "../src/score.js";
-import { windows } from "../src/sources.js";
+import { feeEventsFromLogs, windows } from "../src/sources.js";
 
 const a = (n: number): Address => getAddress(`0x${n.toString(16).padStart(40, "0")}`);
 const MARKET = a(0x1000);
@@ -338,6 +338,61 @@ describe("referral credits (docs/PERIPHERY.md, C-8)", () => {
         1n,
       ),
     ).toBe(false);
+  });
+});
+
+describe("every stack, the hunch one included", () => {
+  // Testnet's layout: the primary stack, and `hunch` on Hunch Book's own order book with its own vault
+  // and a much later deploy block.
+  const testnet = deployments["monad-testnet"];
+  const HUNCH_VAULT = a(0x3333);
+  const withHunch: Deployment = {
+    ...testnet,
+    stacks: {
+      hunch: {
+        factory: a(0x3331),
+        vault: HUNCH_VAULT,
+        deployBlock: 69_857_525,
+        kuruVersion: 1,
+        venue: {
+          kind: "hunch",
+          bookFactory: a(0x3334),
+          marginAccount: a(0x3335),
+          bookImplementation: a(0x3336),
+        },
+      },
+    },
+  };
+
+  it("searches for a market's graduation from its own stack's deploy block", () => {
+    const ctx = { deployment: withHunch } as HunchContext;
+    expect(stackDeployBlock(ctx, { stack: "hunch" })).toBe(69_857_525n);
+    expect(stackDeployBlock(ctx, {})).toBe(BigInt(testnet.hunchBook.deployBlock ?? 0));
+  });
+
+  it("reads redemption fees from every stack's vault", async () => {
+    const asked: unknown[] = [];
+    const ctx = {
+      deployment: withHunch,
+      publicClient: {
+        getLogs: async ({ address, event }: { address: unknown; event: { name: string } }) => {
+          asked.push(address);
+          if (event.name !== "Redeemed") return [];
+          return [
+            {
+              address: HUNCH_VAULT,
+              args: { market: MARKET, to: a(1), fee: 7_000n },
+              blockNumber: 70_000_000n,
+              transactionHash: `0x${"cd".repeat(32)}`,
+            },
+          ];
+        },
+        getBlock: async () => ({ timestamp: 1_800_000_000n }),
+      },
+    } as unknown as HunchContext;
+    const events = await feeEventsFromLogs(ctx, [MARKET], 70_000_000n, 70_000_050n);
+    expect(asked).toContainEqual([testnet.hunchBook.vault, HUNCH_VAULT]);
+    expect(events).toMatchObject([{ kind: "redeem", market: MARKET, user: a(1), fee: 7_000n }]);
   });
 });
 

@@ -1,7 +1,7 @@
 import { type Address, getAddress, isAddress } from "viem";
 import type { Maker } from "./bot.js";
 import { describeConfig, loadEnvFile, parseConfig, REPO_ENV_FILE } from "./config.js";
-import { errorMessage, log } from "./log.js";
+import { errorMessage, log, setLogContext } from "./log.js";
 import { buildMakers } from "./stacks.js";
 
 // Usage: tsx src/main.ts <run | once | cancel-all> [--env-file <path>] [--book <address> ...]
@@ -52,13 +52,18 @@ async function main(): Promise<void> {
     envLoaded: loaded,
     maker: maker.maker,
     ...describeConfig(config),
-    stacks: makers.map((m) => ({ stack: m.stackName, kuruVersion: m.kuruVersion })),
+    stacks: makers.map((m) => ({ stack: m.stackName, kuruVersion: m.kuruVersion, venue: m.venue })),
   });
   maker.checkPublishedAddress();
 
-  // --book applies to the bot of the stack the books belong to; each bot cancels on its own books too.
+  // --book applies to the bot whose margin account lists the book (Maker.cancelEverything checks); each
+  // bot cancels on its own books too. With several bots, every line names the stack and venue.
   const each = async (fn: (m: Maker) => Promise<void>) => {
-    for (const m of makers) await fn(m);
+    for (const m of makers) {
+      setLogContext(makers.length > 1 ? { stack: m.stackName, venue: m.venue } : {});
+      await fn(m);
+    }
+    setLogContext({});
   };
   if (args.mode === "cancel-all") {
     await each((m) => m.cancelEverything("cancel-all", m.kuruVersion === 1 ? args.books : []));
@@ -92,14 +97,16 @@ async function main(): Promise<void> {
   while (!stop.signal.aborted) {
     // One stack after another, so the bot's transactions never race for a nonce.
     for (const m of makers) {
+      setLogContext(makers.length > 1 ? { stack: m.stackName, venue: m.venue } : {});
       try {
         await m.cycle();
       } catch (error) {
         const message = errorMessage(error);
-        log("cycle-error", { stack: m.stackName, error: message }, "error");
+        log("cycle-error", { stack: m.stackName, venue: m.venue, error: message }, "error");
         m.health.update({ lastError: message });
       }
     }
+    setLogContext({});
     await sleep(config.pollSeconds * 1000, stop.signal);
   }
   await each((m) => m.cancelEverything("shutdown", m.kuruVersion === 1 ? args.books : []));

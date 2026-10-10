@@ -1,5 +1,5 @@
 import type { HunchContext } from "@hunch-book/sdk";
-import { collateralVaultAbi, kuruOrderBookAbi, marketAbi } from "@hunch-book/shared";
+import { collateralVaultAbi, kuruOrderBookAbi, marketAbi, stacksOf } from "@hunch-book/shared";
 import { type Address, getAbiItem, type Hex } from "viem";
 import type { BookEvent } from "./orders.js";
 import type { FeeEvent } from "./referrals.js";
@@ -47,7 +47,10 @@ const KURU_EVENTS = [
   getAbiItem({ abi: kuruOrderBookAbi, name: "OrdersCanceled" }),
 ] as const;
 
-/** Kuru's order events on one book, as BookEvents. `pricePrecision` converts prices to E6. */
+/**
+ * One book's order events, as BookEvents: Kuru v1's events, which Hunch Book's own order books emit too.
+ * `pricePrecision` converts prices to E6.
+ */
 export async function bookEvents(
   ctx: HunchContext,
   book: Address,
@@ -143,20 +146,23 @@ export async function blockTimes(ctx: HunchContext, blocks: readonly bigint[]): 
 const REDEEMED = getAbiItem({ abi: collateralVaultAbi, name: "Redeemed" });
 const POOL_CLAIMED = getAbiItem({ abi: marketAbi, name: "PoolClaimed" });
 
-/** Fee-paying events from the chain's logs: the vault's Redeemed and every market's PoolClaimed. */
+/**
+ * Fee-paying events from the chain's logs: every stack's vault's Redeemed (each stack has its own vault,
+ * the `hunch` one included) and every market's PoolClaimed.
+ */
 export async function feeEventsFromLogs(
   ctx: HunchContext,
   markets: readonly Address[],
   from: bigint,
   to: bigint,
 ): Promise<FeeEvent[]> {
-  const vault = ctx.deployment.hunchBook.vault;
-  if (!vault) throw new Error(`The vault is not deployed on ${ctx.deployment.network}.`);
+  const vaults = stacksOf(ctx.deployment).flatMap((s) => (s.contracts.vault ? [s.contracts.vault] : []));
+  if (vaults.length === 0) throw new Error(`The vault is not deployed on ${ctx.deployment.network}.`);
   const ranges = windows(from, to);
   const [redeemed, claimed] = await Promise.all([
     mapLimit(ranges, 5, (w) =>
       ctx.publicClient.getLogs({
-        address: vault,
+        address: vaults,
         event: REDEEMED,
         fromBlock: w.fromBlock,
         toBlock: w.toBlock,

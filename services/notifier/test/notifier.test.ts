@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deployments } from "@hunch-book/shared";
+import { type Deployment, deployments } from "@hunch-book/shared";
 import { getAddress } from "viem";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleCommand, parseCommand, parseTarget } from "../src/commands.js";
@@ -14,9 +14,10 @@ import {
   Outcome,
   Phase,
   type Position,
+  readMarketsFromChain,
   readMarketsFromIndexer,
 } from "../src/markets.js";
-import { chance, eventMessage, redeemMessage } from "../src/messages.js";
+import { bookPhrase, chance, eventMessage, redeemMessage } from "../src/messages.js";
 import { Notifier } from "../src/notifier.js";
 import { emptyState, loadState, parseState, saveState } from "../src/state.js";
 import { parseSubscriptions, SubscriptionStore } from "../src/store.js";
@@ -246,6 +247,116 @@ describe("messages", () => {
         LINKS,
       ),
     ).toMatch(/Hunch Book market #1/);
+  });
+});
+
+describe("where a graduated market trades", () => {
+  it("names the market's venue: Hunch Book's own order book, Kuru's, or just its book", () => {
+    const graduated = (over: Partial<MarketState>) =>
+      eventMessage(
+        { kind: "graduated", market: market({ phase: Phase.Graduated, graduated: true, ...over }) },
+        LINKS,
+      );
+    expect(graduated({ venue: "hunch", kuruVersion: 1 })).toContain(
+      "now trading on Hunch Book's own order book",
+    );
+    expect(graduated({ venue: "kuru", kuruVersion: 1 })).toContain("now trading on Kuru's order book");
+    expect(graduated({ venue: "kuru", kuruVersion: 2 })).toContain("now trading on Kuru v2's order book");
+    expect(graduated({})).toContain("now trading on its order book");
+    expect(bookPhrase({ venue: "hunch" })).not.toMatch(/Kuru/);
+  });
+
+  // Testnet's layout: the primary stack on Kuru, and `hunch` on Hunch Book's own order book.
+  const HUNCH_FACTORY = getAddress("0x00000000000000000000000000000000000000f5");
+  const HUNCH_MARKET = getAddress("0x00000000000000000000000000000000000000b5");
+  const withHunch: Deployment = {
+    ...deployments["monad-testnet"],
+    stacks: {
+      hunch: {
+        factory: HUNCH_FACTORY,
+        kuruVersion: 1,
+        venue: {
+          kind: "hunch",
+          bookFactory: getAddress("0x00000000000000000000000000000000000000f6"),
+          marginAccount: getAddress("0x00000000000000000000000000000000000000f7"),
+          bookImplementation: getAddress("0x00000000000000000000000000000000000000f8"),
+        },
+      },
+    },
+  };
+
+  it("reads every stack's markets from the chain, each with its venue", async () => {
+    const primaryFactory = deployments["monad-testnet"].hunchBook.factory as string;
+    const counts: Record<string, bigint> = {
+      [primaryFactory.toLowerCase()]: 1n,
+      [HUNCH_FACTORY.toLowerCase()]: 1n,
+    };
+    const client = {
+      readContract: async ({ address }: { address: string }) => counts[address.toLowerCase()] ?? 0n,
+      multicall: async ({ contracts }: { contracts: { address: string; functionName: string }[] }) =>
+        contracts.map((c) => {
+          const hunch = c.address.toLowerCase() === HUNCH_FACTORY.toLowerCase() || c.address === HUNCH_MARKET;
+          const result = (() => {
+            switch (c.functionName) {
+              case "marketAt":
+                return hunch ? HUNCH_MARKET : MARKET;
+              case "marketId":
+                return 1n;
+              case "phase":
+                return Phase.Graduated;
+              case "graduated":
+                return true;
+              case "poolTotals":
+                return [410_000_000n, 280_000_000n, 11];
+              case "tokens":
+                return [
+                  getAddress("0x00000000000000000000000000000000000000c1"),
+                  getAddress("0x00000000000000000000000000000000000000c2"),
+                ];
+              case "outcome":
+                return 0;
+              default:
+                return undefined;
+            }
+          })();
+          return result === undefined
+            ? { status: "failure", error: new Error("x") }
+            : { status: "success", result };
+        }),
+    };
+    const states = await readMarketsFromChain(client as never, withHunch);
+    expect(states.map((m) => [m.address, m.venue, m.kuruVersion])).toEqual([
+      [MARKET, "kuru", 1],
+      [HUNCH_MARKET, "hunch", 1],
+    ]);
+  });
+
+  it("takes the venue from the indexer's stack", async () => {
+    const row = (id: string, stack: string) => ({
+      id,
+      number: 1,
+      stack,
+      stage: "Graduated",
+      outcome: "Unresolved",
+      graduated: true,
+      impliedChanceBps: 5_000,
+      lastPriceE6: "500000",
+      question: null,
+      poolTotal: "690000000",
+      yesToken: "0x00000000000000000000000000000000000000c1",
+      noToken: "0x00000000000000000000000000000000000000c2",
+    });
+    const fetchImpl = async () =>
+      new Response(
+        JSON.stringify({ data: { Market: [row(MARKET, "primary"), row(HUNCH_MARKET, "hunch")] } }),
+      );
+    const states = await readMarketsFromIndexer("https://indexer/v1/graphql", fetchImpl, withHunch);
+    expect(states.map((m) => m.venue)).toEqual(["kuru", "hunch"]);
+    // Without the deployment, or for a stack it does not list, the venue stays unknown.
+    expect((await readMarketsFromIndexer("https://i", fetchImpl)).map((m) => m.venue)).toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 });
 

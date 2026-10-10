@@ -37,6 +37,25 @@ For each graduated market it:
 It never deposits into the AMM vault Kuru creates next to each book. That vault's curve has no 1 USDC
 cap, which does not fit a token that ends at 0 or 1.
 
+### On Hunch Book's own order book
+
+A stack with a `venue` of kind `hunch` (testnet: `hunch`, where new markets go) trades on Hunch Book's own
+onchain order book ([docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-kuru)). Its books speak Kuru v1's
+interface, so the v1 bot quotes them unchanged, on that stack's view of the deployments file: its margin
+account is the stack's own HunchMarginAccount, not Kuru's. What differs there:
+
+- The book takes orders only while its market is in phase Graduated. `marketState()` reads 1 (cancels
+  only) before graduation and from close on; the bot then cancels and reports `book-cancels-only`.
+  Cancels and margin withdrawals always work.
+- No trading fees and no AMM vault.
+- Every limit order is post-only. The bot never prices a quote through the outside book it read; if the
+  book moves between that read and the batch, the simulation reverts `PostOnlyError`, nothing goes out
+  (the batch's cancels included), the bot logs `quote-crossed`, re-reads its own orders from the book and
+  requotes next cycle. The same holds on Kuru, whose post-only orders refuse a cross the same way.
+
+Health snapshots and, with several stacks, every log line name the `venue` (`hunch` or `kuru`).
+`cancel-all --book` hands each book to the bot whose margin account lists it.
+
 ### On Kuru v2 books
 
 A deployments file can hold several stacks; the bot runs one quoter per stack in the same process, one
@@ -163,7 +182,7 @@ local state.
 | `MAKER_DUST` | `1` | Tokens. The USDC float kept in the margin account, and the smallest withdraw or merge worth a transaction. |
 | `MAKER_MARKETS` | all | Comma-separated market addresses to quote; all graduated markets when unset. |
 | `MAKER_TEMPLATES` | all priced | Comma-separated template ids to quote; every template with a model (1 to 6) when unset. |
-| `MAKER_STACKS` | all | Comma-separated stacks to quote on (`primary`, or names under `stacks`, such as `kuruV2`); every deployed stack when unset. |
+| `MAKER_STACKS` | all | Comma-separated stacks to quote on (`primary`, or names under `stacks`, such as `kuruV2` or `hunch`); every deployed stack when unset. |
 | `MAKER_HEALTH_FILE` | `services/maker/health.json` | Where the health snapshot is written after every pass. |
 | `MAKER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET http://localhost:<port>/health`. |
 | `MAKER_ENV_FILE` | repository `.env` | The `.env` file to load. |
@@ -236,6 +255,13 @@ pnpm --filter @hunch-book/maker test
   its first deposit, rests quotes in slots, requotes in one batch, sees a taker's swap as a fill, and
   unwinds to an empty account. All skip, rather than fail, when anvil is not installed or the fork cannot
   start.
+- **Local chain test** (`test/integration/hunch-venue.test.ts`) starts a fresh anvil chain with Hunch
+  Book's real contracts from `contracts/out` (run `forge build` in `contracts/`): the core, the
+  HunchOrderBookFactory with its HunchMarginAccount, and the Graduator wired to it. Laid out as on
+  testnet (`stacks.hunch`, the default stack), `buildMakers` gives that stack a v1 bot on Hunch Book's
+  margin account; it quotes post-only, requotes in one batch, sees a taker's fills, survives a crossing
+  quote (`PostOnlyError`, nothing sent, requoted around the outside ask next cycle), cancels when the
+  closed market's book takes cancels only, and unwinds. It skips when anvil or `contracts/out` is missing.
 - `pnpm --filter @hunch-book/maker smoke:testnet --market 0x… [--test-usdc 100] [--dry-run]` runs one live
   pass of the bot on Monad testnet for one graduated market, from the maker key: it tops the wallet up
   with Hunch Book's test USDC when asked, mints sets, quotes both sides, checks the orders rest on the
@@ -256,7 +282,8 @@ pnpm --filter @hunch-book/maker test
 - The inventory cap is per market. USDC in Kuru's margin account (v2: its AccountCore account) is shared by
   every book the bot quotes.
 - Before close the bot cancels its own orders, but Kuru's book is not Hunch Book's to halt. Orders other
-  people leave on the book can still fill after close.
+  people leave on the book can still fill after close. A Hunch order book stops matching at close by
+  itself (it reads the market's clock).
 - After settlement it redeems only what its wallet holds. Tokens it left in Kuru's margin account are
   withdrawn when it leaves the market or on `cancel-all`.
 - On testnet the collateral is Hunch Book's own mintable test USDC.

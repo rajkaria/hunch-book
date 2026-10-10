@@ -5,6 +5,7 @@ import {
   formatUsdc,
   type HunchContext,
   listAllMarkets,
+  marketVenue,
   nextRewardEpoch,
   parseUsdc,
   referralOf,
@@ -28,7 +29,7 @@ import { feeEventsFromIndexer, feeEventsFromLogs } from "./sources.js";
 
 const HELP = `Hunch Book rewards (dry run: reads the chain, writes files, sends nothing)
 
-  sample     Sample every graduated market's Kuru book every N blocks.
+  sample     Sample every graduated market's order book (Kuru v1 or Hunch Book's own) every N blocks.
              --from <block> --to <block> [--every 200] [--market <address>] [--replay-from <block>] [--check] [--out samples.jsonl]
   makers     Score makers from a samples file and split each market's pool.
              --samples samples.jsonl --pool <USDC per market> [--band 0.03] [--pay-our-maker] [--out makers.json]
@@ -69,7 +70,8 @@ async function sample(
     return getAddress(a);
   });
   // Kuru v2 books report orders as packed events this sampler does not decode yet: only v1 books are
-  // sampled, and v2 markets are named in the log so nobody mistakes the gap for no liquidity.
+  // sampled (Kuru v1's, and Hunch Book's own order books, which emit the same events), and v2 markets
+  // are named in the log so nobody mistakes the gap for no liquidity.
   const all = await listAllMarkets(ctx);
   const skippedV2 = all.filter((m) => m.kuruVersion === 2 && m.graduated && m.book).map((m) => m.address);
   if (skippedV2.length > 0) {
@@ -93,7 +95,7 @@ async function sample(
     });
     const mismatched = result.samples.filter((s) => s.l2Match === false).length;
     console.log(
-      `#${m.id} ${m.address}: ${result.samples.length} samples from ${result.events} Kuru events (replayed from block ${result.replayFrom})${args.check ? `, ${mismatched} differ from getL2Book` : ""}`,
+      `#${m.id} ${m.address} (${marketVenue(m).label}): ${result.samples.length} samples from ${result.events} book events (replayed from block ${result.replayFrom})${args.check ? `, ${mismatched} differ from getL2Book` : ""}`,
     );
     lines.push(...result.samples.map(sampleToLine));
   }

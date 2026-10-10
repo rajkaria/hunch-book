@@ -1,3 +1,5 @@
+import { type Deployment, deployments } from "@hunch-book/shared";
+import type { PublicClient } from "viem";
 import { describe, expect, it } from "vitest";
 import {
   checkBalance,
@@ -12,8 +14,10 @@ import {
   type Snapshot,
   DEFAULT_THRESHOLDS as T,
   toMarkdown,
+  type VaultSnapshot,
   worst,
 } from "../src/checks.js";
+import { readSnapshot } from "../src/read.js";
 
 const MON = 10n ** 18n;
 const NOW = 1_791_100_000;
@@ -37,14 +41,23 @@ function market(over: Partial<MarketSnapshot> = {}): MarketSnapshot {
   };
 }
 
+function vault(over: Partial<VaultSnapshot> = {}): VaultSnapshot {
+  return {
+    stack: "primary",
+    address: "0x81b04B3567dcaDaE6a859394248C47ddc403ba37",
+    balance: 1_000_000_000n,
+    obligations: 1_000_000_000n,
+    ...over,
+  };
+}
+
 function snapshot(over: Partial<Snapshot> = {}): Snapshot {
   return {
     network: "monad-testnet",
     block: 68_000_000n,
     timestamp: NOW,
     secondsPerBlock: 0.3,
-    vaultBalance: 1_000_000_000n,
-    vaultObligations: 1_000_000_000n,
+    vaults: [vault()],
     markets: [market()],
     balances: { keeper: 5n * MON, maker: 9n * MON },
     services: [],
@@ -54,11 +67,27 @@ function snapshot(over: Partial<Snapshot> = {}): Snapshot {
 
 describe("solvency", () => {
   it("passes when the vault holds at least what it owes", () => {
-    expect(checkSolvency(snapshot()).level).toBe("ok");
-    expect(checkSolvency(snapshot({ vaultBalance: 1_000_000_001n })).level).toBe("ok");
+    expect(checkSolvency(vault()).level).toBe("ok");
+    expect(checkSolvency(vault({ balance: 1_000_000_001n })).level).toBe("ok");
   });
   it("fails when obligations exceed the balance by a single unit", () => {
-    expect(checkSolvency(snapshot({ vaultObligations: 1_000_000_001n })).level).toBe("fail");
+    expect(checkSolvency(vault({ obligations: 1_000_000_001n })).level).toBe("fail");
+  });
+  it("checks every stack's vault on its own: one surplus never covers another's gap", () => {
+    const hunch = vault({
+      stack: "hunch",
+      address: "0x68B530302b012f22e5f00Ce0C6C8cF3A189fee86",
+      balance: 10n,
+      obligations: 11n,
+    });
+    const findings = evaluate(snapshot({ vaults: [vault({ balance: 10n ** 12n }), hunch] }));
+    const solvency = findings.filter((f) => f.check === "solvency");
+    expect(solvency.map((f) => [f.level, f.subject])).toEqual([
+      ["ok", "0x81b04B3567dcaDaE6a859394248C47ddc403ba37"],
+      ["fail", hunch.address],
+    ]);
+    expect(solvency[1]?.message).toBe("The hunch stack's vault holds 10 but owes 11 USDC base units.");
+    expect(worst(findings)).toBe("fail");
   });
 });
 
@@ -159,6 +188,12 @@ describe("evaluate", () => {
     expect(worst(findings)).toBe("ok");
     expect(findings.find((f) => f.check === "markets")?.message).toContain("1 market checked");
   });
+  it("counts the stacks it checked markets on", () => {
+    const findings = evaluate(snapshot({ markets: [market(), market({ stack: "hunch" })] }));
+    expect(findings.find((f) => f.check === "markets")?.message).toBe(
+      "2 markets on 2 stacks checked: supply, settlement and graduation on time.",
+    );
+  });
   it("takes the worst level across every rule", () => {
     const findings = evaluate(
       snapshot({
@@ -175,5 +210,89 @@ describe("evaluate", () => {
     expect(md).toContain("**WARN**");
     expect(md).toContain("https://testnet.monadscan.com/address/0x2A44B99014cF73065BFb89197a08DE09D18d3982");
     expect(md).not.toMatch(/—/);
+  });
+});
+
+describe("reading the chain", () => {
+  // Testnet's layout: the primary stack and `hunch` (Hunch Book's own order book), each with its own
+  // factory, vault and markets. The reader walks both at one block.
+  const testnet = deployments["monad-testnet"];
+  const HUNCH_FACTORY = "0x846Cd400B832203befe5902ef43DAdc969985AF2";
+  const HUNCH_VAULT = "0x68B530302b012f22e5f00Ce0C6C8cF3A189fee86";
+  const HUNCH_MARKET = "0x00000000000000000000000000000000000000b5";
+  const deployment: Deployment = {
+    ...testnet,
+    stacks: { hunch: { ...(testnet.stacks?.hunch ?? {}), factory: HUNCH_FACTORY, vault: HUNCH_VAULT } },
+  };
+  const primaryFactory = (testnet.hunchBook.factory as string).toLowerCase();
+
+  it("reads every stack's vault and markets", async () => {
+    const blocks: (bigint | undefined)[] = [];
+    const client = {
+      getBlock: async ({ blockNumber }: { blockNumber?: bigint } = {}) => ({
+        number: blockNumber ?? 70_000_000n,
+        timestamp: blockNumber ? 1_791_000_000n : 1_791_003_000n,
+      }),
+      getBalance: async () => 5n * MON,
+      multicall: async ({
+        contracts,
+        blockNumber,
+      }: {
+        contracts: { address: string; functionName: string; args?: unknown[] }[];
+        blockNumber?: bigint;
+      }) => {
+        blocks.push(blockNumber);
+        return contracts.map((c) => {
+          const hunch = c.address.toLowerCase() === HUNCH_FACTORY.toLowerCase();
+          switch (c.functionName) {
+            case "balanceOf":
+              return c.args?.[0] === HUNCH_VAULT ? 7n : 9n;
+            case "totalObligations":
+              return c.address === HUNCH_VAULT ? 8n : 9n;
+            case "marketCount":
+              return c.address.toLowerCase() === primaryFactory ? 0n : hunch ? 1n : 0n;
+            case "marketAt":
+              return HUNCH_MARKET;
+            case "templateId":
+              return 2;
+            case "phase":
+              return Phase.Pool;
+            case "outcome":
+              return 0;
+            case "window":
+              return {
+                blockClock: false,
+                lock: 1_791_100_000n,
+                close: 1_791_200_000n,
+                settleDeadline: 1_792_000_000n,
+              };
+            case "graduated":
+              return false;
+            case "graduationRuleMet":
+              return false;
+            case "tokens":
+              return [
+                "0x00000000000000000000000000000000000000c1",
+                "0x00000000000000000000000000000000000000c2",
+              ];
+            case "totalSupply":
+              return 0n;
+            case "ledger":
+              return { sets: 0n };
+            default:
+              throw new Error(c.functionName);
+          }
+        });
+      },
+    } as unknown as PublicClient;
+    const s = await readSnapshot(client, { network: "monad-testnet", deployment, rpcUrl: "" });
+    expect(s.vaults).toEqual([
+      { stack: "primary", address: testnet.hunchBook.vault, balance: 9n, obligations: 9n },
+      { stack: "hunch", address: HUNCH_VAULT, balance: 7n, obligations: 8n },
+    ]);
+    expect(s.markets.map((m) => [m.stack, m.address])).toEqual([["hunch", HUNCH_MARKET]]);
+    expect(new Set(blocks)).toEqual(new Set([70_000_000n]));
+    // The hunch vault is short by one unit: the check names it.
+    expect(evaluate(s).find((f) => f.level === "fail")?.message).toContain("The hunch stack's vault");
   });
 });

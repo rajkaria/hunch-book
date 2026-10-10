@@ -18,6 +18,8 @@ export const Phase = { Pool: 0, PoolLocked: 1, Graduated: 2, Closed: 3, Settled:
 
 export interface MarketSnapshot {
   address: string;
+  /** The deployment stack the market belongs to ("primary", or a name under `stacks` such as "hunch"). */
+  stack?: string;
   templateId: number;
   phase: number;
   /** 0 Unresolved, 1 Yes, 2 No. */
@@ -40,6 +42,15 @@ export interface ServiceHealth {
   error?: string;
 }
 
+/** One stack's vault: its USDC balance and what it owes. Each stack has its own vault. */
+export interface VaultSnapshot {
+  /** "primary", or a name under `stacks` (testnet: kuruV2, hunch). */
+  stack: string;
+  address: string;
+  balance: bigint;
+  obligations: bigint;
+}
+
 export interface Snapshot {
   network: string;
   block: bigint;
@@ -47,8 +58,9 @@ export interface Snapshot {
   timestamp: number;
   /** Measured seconds per block, for block-clock markets. */
   secondsPerBlock: number;
-  vaultBalance: bigint;
-  vaultObligations: bigint;
+  /** Every stack's vault, the primary first. */
+  vaults: VaultSnapshot[];
+  /** Every stack's markets. */
   markets: MarketSnapshot[];
   /** Native MON balances in wei. */
   balances: { keeper: bigint; maker: bigint };
@@ -102,18 +114,22 @@ function fmtMon(wei: bigint): string {
   return `${whole}.${frac.toString().padStart(2, "0")} MON`;
 }
 
-export function checkSolvency(s: Snapshot): Finding {
-  if (s.vaultBalance >= s.vaultObligations) {
+/** One vault's solvency. Each stack's vault is checked on its own: one vault's surplus never covers another. */
+export function checkSolvency(v: VaultSnapshot): Finding {
+  const which = v.stack === "primary" ? "The vault" : `The ${v.stack} stack's vault`;
+  if (v.balance >= v.obligations) {
     return {
       level: "ok",
       check: "solvency",
-      message: `The vault holds at least what it owes (surplus ${s.vaultBalance - s.vaultObligations} base units).`,
+      subject: v.address,
+      message: `${which} holds at least what it owes (surplus ${v.balance - v.obligations} base units).`,
     };
   }
   return {
     level: "fail",
     check: "solvency",
-    message: `The vault holds ${s.vaultBalance} but owes ${s.vaultObligations} USDC base units.`,
+    subject: v.address,
+    message: `${which} holds ${v.balance} but owes ${v.obligations} USDC base units.`,
   };
 }
 
@@ -205,18 +221,20 @@ export function checkService(h: ServiceHealth, s: Snapshot, t: Thresholds): Find
 }
 
 export function evaluate(s: Snapshot, t: Thresholds = DEFAULT_THRESHOLDS): Finding[] {
-  const out: Finding[] = [checkSolvency(s)];
+  const out: Finding[] = s.vaults.map(checkSolvency);
+  const marketFindings: Finding[] = [];
   for (const m of s.markets) {
     for (const f of [checkSupply(m), checkSettlement(m, s, t), checkGraduation(m, s, t)]) {
-      if (f) out.push(f);
+      if (f) marketFindings.push(f);
     }
   }
-  const marketProblems = out.filter((f) => f.subject).length;
-  if (marketProblems === 0) {
+  out.push(...marketFindings);
+  if (marketFindings.length === 0) {
+    const stacks = new Set(s.markets.map((m) => m.stack ?? "primary")).size;
     out.push({
       level: "ok",
       check: "markets",
-      message: `${s.markets.length === 1 ? "1 market" : `${s.markets.length} markets`} checked: supply, settlement and graduation on time.`,
+      message: `${s.markets.length === 1 ? "1 market" : `${s.markets.length} markets`}${stacks > 1 ? ` on ${stacks} stacks` : ""} checked: supply, settlement and graduation on time.`,
     });
   }
   out.push(checkBalance("keeper", s.balances.keeper, t.keeperWarnWei, t.keeperFailWei));

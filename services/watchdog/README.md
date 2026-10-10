@@ -1,11 +1,13 @@
 # Watchdog: liveness checks (roadmap O-6)
 
 Reads the chain and answers one question: is Hunch Book healthy right now? It holds no key and sends
-no transaction.
+no transaction. It reads every stack in the deployments file (testnet: the primary one, `kuruV2` and
+`hunch`, where new markets go) at one block: each stack's vault is checked on its own, and every
+stack's markets are checked.
 
 | Check | Ok | Warn | Fail |
 |---|---|---|---|
-| Solvency | vault USDC balance at least `totalObligations()` | | balance below obligations, by any amount |
+| Solvency (each stack's vault) | vault USDC balance at least `totalObligations()` | | balance below obligations, by any amount |
 | Supply | for every graduated, unsettled market: YES supply = NO supply = complete sets | | any difference |
 | Settlement | settled within 2 hours of close (touch templates 3 and 4: after their 24-hour challenge period) | more than 2 hours late | more than 24 hours late |
 | Void | | | past the settlement deadline and still not voided |

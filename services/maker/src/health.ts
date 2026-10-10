@@ -13,6 +13,8 @@ export interface HealthSnapshot {
   /** The stack this bot quotes on ("primary" or a name under `stacks`) and its Kuru version. */
   stack?: string;
   kuruVersion?: number;
+  /** Where the stack's books are: "kuru", or "hunch" for Hunch Book's own order book. */
+  venue?: string;
   maker: string;
   enabled: boolean;
   monBalance?: string;
@@ -50,6 +52,7 @@ export class Health {
       mode: string;
       stack?: string;
       kuruVersion?: number;
+      venue?: string;
     },
   ) {
     this.snapshot = { ...base, updatedAt: new Date().toISOString(), openOrders: 0, markets: [] };

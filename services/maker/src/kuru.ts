@@ -3,7 +3,8 @@ import { type Address, isAddressEqual, type PublicClient } from "viem";
 import { classifyOrder, type LiveOrder, type OrderStatus } from "./orders.js";
 import type { BookSpec } from "./quotes.js";
 
-// Reads from one Kuru book. Nothing here sends a transaction.
+// Reads from one Kuru v1 book, or one of Hunch Book's own order books (same interface). Nothing here
+// sends a transaction.
 
 export interface BookInfo extends BookSpec {
   base: Address;
@@ -14,8 +15,18 @@ export interface BookInfo extends BookSpec {
   takerFeePps?: bigint;
 }
 
-/** Kuru's MarketState: 0 active, 1 soft-paused (cancels only), 2 hard-paused. */
+/**
+ * Kuru's MarketState: 0 active, 1 soft-paused (cancels only), 2 hard-paused. A Hunch order book reads 0
+ * while its market is in phase Graduated and 1 (cancels only) before graduation and from close on; never 2.
+ */
 export const MarketState = { Active: 0, SoftPaused: 1, HardPaused: 2 } as const;
+
+/** What a book's state means for quoting, in the words the bot's health and logs use. */
+export function bookStateStatus(state: number): { status: string; reason: string } {
+  if (state === MarketState.SoftPaused)
+    return { status: "book-cancels-only", reason: "the book takes cancels only" };
+  return { status: "book-paused", reason: "book paused" };
+}
 
 export async function readBookInfo(client: PublicClient, book: Address): Promise<BookInfo> {
   const [

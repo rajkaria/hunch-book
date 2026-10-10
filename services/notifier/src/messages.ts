@@ -26,6 +26,13 @@ function title(m: MarketState): string {
   return m.question ?? `Hunch Book market #${m.marketId}`;
 }
 
+/** Where a graduated market trades, in words: from its stack's venue, or plainly when it is unknown. */
+export function bookPhrase(m: Pick<MarketState, "venue" | "kuruVersion">): string {
+  if (m.venue === "hunch") return "Hunch Book's own order book";
+  if (m.venue === "kuru") return m.kuruVersion === 2 ? "Kuru v2's order book" : "Kuru's order book";
+  return "its order book";
+}
+
 function links(m: MarketState, l: Links): string {
   return `Market: ${l.appUrl}/m/${m.address}\nContract: ${l.explorer}/address/${m.address}`;
 }
@@ -36,7 +43,7 @@ export function eventMessage(e: MarketEvent, l: Links): string {
     case "graduated":
       return [
         `Graduated: ${title(m)}`,
-        `The pool of ${usdc(m.poolTotal)} USDC became YES and NO tokens, now trading on Kuru's order book${
+        `The pool of ${usdc(m.poolTotal)} USDC became YES and NO tokens, now trading on ${bookPhrase(m)}${
           m.chanceBps === null ? "" : ` at ${chance(m.chanceBps)} YES`
         }. Stakers can claim their tokens, and anyone can now sell before the answer.`,
         links(m, l),
