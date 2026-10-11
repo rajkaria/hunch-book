@@ -648,7 +648,7 @@ describe("landing page", () => {
     expect(Array.from(items).every((d) => !d.open)).toBe(true);
     expect(screen.getByText(/at most 1.94 cents/)).toBeTruthy();
     expect(screen.getByText(/redeems for 0.50 USDC, so someone who bought YES at 0.80/)).toBeTruthy();
-    expect(screen.getByText(/Mainnet with real USDC is planned/)).toBeTruthy();
+    expect(screen.getByText(/The contracts are live on Monad mainnet with Circle USDC/)).toBeTruthy();
   });
 
   it("labels a market our wallets created as seeded by Hunch Book", () => {

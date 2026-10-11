@@ -129,7 +129,14 @@ describe("which cycle jobs run", () => {
   });
 
   it("runs none on a network without the periphery", () => {
-    expect(buildCycleJobs(parseConfig({}), deployments["monad-mainnet"])).toEqual([]);
+    const mainnet = deployments["monad-mainnet"];
+    const bare = { ...mainnet, hunchBook: { ...mainnet.hunchBook, periphery: undefined } };
+    expect(buildCycleJobs(parseConfig({}), bare)).toEqual([]);
+  });
+
+  it("runs the periphery jobs on mainnet once its periphery is deployed", () => {
+    const names = buildCycleJobs(parseConfig({}), deployments["monad-mainnet"]).map((j) => j.name);
+    expect(names).toEqual(["autoRedeem", "orders", "oracle"]);
   });
 
   it("adds the series job from KEEPER_SERIES_FILE", () => {

@@ -33,6 +33,14 @@ const state = vi.hoisted(() => ({
   creatorFees: {} as QueryState,
 }));
 
+// These tests describe the app while Monad mainnet has no addresses, so mainnet stays undeployed here
+// whatever deployments/monad-mainnet.json holds.
+vi.mock("@hunch-book/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hunch-book/shared")>();
+  const mainnet = { ...actual.deployments["monad-mainnet"], hunchBook: {} };
+  return { ...actual, deployments: { ...actual.deployments, "monad-mainnet": mainnet } };
+});
+
 vi.mock("@/lib/config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/config")>();
   // One stack each way, so the routes do not move when deployments/*.json gains a stack.

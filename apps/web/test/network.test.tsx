@@ -29,6 +29,14 @@ import { chooseNetwork } from "../src/lib/wallet/appNetwork";
 import { forActiveNetwork } from "../src/lib/wallet/useTxRunner";
 import { renderWithProviders } from "./render";
 
+// These tests describe the app while Monad mainnet has no addresses, so mainnet stays undeployed here
+// whatever deployments/monad-mainnet.json holds.
+vi.mock("@hunch-book/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hunch-book/shared")>();
+  const mainnet = { ...actual.deployments["monad-mainnet"], hunchBook: {} };
+  return { ...actual, deployments: { ...actual.deployments, "monad-mainnet": mainnet } };
+});
+
 // The create flow's factory read, so no test here talks to a real RPC.
 vi.mock("@/lib/create/reads", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/create/reads")>();
