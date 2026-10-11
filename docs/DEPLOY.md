@@ -1,8 +1,11 @@
 # Deploying Hunch Book
 
 This is the runbook for putting Hunch Book on a Monad network. Testnet is live (addresses in
-[`deployments/monad-testnet.json`](../deployments/monad-testnet.json)). Mainnet is **planned**: every
-step below has been rehearsed on a fork of Monad mainnet, but nothing has been deployed there yet.
+[`deployments/monad-testnet.json`](../deployments/monad-testnet.json)). Mainnet is **building**, on Kuru
+v1: the core and the periphery were deployed on 2026-10-11 (addresses and transactions in
+[`deployments/monad-mainnet.json`](../deployments/monad-mainnet.json)); templates 3 to 7 and the
+guardian's template registrations (steps 3 and 4) are next, so no market can be created there yet. Every
+step below has been rehearsed on a fork of Monad mainnet.
 
 `deployments/<network>.json` is the only source of contract addresses. The deploy script writes it,
 and the app, keeper, maker, indexer and docs all read it.
@@ -35,18 +38,20 @@ From [PROTOCOL.md §10.3 and §12](./PROTOCOL.md#103-beta-limits-v0):
 | Minimum stake | 1 USDC | `Deploy.betaCaps()` |
 | Creator's first stake | at least 5 USDC | `Deploy.betaCaps()` |
 | Total USDC the vault may hold | 50,000 USDC | `Deploy.COLLATERAL_CAP` |
-| Graduation rule | 500 USDC pool, 10 stakers, chance between 3% and 97% | `Deploy.graduationRule()` and `GuardianBatch.rule()` |
+| Graduation rule | `GRADUATION_MIN_POOL` USDC pool and `GRADUATION_MIN_STAKERS` stakers (default 500 and 10), chance between 3% and 97% | `GraduationRuleEnv.sol`, read by `Deploy.s.sol` and `GuardianBatch.s.sol` |
 | Kuru book | precisions 1e6 and 1e6, tick 0.001 USDC, minimum 1 YES, maximum = pool cap, fees 0 and 0, AMM spread 30 | `Deploy._deployTrading` |
 
-Caps apply to markets created after a change. Existing markets keep the caps they started with.
+Caps apply to markets created after a change. Existing markets keep the caps they started with. A
+template's graduation rule is fixed when the guardian adds it; every template on a deployment gets
+template 1's rule (`GuardianBatch.s.sol` copies it once template 1 is registered).
 
 ## Roles
 
 | Role | Testnet | Mainnet |
 |---|---|---|
-| Deployer | a hot key, `DEPLOYER_PRIVATE_KEY` | a hot key, used once, then holds nothing |
-| Guardian | the deployer | **a multisig**, never a hot key. `Deploy.s.sol` refuses to deploy to mainnet if the guardian is the deployer |
-| Fee recipient | the deployer | an address chosen by Hunch, ideally the same multisig |
+| Deployer | a hot key, `DEPLOYER_PRIVATE_KEY` | a key used for the deploy only, then emptied. `--account`, `--ledger` or `--interactive` work as well as the env key |
+| Guardian | the deployer | **a separate address**, ideally a multisig. `Deploy.s.sol` stops on mainnet if `GUARDIAN` is unset or is the deployer |
+| Fee recipient | the deployer | an address chosen by Hunch, ideally the guardian multisig. It can hand the role on (`setFeeRecipient`) |
 
 The guardian can pause market creation and graduation, add templates and set caps for future
 markets. It can never pause settlement, redemption, merges or refunds, never move funds and never
@@ -54,94 +59,96 @@ set an outcome ([PROTOCOL.md §7.3](./PROTOCOL.md#73-access-control)).
 
 ## Mainnet, step by step
 
+The mainnet stack is Kuru v1 (`KURU_VERSION=1`, the default): Kuru's mainnet Router, MarginAccount and
+order books, with Circle USDC as collateral. On mainnet Kuru's `Router.deployProxy` is owner-only, so
+Kuru creates each market's YES/USDC book and anyone registers it with the Graduator, which checks
+every parameter. Until a market's book is registered, the market runs as a pool; if it never arrives,
+the pool settles (or voids) and pays out without Kuru.
+
 ### 0. Before you start
 
-- A multisig on Monad mainnet to act as guardian (for example a Safe). Write down its address.
-- The fee recipient address.
-- About 5 MON on the deployer for gas. Monad charges the gas **limit**, not the gas used, so keep
-  the `--gas-estimate-multiplier` at 110.
+- The guardian address (a multisig is best) and the fee recipient address.
+- MON for gas on the deployer and, for a single-key guardian, on the guardian. Monad charges the gas
+  **limit**, not the gas used, so keep `--gas-estimate-multiplier 110`. Measured on an anvil fork of
+  mainnet at 102 gwei (gas limits as sent):
+
+  | Step | Transactions | Gas | MON |
+  |---|---|---|---|
+  | `Deploy.s.sol` (core, Kuru v1) | 7 | 21.3 million | 2.18 |
+  | `DeployTemplatesV2.s.sol` (templates 3 to 6) | 4 | 10.6 million | 1.08 |
+  | `DeploySnapshotTemplate.s.sol` (template 7) | 1 | 7.3 million | 0.74 |
+  | `DeployPeriphery.s.sol` | 8 | 15.0 million | 1.53 |
+  | Guardian: 7 `addTemplate` calls | 7 | about 0.7 million | 0.07 |
+
+  Forge's "Estimated amount required" prices a whole script at the maximum fee it bids (about twice
+  the base fee), so give the deployer more than it spends: 8 MON at least. Passing
+  `--with-gas-price 120gwei --priority-gas-price 2gwei` lowers that check to 1.2 times the base fee;
+  Monad still charges base fee plus tip.
 - `forge --version` reports 1.8 or later. `contracts/foundry.toml` sets `network = "monad"`.
 
 ### 1. Rehearse on a fork
 
-The rehearsal runs the real deploy script on a fork of Monad mainnet with Circle USDC, Kuru's
-mainnet Router, MarginAccount and order book, and Chainlink's BTC/USD feed. It deploys, registers
-the templates from the guardian batch, fills a pool, has Kuru's owner create the book (as Kuru will
-on mainnet), registers it from an unrelated address, graduates, quotes, trades through the router,
-settles and redeems.
+Three fork suites run the real deploy script on a fork of Monad mainnet, with Circle USDC, Kuru's
+mainnet Router, MarginAccount and order book, and Chainlink's BTC/USD feed. They skip when the RPC is
+unreachable.
 
 ```bash
 cd contracts
-FOUNDRY_PROFILE=fork forge test --match-path test/fork/MainnetRehearsal.fork.t.sol -vv
+FOUNDRY_PROFILE=fork forge test --match-path "test/fork/Mainnet*" -vv
 ```
 
-The recommended mainnet launch is on Hunch Book's own order book (`VENUE=hunch`), which needs nothing
-from Kuru: books are created inside `graduate()`. Its rehearsal deploys with the real script and Circle
-USDC, fills a pool, graduates (creating the book), quotes, trades YES and NO through the router, closes,
-settles and redeems:
+- `MainnetKuruV1.fork.t.sol`: the money paths, with USDC moved from a real Circle USDC holder.
+  `deployProxy` refuses everyone but Kuru's owner. With no book, `graduate()` reverts and the pool
+  locks, settles and pays every winner in full, or voids and refunds every stake. With the book Kuru's
+  owner creates (at the address `computeAddress` predicts), anyone registers it, the market
+  graduates, and trades route through Kuru.
+- `MainnetRehearsal.fork.t.sol`: the whole launch, guardian batch included, and the Kuru v2 paths.
+
+The gas table above comes from broadcasting the real scripts to a local anvil fork, and
+`RehearseMainnetMarket.s.sol` walks one market through its life there (it refuses any RPC but
+anvil):
 
 ```bash
-FOUNDRY_PROFILE=fork forge test --match-path test/fork/HunchVenueMainnet.fork.t.sol -vv
-```
-
-All tests must pass on the day of the deploy. The Kuru file rehearses the Kuru v1 path (Kuru v1 is live on
-mainnet) and the Kuru v2 launch path: a deploy with no graduator (`WIRE_KURU=0`) whose pools run and
-settle without one. The Kuru v2 contracts themselves are rehearsed on a fork of Monad testnet, against
-Kuru's live v2 contracts, with Kuru's owner impersonated for its setup steps:
-
-```bash
-FOUNDRY_PROFILE=fork forge test --match-path test/fork/KuruV2.fork.t.sol -vv
+anvil --fork-url https://rpc.monad.xyz --network monad --auto-impersonate --port 18643
+# give the deployer, a stand-in guardian, the keeper, the maker and Kuru's owner MON: cast rpc anvil_setBalance ...
+GUARDIAN=<stand-in> forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:18643 --unlocked \
+  --sender <deployer> --broadcast --slow --gas-estimate-multiplier 110
+forge script script/GuardianBatch.s.sol --sig "register()" --rpc-url http://127.0.0.1:18643 --unlocked \
+  --sender <stand-in> --broadcast --slow --gas-estimate-multiplier 110
+forge script script/RehearseMainnetMarket.s.sol --rpc-url http://127.0.0.1:18643 --unlocked \
+  --sender <keeper> --broadcast --slow --gas-estimate-multiplier 110
+git checkout deployments/   # the anvil run wrote the deployments file
 ```
 
 ### 2. Deploy
 
 ```bash
 cd contracts
-GUARDIAN=0xYourMultisig FEE_RECIPIENT=0xYourFeeAddress \
-DEPLOYER_PRIVATE_KEY=... \
-forge script script/Deploy.s.sol --rpc-url "$MONAD_MAINNET_RPC" \
-  --broadcast --gas-estimate-multiplier 110
+GUARDIAN=0xGuardian FEE_RECIPIENT=0xFeeAddress GRADUATION_MIN_POOL=200 GRADUATION_MIN_STAKERS=5 \
+forge script script/Deploy.s.sol --rpc-url "$MONAD_MAINNET_RPC" --account deployer \
+  --broadcast --slow --gas-estimate-multiplier 110
+forge script script/Deploy.s.sol --sig "record()" --rpc-url "$MONAD_MAINNET_RPC"
 ```
 
-Run it once without `--broadcast` first: a dry run prints every address and writes nothing. The
-broadcast run writes the addresses into `deployments/monad-mainnet.json` under `hunchBook`.
+Run it once without `--broadcast` (and with `--sender <deployer address>` in place of `--account`)
+first: a dry run prints every address and writes nothing. The broadcast run writes the addresses into
+`deployments/monad-mainnet.json` under `hunchBook`, and `record()` adds the deploy transaction hashes.
+`DEPLOYER_PRIVATE_KEY` in `.env` works in place of `--account`; Foundry reads `.env` from the directory
+it runs in, so the key never goes on the command line.
 
-**Venue.** `VENUE=hunch` (recommended for mainnet) deploys Hunch Book's own order book
-(HunchOrderBookFactory, its HunchMarginAccount and the book implementation) with the v1 Graduator and
-HunchRouter on it, and writes `hunchBook.venue`. Every market graduates into its own book on the spot,
-on any network ([PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)):
+`GRADUATION_MIN_POOL` and `GRADUATION_MIN_STAKERS` set the rule every template gets. The defaults (500
+USDC, 10 stakers) are the testnet v0 rule; the line above uses 200 USDC from 5 stakers as an example.
+Choose before the deploy: a template's rule cannot change once the guardian adds it.
 
-```bash
-VENUE=hunch GUARDIAN=0xYourMultisig FEE_RECIPIENT=0xYourFeeAddress DEPLOYER_PRIVATE_KEY=... \
-forge script script/Deploy.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast --gas-estimate-multiplier 110
-```
-
-A Kuru stack can be added next to it later (`STACK=kuruV2 KURU_VERSION=2`), once Kuru creates books.
-`GRADUATION_MIN_POOL` and `GRADUATION_MIN_STAKERS` set the graduation rule of templates 1 and 2 (default
-500 USDC and 10 stakers); the template scripts copy template 1's.
-
-Foundry reads `.env` from the directory it runs in, so the key never goes on the command line.
-
-**Kuru version.** Mainnet defaults to Kuru v2 (`KURU_VERSION=2`): GraduatorV2 and HunchRouterV2,
-pointed at `external.kuruV2` in the deployments file ([PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)).
-
-- Kuru's v2 mainnet addresses are in the file: deploy as above.
-- They are not there yet: deploy with `WIRE_KURU=0`. Everything except the graduator and router goes
-  out; pools run and settle as pools. When Kuru publishes the addresses, add them under
-  `external.kuruV2` (`accountCore`, `spotRouter`, `withdrawalLimiter`, ...) and wire, with the same
-  deployer key (the factory's `setGraduator` is one-time and deployer-only):
-
-  ```bash
-  DEPLOYER_PRIVATE_KEY=... forge script script/WireKuruV2.s.sol --rpc-url "$MONAD_MAINNET_RPC" \
-    --broadcast --gas-estimate-multiplier 110
-  ```
-
-- Kuru v2 slips and Kuru v1 is the plan: `KURU_VERSION=1` (the v1 Graduator and HunchRouter).
-
-`KURU_TAKER_FEE_PPS` and `KURU_MAKER_FEE_PPS` set the fees Hunch Book asks Kuru for on v2 books
-(default 7000 and 4000 parts per 10^7, Kuru's testnet defaults). GraduatorV2 accepts any book Kuru
-creates within its limits (tick up to 0.01 USDC, minimum order up to 10 USDC, taker fee up to 0.3%),
-so a different choice by Kuru does not need a redeploy.
+**Other venues.** `VENUE=hunch` deploys Hunch Book's own order book instead
+(HunchOrderBookFactory, its HunchMarginAccount and the book implementation, with the v1 Graduator and
+HunchRouter on it): every market graduates into its own book on the spot, with no third party
+([PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)). Its rehearsal is
+`test/fork/HunchVenueMainnet.fork.t.sol`. `KURU_VERSION=2` deploys GraduatorV2 and HunchRouterV2 against
+`external.kuruV2`, once Kuru publishes v2 mainnet addresses; until then `KURU_VERSION=2 WIRE_KURU=0`
+deploys everything but the graduator and router, and `WireKuruV2.s.sol` wires them later with the same
+deployer (the factory's `setGraduator` is one-time and deployer-only). `KURU_TAKER_FEE_PPS` and
+`KURU_MAKER_FEE_PPS` set the fees asked of Kuru for v2 books (default 7000 and 4000 parts per 10^7).
 
 Then verify the contracts on Sourcify (the same way testnet was verified):
 
@@ -149,82 +156,101 @@ Then verify the contracts on Sourcify (the same way testnet was verified):
 forge verify-contract <address> <path:Contract> --chain 143 --verifier sourcify
 ```
 
-### 3. The other templates and the periphery
+### 3. The guardian registers templates 1 and 2
+
+The deployer is not the guardian on mainnet, so it cannot register templates. The other template
+scripts copy template 1's rule, so templates 1 and 2 come first.
+
+A multisig guardian (a Safe): generate the batch, which sends nothing.
 
 ```bash
 cd contracts
-DEPLOYER_PRIVATE_KEY=... forge script script/DeployTemplatesV2.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast --slow
+GRADUATION_MIN_POOL=200 GRADUATION_MIN_STAKERS=5 forge script script/GuardianBatch.s.sol --rpc-url "$MONAD_MAINNET_RPC"
+```
+
+This writes `deployments/guardian/monad-mainnet-add-templates.json` in the Safe Transaction Builder
+format, one `addTemplate(templateId, resolver, rule)` call per deployed template not yet registered. In
+the Safe app, open Transaction Builder, drop the file in, check every call against this document, and
+sign. A single-key guardian sends the same calls from its own wallet; the script stops unless the
+wallet is the factory's guardian:
+
+```bash
+GRADUATION_MIN_POOL=200 GRADUATION_MIN_STAKERS=5 forge script script/GuardianBatch.s.sol --sig "register()" \
+  --rpc-url "$MONAD_MAINNET_RPC" --account guardian --broadcast --slow --gas-estimate-multiplier 110
+```
+
+### 4. The other templates and the periphery
+
+```bash
+cd contracts
+forge script script/DeployTemplatesV2.s.sol --rpc-url "$MONAD_MAINNET_RPC" --account deployer --broadcast --slow
 forge script script/DeployTemplatesV2.s.sol --sig "record()" --rpc-url "$MONAD_MAINNET_RPC"
-DEPLOYER_PRIVATE_KEY=... forge script script/DeploySnapshotTemplate.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast --slow
+forge script script/DeploySnapshotTemplate.s.sol --rpc-url "$MONAD_MAINNET_RPC" --account deployer --broadcast --slow
 forge script script/DeploySnapshotTemplate.s.sol --sig "record()" --rpc-url "$MONAD_MAINNET_RPC"
-TIMELOCK_PROPOSER=0xYourMultisig DISTRIBUTOR_FUNDER=0xYourMultisig DEPLOYER_PRIVATE_KEY=... \
-  forge script script/DeployPeriphery.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast --slow
+TIMELOCK_PROPOSER=0xGuardian DISTRIBUTOR_FUNDER=0xGuardian \
+  forge script script/DeployPeriphery.s.sol --rpc-url "$MONAD_MAINNET_RPC" --account deployer --broadcast --slow
 forge script script/DeployPeriphery.s.sol --sig "recordTxs()" --rpc-url "$MONAD_MAINNET_RPC"
+```
+
+These scripts only deploy. Then the guardian registers templates 3 to 7 exactly as in step 3 (the
+batch and `register()` skip what is already registered and use template 1's rule), and the
+registrations are recorded:
+
+```bash
+FROM_BLOCK=<block of the first addTemplate> forge script script/GuardianBatch.s.sol --sig "record()" \
+  --rpc-url "$MONAD_MAINNET_RPC"
 pnpm exec biome format --write deployments/
 ```
-
-On mainnet these scripts only deploy: the deployer is not the guardian, so it cannot register templates.
-The periphery needs the router, so on a `WIRE_KURU=0` deploy it waits until after `WireKuruV2.s.sol`.
-On a Kuru v2 stack the periphery includes `kuruFeedFactory`: the per-token price feeds Kuru's
-WithdrawalLimiter uses.
-
-### 4. The guardian registers the templates
-
-Because the guardian is a multisig, the deployer cannot register templates. Generate the batch:
-
-```bash
-cd contracts
-forge script script/GuardianBatch.s.sol --rpc-url "$MONAD_MAINNET_RPC"
-```
-
-This writes `deployments/guardian/monad-mainnet-add-templates.json` (run
-`pnpm exec biome format --write deployments/` before committing it) in the Safe Transaction Builder
-format, one `addTemplate(templateId, resolver, rule)` call per template that is deployed (ids 1 to 7). In the Safe app, open
-Transaction Builder, drop the file in, check every call against this document, and sign. Templates
-that are already registered are skipped, so the file can be regenerated at any time.
 
 ### 5. Commit the deployment record
 
 Commit `deployments/monad-mainnet.json` with the deploy transaction hashes, then push. The app
-shows mainnet as soon as the file has a factory address.
+shows mainnet as soon as the file has a factory address, and the indexer config for mainnet is
+generated from it (`pnpm --filter @hunch-book/indexer gen-config`).
 
 ### 6. Books on mainnet
 
-On a `VENUE=hunch` stack there is nothing to do: `graduate()` creates each book. The rest of this step is
-for a Kuru stack. Only Kuru can create Kuru books on mainnet. On Kuru v2 each market's tokens also need Kuru's setup first
-(a price source in the WithdrawalLimiter, enabled in AccountCore, whitelisted), which takes Kuru 1 to 2
-days for now, so the request goes out when a market is created, not when it fills. Status: the
-scripts below, the keeper's v2 steps and the request API are live on testnet, for the `kuruV2` stack;
-mainnet waits for Kuru's v2 mainnet contracts.
+On a Kuru v1 stack, Kuru creates each book:
 
-1. Create the market's YES and NO feeds (`kuruFeedFactory.createAdapter`) and poke the oracle from
-   creation so the feeds have history. Then print the request for Kuru:
+1. The keeper asks for it. Once a pool is `KEEPER_BOOK_REQUEST_AT` of the way to its rule (0.5 on
+   mainnet: half the pool and half the stakers), the keeper logs, and posts to its webhook, the exact
+   `deployProxy` call and the address the book will land at. By hand:
 
    ```bash
-   MARKET=0x... forge script script/RegisterBookV2.s.sol --sig "request()" --rpc-url "$MONAD_MAINNET_RPC"
+   MARKET=0x... forge script script/RegisterBook.s.sol --sig "request()" --rpc-url "$MONAD_MAINNET_RPC"
    ```
 
-   This prints the `deploySpotMarket` arguments, the address Kuru's SpotRouter will deploy the book
-   at, and what is still missing.
-2. Kuru sets up both tokens and creates the book.
-3. Anyone registers it; GraduatorV2 accepts it only after `bookProblem` finds nothing wrong (BOOK
-   defaults to the predicted address):
+2. Kuru's owner calls `deployProxy` with those arguments.
+3. Anyone registers the book; the Graduator refuses any book whose parameters differ. The keeper does it
+   on its next cycle, or by hand:
 
    ```bash
-   MARKET=0x... [BOOK=0x...] REGISTRAR_PRIVATE_KEY=... \
-   forge script script/RegisterBookV2.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast
+   MARKET=0x... BOOK=0x... REGISTRAR_PRIVATE_KEY=... \
+   forge script script/RegisterBook.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast
    ```
 
 4. The keeper (or anyone) calls `graduate()` once the pool meets its rule.
 
 Until a book is registered a market runs as a pool, and if its book never arrives it settles as a pool.
-Nothing is lost. On Kuru v1 (`KURU_VERSION=1`) use `RegisterBook.s.sol` the same way.
+Nothing is lost. On a `VENUE=hunch` stack there is nothing to do: `graduate()` creates each book. On
+Kuru v2 the flow is the same with `RegisterBookV2.s.sol`, plus Kuru's per-token setup.
 
 ### 7. Start the services
 
 See [ops/README.md](../ops/README.md) for the keeper and the maker bot: environment variables,
-hosting, gas budgets and health checks. Fund the keeper with about 1 MON and the maker with MON
-for gas plus USDC for inventory.
+hosting, gas budgets and health checks. On mainnet both take `KEEPER_NETWORK=monad-mainnet` and
+`MAKER_NETWORK=monad-mainnet`; [`ops/services.mainnet.env.example`](../ops/services.mainnet.env.example)
+runs them next to the testnet pair from the same checkout. Measured mainnet gas, at 102 gwei:
+
+| Who | Transaction | Gas limit | MON |
+|---|---|---|---|
+| Creator | `createMarket` (template 2) | 1.19 million | 0.12 |
+| Staker | `approve`, then `stake` | 0.08 million, 0.22 million | 0.01, 0.02 |
+| Kuru's owner | `deployProxy` (one book) | 1.39 million | 0.14 |
+| Keeper | `registerBook`, `graduate`, `claimTokensFor` (6 stakers) | 0.20, 0.36, 0.59 million | 0.02, 0.04, 0.06 |
+| Maker | first quote on a new book (mint, deposits, two orders) | about 1.5 million | 0.15 |
+| Maker | requote, one bid and one ask | 0.58 million | 0.06 |
+| Trader | `buyYes`, `sellYes`, `buyNo` | 0.56, 0.54, 0.79 million | 0.06, 0.05, 0.08 |
 
 ## Testnet
 
@@ -275,13 +301,15 @@ Every reader (app, keeper, maker, indexer) goes through all stacks in the file.
 
 ## Checklist
 
-- [ ] Mainnet rehearsal fork test passes today
-- [ ] Guardian multisig address confirmed and owned by people, not a hot key
-- [ ] Dry run reviewed: addresses, caps, guardian, fee recipient
-- [ ] Broadcast run done, `deployments/monad-mainnet.json` written
+- [ ] Mainnet fork suites pass today (`FOUNDRY_PROFILE=fork forge test --match-path "test/fork/Mainnet*"`)
+- [ ] Guardian address confirmed, separate from the deployer (a multisig is best)
+- [ ] Graduation rule chosen (`GRADUATION_MIN_POOL`, `GRADUATION_MIN_STAKERS`)
+- [ ] Deployer funded (8 MON or more), dry run reviewed: addresses, caps, guardian, fee recipient, Kuru v1
+- [ ] Broadcast run done, `deployments/monad-mainnet.json` written, `record()` run
 - [ ] Contracts verified on Sourcify
+- [ ] Guardian registered templates 1 and 2
 - [ ] Templates 3 to 7 and the periphery deployed and recorded
-- [ ] Guardian batch generated, reviewed and executed; `templateOf(1)` to `templateOf(7)` set
+- [ ] Guardian registered templates 3 to 7; `templateOf(1)` to `templateOf(7)` set; `GuardianBatch.record()` run
 - [ ] Deployments file committed and pushed
 - [ ] Keeper and maker running against mainnet with their health endpoints green
 - [ ] First market created, with its transaction linked in the README
