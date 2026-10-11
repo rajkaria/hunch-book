@@ -73,14 +73,18 @@ contract MainnetRehearsalForkTest is Test {
 
     function setUp() public {
         json = vm.readFile(string.concat(vm.projectRoot(), "/../deployments/monad-mainnet.json"));
-        vm.createSelectFork(vm.envOr("MONAD_MAINNET_RPC", string("https://rpc.monad.xyz")));
+        try vm.createSelectFork(vm.envOr("MONAD_MAINNET_RPC", string("https://rpc.monad.xyz"))) returns (uint256) {}
+        catch {
+            vm.skip(true, "Monad mainnet RPC unreachable");
+            return;
+        }
         assertEq(block.chainid, 143);
 
         deployer = vm.addr(DEPLOYER_KEY);
         vm.deal(deployer, 1000 ether);
         script = new Deploy();
-        // The v1 rehearsal (Kuru v1 is live on mainnet; the fallback if Kuru v2 slips). The v2 launch path
-        // is rehearsed in test_mainnetFirst* below and on testnet in KuruV2.fork.t.sol.
+        // The mainnet plan: Kuru v1, live on mainnet, with Kuru creating each book. The v2 path is
+        // rehearsed in test_mainnetFirst* below and on testnet in KuruV2.fork.t.sol.
         d = script.deployWith(
             DEPLOYER_KEY,
             guardian,
@@ -131,11 +135,13 @@ contract MainnetRehearsalForkTest is Test {
 
     // ------------------------------------------------------------------ mainnet first, Kuru v2 later
 
-    /// Kuru v2 is the mainnet default, and its addresses are not in the deployments file yet: a full
-    /// deploy stops with instructions instead of deploying a graduator that points nowhere.
+    /// Kuru v1 is the mainnet default (Kuru is the venue, and v1 is what Kuru runs on mainnet). Kuru v2's
+    /// addresses are not in the deployments file yet: a v2 deploy stops with instructions instead of
+    /// deploying a graduator that points nowhere.
     function test_mainnetFirst_v2NeedsKuruAddressesOrWireLater() public {
         Deploy again = new Deploy();
-        assertEq(again.options().kuruVersion, 2, "v2 is the mainnet default");
+        assertEq(again.options().kuruVersion, 1, "Kuru v1 is the mainnet default");
+        assertFalse(again.options().hunchVenue, "the venue is Kuru by default");
         vm.expectRevert(
             bytes(
                 "Kuru v2 addresses are not in the deployments file: deploy with WIRE_KURU=0, wire later (WireKuruV2.s.sol)"

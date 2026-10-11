@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {Script, console2} from "forge-std/Script.sol";
+import {console2} from "forge-std/Script.sol";
 import {VmSafe} from "forge-std/Vm.sol";
+import {GraduationRuleEnv} from "./GraduationRuleEnv.sol";
 import {Graduator} from "../src/core/Graduator.sol";
 import {GraduatorV2} from "../src/core/GraduatorV2.sol";
 import {HunchBookFactory} from "../src/core/HunchBookFactory.sol";
@@ -16,7 +17,7 @@ import {IGraduator} from "../src/interfaces/IGraduator.sol";
 import {IGraduatorV2} from "../src/interfaces/IGraduatorV2.sol";
 import {IHunchBookFactory} from "../src/interfaces/IHunchBookFactory.sol";
 import {IResolver} from "../src/interfaces/IResolver.sol";
-import {GraduationRule, MarketCaps} from "../src/interfaces/IHunchBookTypes.sol";
+import {MarketCaps} from "../src/interfaces/IHunchBookTypes.sol";
 import {IKuruMarginAccount} from "../src/interfaces/external/IKuruMarginAccount.sol";
 import {IKuruRouter} from "../src/interfaces/external/IKuruRouter.sol";
 import {IKuruAccountCore, IKuruSpotRouter} from "../src/interfaces/external/IKuruV2.sol";
@@ -30,15 +31,19 @@ import {HunchOrderBookFactory} from "../src/venue/HunchOrderBookFactory.sol";
 ///   DEPLOYER_PRIVATE_KEY=... forge script script/Deploy.s.sol --rpc-url <rpc> --broadcast \
 ///     --gas-estimate-multiplier 110
 ///
-/// The key is read from the environment, never passed on the command line.
+/// The key is read from the environment, never passed on the command line. Without DEPLOYER_PRIVATE_KEY
+/// the script deploys from forge's own wallet flags (`--account <name>`, `--ledger`, `--interactive`),
+/// and a dry run needs only `--sender <deployer address>`.
 ///
 /// Testnet: collateral is TestUSDC (Kuru's testnet USDC cannot be minted) and the deployer is the
 /// guardian, so it registers the templates here. Mainnet: collateral is Circle USDC and GUARDIAN must be
-/// a separate multisig, which then adds the templates itself.
+/// set to a separate address (a multisig, or at least a key that is not the deployer's), which then adds
+/// the templates itself (GuardianBatch.s.sol). The script stops when GUARDIAN is unset on mainnet.
 ///
-/// Kuru version (PROTOCOL.md §8.1). KURU_VERSION=1: the Graduator creates books itself where Kuru v1
-/// allows it (testnet) or registers Kuru-created ones. KURU_VERSION=2 (the mainnet default): GraduatorV2
-/// and HunchRouterV2 against `.external.kuruV2`; Kuru governance creates every book.
+/// Kuru version (PROTOCOL.md §8.1). KURU_VERSION=1 (the default on every network): the Graduator creates
+/// books itself where Kuru v1 allows it (testnet) or verifies and registers the books Kuru creates
+/// (mainnet, where Kuru v1's Router.deployProxy is owner-only). KURU_VERSION=2: GraduatorV2 and
+/// HunchRouterV2 against `.external.kuruV2`; Kuru governance creates every book.
 ///
 /// Stacks. Without STACK the deployment is the network's primary stack (`.hunchBook`). STACK=<name>
 /// deploys an extra stack under `.stacks.<name>` (testnet: STACK=kuruV2 next to the v1 stack); it reuses
@@ -56,12 +61,13 @@ import {HunchOrderBookFactory} from "../src/venue/HunchOrderBookFactory.sol";
 ///
 /// Graduation rule (PROTOCOL.md §5.3, §12): GRADUATION_MIN_POOL (USDC, whole units) and
 /// GRADUATION_MIN_STAKERS override the v0 values (500 USDC, 10 stakers) for templates 1 and 2; the
-/// other template scripts copy template 1's rule.
+/// other template scripts and GuardianBatch.s.sol copy template 1's rule (GraduationRuleEnv.sol).
 ///
-/// Env: DEPLOYER_PRIVATE_KEY; GUARDIAN and FEE_RECIPIENT (default: the deployer, testnet only);
+/// Env: DEPLOYER_PRIVATE_KEY (optional, see above); GUARDIAN (required on mainnet, elsewhere default the
+/// deployer); FEE_RECIPIENT (default the deployer, who can hand it on with setFeeRecipient);
 /// KURU_VERSION; STACK; WIRE_KURU (default 1); KURU_TAKER_FEE_PPS / KURU_MAKER_FEE_PPS (the fees asked
 /// of Kuru for v2 books; default 7000 / 4000, Kuru's testnet defaults).
-contract Deploy is Script {
+contract Deploy is GraduationRuleEnv {
     uint256 internal constant TESTNET = 10_143;
     uint256 internal constant MAINNET = 143;
 
@@ -110,18 +116,30 @@ contract Deploy is Script {
     bool internal extraStack;
 
     function run() external virtual {
-        uint256 key = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address deployer = vm.addr(key);
+        uint256 key = vm.envOr("DEPLOYER_PRIVATE_KEY", uint256(0));
+        address deployer = deployerOf(key);
+        // Mainnet never falls back to the deployer as guardian: the address must be given on purpose.
+        require(
+            block.chainid != MAINNET || vm.envExists("GUARDIAN"),
+            "GUARDIAN is not set: mainnet needs the separate guardian address"
+        );
         Options memory o = options();
         Deployed memory d = deployWith(key, vm.envOr("GUARDIAN", deployer), vm.envOr("FEE_RECIPIENT", deployer), o);
         _write(_deploymentPath(), stackPathOf(o.stack), d);
     }
 
-    /// The options from the environment: KURU_VERSION (default 2 on mainnet, 1 elsewhere), STACK
-    /// (default the primary stack) and WIRE_KURU (default 1).
+    /// The deploying address: the key's, or (key 0) the wallet forge broadcasts from (`--sender`,
+    /// `--account`, `--ledger`, `--interactive`). Refuses forge's default sender, which has no wallet.
+    function deployerOf(uint256 key) public view returns (address deployer) {
+        deployer = key != 0 ? vm.addr(key) : msg.sender;
+        require(deployer != DEFAULT_SENDER, "no deployer: set DEPLOYER_PRIVATE_KEY or pass --sender or a wallet flag");
+    }
+
+    /// The options from the environment: KURU_VERSION (default 1), STACK (default the primary stack),
+    /// WIRE_KURU (default 1) and VENUE (default kuru).
     function options() public view returns (Options memory o) {
         // forge-lint: disable-next-line(unsafe-typecast)
-        o.kuruVersion = uint8(vm.envOr("KURU_VERSION", block.chainid == MAINNET ? uint256(2) : uint256(1)));
+        o.kuruVersion = uint8(vm.envOr("KURU_VERSION", uint256(1)));
         o.stack = vm.envOr("STACK", string(""));
         o.wireKuru = vm.envOr("WIRE_KURU", uint256(1)) != 0;
         string memory venue = vm.envOr("VENUE", string("kuru"));
@@ -148,7 +166,7 @@ contract Deploy is Script {
         extraStack = bytes(o.stack).length != 0;
 
         pk = key;
-        address deployer = vm.addr(pk);
+        address deployer = deployerOf(pk);
         d.guardian = guardian;
         d.feeRecipient = feeRecipient;
         d.kuruVersion = o.kuruVersion;
@@ -160,7 +178,8 @@ contract Deploy is Script {
         }
         d.deployBlock = block.number;
 
-        vm.startBroadcast(pk);
+        if (pk != 0) vm.startBroadcast(pk);
+        else vm.startBroadcast();
         _deployCore(d);
         _deployResolvers(d);
         if (o.hunchVenue) _deployHunchVenue(d);
@@ -331,21 +350,6 @@ contract Deploy is Script {
         return MarketCaps({poolCap: 5000e6, walletCap: 1000e6, minStake: 1e6, creatorMinStake: 5e6});
     }
 
-    function graduationRule() public view returns (GraduationRule memory) {
-        uint256 minPool = vm.envOr("GRADUATION_MIN_POOL", uint256(500));
-        uint256 minStakers = vm.envOr("GRADUATION_MIN_STAKERS", uint256(10));
-        require(minPool >= 10 && minPool <= 5000, "GRADUATION_MIN_POOL out of range");
-        require(minStakers >= 2 && minStakers <= 100, "GRADUATION_MIN_STAKERS out of range");
-        return GraduationRule({
-            // forge-lint: disable-next-line(unsafe-typecast)
-            minPool: uint128(minPool * 1e6),
-            // forge-lint: disable-next-line(unsafe-typecast)
-            minStakers: uint32(minStakers),
-            minChanceBps: 300,
-            maxChanceBps: 9700
-        });
-    }
-
     // ---- output ----
 
     function _write(string memory path, string memory stack, Deployed memory d) internal {
@@ -379,6 +383,105 @@ contract Deploy is Script {
         if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) vm.writeJson(out, path, stack);
         else console2.log("dry run: deployments file not written");
         console2.log(out);
+    }
+
+    // ---- deployment record ----
+
+    /// After the broadcast run has landed: reads each deploy transaction from forge's broadcast log,
+    /// checks it created the address in the deployments file, and writes the hashes under
+    /// `<stack>.deployTxs` (entries other scripts wrote there are kept). Sends nothing.
+    ///
+    ///   forge script script/Deploy.s.sol --sig "record()" --rpc-url <rpc>
+    function record() external {
+        string memory path = _deploymentPath();
+        string memory j = vm.readFile(path);
+        string memory stack = stackPath();
+        require(vm.keyExistsJson(j, string.concat(stack, ".factory")), "nothing deployed on this stack");
+        string memory txs = string.concat(stack, ".deployTxs");
+        string memory k = "deployTxs";
+        string memory out;
+        if (vm.keyExistsJson(j, txs)) {
+            string[] memory existing = vm.parseJsonKeys(j, txs);
+            for (uint256 i; i < existing.length; ++i) {
+                out = vm.serializeBytes32(k, existing[i], vm.parseJsonBytes32(j, string.concat(txs, ".", existing[i])));
+            }
+        }
+        out = _recordCreate(j, stack, k, "Market", ".marketImplementation", "marketImplementation", out);
+        out = _recordCreate(j, stack, k, "HunchBookFactory", ".factory", "factory", out);
+        out = _recordCreate(j, stack, k, "PerplFundingResolver", ".resolvers.perplFunding", "perplFunding", out);
+        out = _recordCreate(j, stack, k, "PriceAtTimeResolver", ".resolvers.priceAtTime", "priceAtTime", out);
+        out = _recordCreate(j, stack, k, "Graduator", ".graduator", "graduator", out);
+        out = _recordCreate(j, stack, k, "GraduatorV2", ".graduator", "graduator", out);
+        out = _recordCreate(j, stack, k, "HunchRouter", ".router", "router", out);
+        out = _recordCreate(j, stack, k, "HunchRouterV2", ".router", "router", out);
+        out = _recordCreate(j, stack, k, "HunchOrderBookFactory", ".venue.bookFactory", "bookFactory", out);
+        if (block.chainid == TESTNET && !extraStackPath(stack)) {
+            out = _recordCreate(j, stack, k, "TestUSDC", ".usdc", "usdc", out);
+        }
+        out = _recordSetGraduator(j, stack, k, out);
+        require(bytes(out).length != 0, "no deploy transaction found in the broadcast log");
+        vm.writeJson(out, path, txs);
+        console2.log(out);
+    }
+
+    /// True for a path under `.stacks`.
+    function extraStackPath(string memory stack) public pure returns (bool) {
+        return keccak256(bytes(stack)) != keccak256(bytes(".hunchBook"));
+    }
+
+    /// Adds `txName` = the logged CREATE of `contractName` that made the address at `stack + suffix`.
+    /// Skips names this deployment did not create (another contract type at that key, or no key).
+    function _recordCreate(
+        string memory j,
+        string memory stack,
+        string memory k,
+        string memory contractName,
+        string memory suffix,
+        string memory txName,
+        string memory out
+    ) internal returns (string memory) {
+        string memory key = string.concat(stack, suffix);
+        if (!vm.keyExistsJson(j, key)) return out;
+        address recorded = vm.parseJsonAddress(j, key);
+        VmSafe.BroadcastTxSummary[] memory all;
+        try vm.getBroadcasts(contractName, uint64(block.chainid), VmSafe.BroadcastTxType.Create) returns (
+            VmSafe.BroadcastTxSummary[] memory found
+        ) {
+            all = found;
+        } catch {
+            return out;
+        }
+        for (uint256 i; i < all.length; ++i) {
+            if (all[i].success && all[i].contractAddress == recorded) {
+                console2.log(txName, recorded);
+                return vm.serializeBytes32(k, txName, all[i].txHash);
+            }
+        }
+        return out;
+    }
+
+    /// Adds `setGraduator`: the first logged call to the factory after the graduator was created.
+    function _recordSetGraduator(string memory j, string memory stack, string memory k, string memory out)
+        internal
+        returns (string memory)
+    {
+        if (!vm.keyExistsJson(j, string.concat(stack, ".graduator"))) return out;
+        address factory = vm.parseJsonAddress(j, string.concat(stack, ".factory"));
+        VmSafe.BroadcastTxSummary[] memory calls;
+        try vm.getBroadcasts("HunchBookFactory", uint64(block.chainid), VmSafe.BroadcastTxType.Call) returns (
+            VmSafe.BroadcastTxSummary[] memory found
+        ) {
+            calls = found;
+        } catch {
+            return out;
+        }
+        uint256 best = type(uint256).max;
+        for (uint256 i; i < calls.length; ++i) {
+            if (!calls[i].success || calls[i].contractAddress != factory) continue;
+            if (best == type(uint256).max || calls[i].blockNumber < calls[best].blockNumber) best = i;
+        }
+        if (best == type(uint256).max) return out;
+        return vm.serializeBytes32(k, "setGraduator", calls[best].txHash);
     }
 
     function _deploymentPath() internal view virtual returns (string memory) {
