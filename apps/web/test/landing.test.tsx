@@ -249,6 +249,49 @@ describe("the most active market", () => {
     expect(pickFeatured([pool(4n, 100), pool(9n, 100), pool(5n, 100)])?.marketId).toBe(9n);
   });
 
+  it("features a Kuru market over any on Hunch Book's own order book, whatever their phase or size", () => {
+    const own = pool(20n, 900, {
+      phase: Phase.Graduated,
+      graduated: true,
+      stack: "hunch",
+      venue: "hunch",
+      kuruVersion: 1,
+    });
+    const kuruPool = pool(3n, 100);
+    expect(pickFeatured([own, kuruPool])?.marketId).toBe(3n);
+    // Only when no Kuru market was read does the hero show one on our fallback book.
+    expect(pickFeatured([own])?.marketId).toBe(20n);
+  });
+
+  it("features one of testnet's Kuru v1 markets: #15, the newest of the graduated 500 USDC pools", () => {
+    const testnet = deployments["monad-testnet"];
+    const live = { phase: Phase.Graduated, graduated: true };
+    const v2 = { stack: "kuruV2", venue: "kuru" as const, kuruVersion: 2 as const };
+    const hunch = { stack: "hunch", venue: "hunch" as const, kuruVersion: 1 as const };
+    // As the read lists them: the default stack (primary, Kuru v1) first, then kuruV2, then hunch, each
+    // newest first, with the pools as they stand on chain.
+    const markets = [
+      pool(15n, 500, live),
+      pool(14n, 500, live),
+      pool(13n, 296, { phase: Phase.PoolLocked }),
+      pool(12n, 500, live),
+      pool(11n, 500, live),
+      pool(10n, 500, live),
+      pool(4n, 500, v2),
+      pool(3n, 500, v2),
+      pool(2n, 500, v2),
+      pool(13n, 110, { ...live, ...hunch }),
+      pool(2n, 200, { ...live, ...hunch }),
+      pool(1n, 200, { ...live, ...hunch }),
+    ];
+    const featured = pickFeatured(markets, testnet);
+    expect(featured?.marketId).toBe(15n);
+    expect(featured?.stack).toBeUndefined();
+    // With the newest Kuru v1 markets gone from the read, still a Kuru v1 market, never a hunch one.
+    expect(pickFeatured(markets.slice(1), testnet)?.marketId).toBe(14n);
+    expect(pickFeatured(markets.slice(2), testnet)?.stack).toBeUndefined();
+  });
+
   it("ranks open markets before settling ones, and settled or voided ones last", () => {
     const settled = pool(1n, 5_000, { phase: Phase.Settled, outcome: Outcome.Yes });
     const voided = pool(2n, 5_000, { phase: Phase.Voided });

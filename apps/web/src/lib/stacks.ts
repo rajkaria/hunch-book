@@ -96,6 +96,19 @@ export function marketVenue(
   return { venue, kuruVersion: venue === "kuru" && m.kuruVersion === 2 ? 2 : 1 };
 }
 
+/**
+ * True when new markets go to a Kuru stack (deployments `defaultStack`). Then Hunch Book's own order
+ * book is our fallback book: it holds earlier markets, which still trade and run to settlement.
+ */
+export const newMarketsOnKuru = (deployment: Deployment = appDeployment): boolean =>
+  defaultStackOf(deployment)?.venue === "kuru";
+
+/** True for a market on our fallback book: Hunch Book's own order book, while new markets go to Kuru. */
+export const onFallbackBook = (
+  m: Pick<MarketView, "stack"> & VenueSource,
+  deployment: Deployment = appDeployment,
+): boolean => marketVenue(m, deployment).venue === "hunch" && newMarketsOnKuru(deployment);
+
 /** The venue chip on a market card and header: "Hunch book", "Kuru v2" or "Kuru". */
 export function venueChipLabel(
   m: Pick<MarketView, "stack"> & VenueSource,

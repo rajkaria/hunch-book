@@ -10,8 +10,10 @@ import {
   TemplateId,
 } from "@hunch-book/shared";
 import { type Address, erc20Abi } from "viem";
+import { appDeployment } from "../config";
 import type { TitleClock } from "../market/title";
 import type { MarketView } from "../market/types";
+import { marketVenue } from "../stacks";
 import { MULTICALL3, type ReadClient } from "./client";
 import { listMarkets, MARKET_LIST_LIMIT, measureMsPerBlock, readChainHead } from "./reads";
 
@@ -104,13 +106,18 @@ const PHASE_RANK: Record<Phase, number> = {
 };
 
 /**
- * The market to put in the hero: the most active one by a simple, stated rule. A market trading on
- * its order book beats a pool, a pool beats one waiting to settle, and within a phase the bigger pool
- * wins (newest first on a tie).
+ * The market to put in the hero: a Kuru market, where every new market opens, and the most active one
+ * by a simple, stated rule. A market trading on its order book beats a pool, a pool beats one waiting to
+ * settle, and within a phase the bigger pool wins (newest first on a tie). Markets on Hunch Book's own
+ * order book (our fallback book, for earlier markets) are picked only when no Kuru market was read.
  */
-export function pickFeatured(markets: readonly MarketView[]): MarketView | null {
+export function pickFeatured(
+  markets: readonly MarketView[],
+  deployment: Deployment = appDeployment,
+): MarketView | null {
+  const kuru = markets.filter((m) => marketVenue(m, deployment).venue === "kuru");
   let best: MarketView | null = null;
-  for (const m of markets) {
+  for (const m of kuru.length > 0 ? kuru : markets) {
     if (!best) {
       best = m;
       continue;
@@ -249,7 +256,7 @@ export async function readLandingSnapshot(
       data: {
         marketCount: count,
         newest: markets?.[0] ?? null,
-        featured: markets ? pickFeatured(markets) : null,
+        featured: markets ? pickFeatured(markets, deployment) : null,
         stats: markets ? summarize(deployment, markets) : null,
         vault: settled(books),
         rule,

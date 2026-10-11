@@ -9,10 +9,13 @@ import {
   explorerCounts,
   explorerHref,
   explorerStats,
+  FALLBACK_HEADING,
+  FALLBACK_NOTE,
   filterMarkets,
   isOneSidedLockedPool,
   isUrgent,
   KURU_PRESET,
+  listSections,
   matchesSearch,
   matchesVenue,
   milestoneShort,
@@ -205,6 +208,56 @@ describe("filters, counts and links", () => {
     expect(activeFilterCount({ phase: "trading", venue: "kuru" })).toBe(2);
     expect(activeFilterCount({ phase: "all", venue: "kuru" }, KURU_PRESET)).toBe(0);
     expect(activeFilterCount({ phase: "pools", venue: "kuru" }, KURU_PRESET)).toBe(1);
+  });
+});
+
+describe("Kuru first, then our fallback book", () => {
+  const hunchPool = makeMarket({
+    address: addr(0xa5),
+    marketId: 2n,
+    stack: "hunch",
+    kuruVersion: 1,
+    venue: "hunch",
+    phase: Phase.Pool,
+  });
+
+  it("lists Kuru's markets first and the fallback book's after, under its heading, each in the order given", () => {
+    const sections = listSections([onHunch, onPrimary, hunchPool, onKuruV2], threeStacks);
+    expect(sections.map((x) => [x.id, x.heading, x.markets])).toEqual([
+      ["main", null, [onPrimary, onKuruV2]],
+      ["fallback", FALLBACK_HEADING, [onHunch, hunchPool]],
+    ]);
+    expect(sections[0]?.note).toBeNull();
+    expect(sections[1]?.note).toBe(FALLBACK_NOTE);
+    expect(FALLBACK_HEADING).toBe("Our fallback book: earlier markets");
+  });
+
+  it("keeps the heading when the fallback book is all a filter shows, and leaves out empty blocks", () => {
+    expect(listSections([onHunch], threeStacks).map((x) => [x.id, x.heading])).toEqual([
+      ["fallback", FALLBACK_HEADING],
+    ]);
+    expect(listSections([onPrimary, onKuruV2], threeStacks).map((x) => x.id)).toEqual(["main"]);
+    expect(listSections([], threeStacks)).toEqual([]);
+  });
+
+  it("has no fallback book while new markets go to Hunch Book's own order book", () => {
+    const hunchDefault: Deployment = { ...threeStacks, defaultStack: "hunch" };
+    expect(listSections([onHunch, onPrimary], hunchDefault)).toEqual([
+      { id: "main", heading: null, note: null, markets: [onHunch, onPrimary] },
+    ]);
+  });
+
+  it("puts the real testnet deployment's hunch-stack markets in the fallback book", () => {
+    const testnet = deployments["monad-testnet"];
+    const tagged = (stack: string) => {
+      const s = stacksOf(testnet).find((x) => x.name === stack);
+      return makeMarket({ stack, venue: s?.venue, kuruVersion: s?.kuruVersion });
+    };
+    const [primary, v2, hunch] = [makeMarket({}), tagged("kuruV2"), tagged("hunch")];
+    expect(listSections([hunch, primary, v2], testnet).map((x) => [x.id, x.markets])).toEqual([
+      ["main", [primary, v2]],
+      ["fallback", [hunch]],
+    ]);
   });
 });
 

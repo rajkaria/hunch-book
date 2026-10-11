@@ -14,7 +14,9 @@ import {
   deployBlockOf,
   marketTag,
   marketVenueLabel,
+  newMarketsOnKuru,
   onDefaultStack,
+  onFallbackBook,
   routerOf,
   stackOf,
   vaultOf,
@@ -151,6 +153,20 @@ describe("venue words", () => {
     ]);
     expect(venueSentences({ ...deployed })).toEqual(["New markets graduate to Kuru's onchain order book."]);
     expect(venueSentences({ ...deployed, hunchBook: {} })).toEqual([]);
+  });
+
+  it("calls Hunch Book's own order book our fallback book once new markets go to Kuru", () => {
+    const testnet = deployments["monad-testnet"];
+    expect(newMarketsOnKuru(testnet)).toBe(true);
+    expect(defaultStack(testnet)).toMatchObject({ name: "primary", venue: "kuru", kuruVersion: 1 });
+    const onHunchStack = makeMarket({ stack: "hunch", venue: "hunch", kuruVersion: 1 });
+    expect(onFallbackBook(onHunchStack, testnet)).toBe(true);
+    expect(onFallbackBook(makeMarket({}), testnet)).toBe(false);
+    expect(onFallbackBook(makeMarket({ stack: "kuruV2", kuruVersion: 2 }), testnet)).toBe(false);
+    // While the hunch stack is where new markets go, it is nobody's fallback.
+    expect(newMarketsOnKuru(withHunch)).toBe(false);
+    expect(onFallbackBook({ stack: "hunch" }, withHunch)).toBe(false);
+    expect(newMarketsOnKuru({ ...deployed, hunchBook: {} })).toBe(false);
   });
 
   it("puts the venue in the chance note, the graduate action and the API's words", () => {
