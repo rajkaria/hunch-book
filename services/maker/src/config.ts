@@ -49,6 +49,9 @@ type Env = Record<string, string | undefined>;
 
 const NETWORKS: Network[] = ["monad-testnet", "monad-mainnet"];
 
+/** "" on testnet (the file keeps its old name), ".monad-mainnet" on mainnet. */
+export const networkSuffix = (network: Network): string => (network === "monad-testnet" ? "" : `.${network}`);
+
 function num(env: Env, name: string, fallback: number, check: (x: number) => boolean, rule: string): number {
   const raw = env[name];
   if (raw === undefined || raw.trim() === "") return fallback;
@@ -160,7 +163,11 @@ export function parseConfig(env: Env): MakerConfig {
       ),
     ),
     dustTokens: num(env, "MAKER_DUST", 1, nonNegative, "zero or more"),
-    healthFile: env.MAKER_HEALTH_FILE?.trim() || fileURLToPath(new URL("../health.json", import.meta.url)),
+    // Off testnet the default file carries the network's name, so a mainnet maker run from the same
+    // checkout as the testnet one never shares its health file.
+    healthFile:
+      env.MAKER_HEALTH_FILE?.trim() ||
+      fileURLToPath(new URL(`../health${networkSuffix(network)}.json`, import.meta.url)),
     healthPort: healthPortRaw
       ? num(env, "MAKER_HEALTH_PORT", 0, (x) => Number.isInteger(x) && x > 0 && x < 65536, "a port number")
       : undefined,

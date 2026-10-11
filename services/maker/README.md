@@ -196,7 +196,7 @@ local state.
 | `MAKER_TEMPLATES` | all priced | Comma-separated template ids to quote; every template with a model (1 to 7) when unset. |
 | `MAKER_SNAPSHOT_VOLS` | none | Snapshot markets: annualised volatility per source id over the defaults, as `sourceId=vol` pairs (`1=0.45,7=1.5`). |
 | `MAKER_STACKS` | all | Comma-separated stacks to quote on (`primary`, or names under `stacks`, such as `kuruV2` or `hunch`); every deployed stack when unset. |
-| `MAKER_HEALTH_FILE` | `services/maker/health.json` | Where the health snapshot is written after every pass. |
+| `MAKER_HEALTH_FILE` | `services/maker/health.json` (`health.monad-mainnet.json` on mainnet) | Where the health snapshot is written after every pass. |
 | `MAKER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET http://localhost:<port>/health`. |
 | `MAKER_ENV_FILE` | repository `.env` | The `.env` file to load. |
 

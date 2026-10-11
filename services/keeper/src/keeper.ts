@@ -293,14 +293,15 @@ export class Keeper {
         );
       }
       let predictedBook: PredictedBook | undefined;
-      if (needsBookLookup(m, globals)) {
+      const bookRequestAt = this.config.bookRequestAt;
+      if (needsBookLookup(m, globals, bookRequestAt)) {
         try {
           predictedBook = await this.predictBook(m, globals);
         } catch (error) {
           this.jobFailed("graduate", m.address, error);
         }
       }
-      const plan = planMarket({ market: m, now, globals, settler, predictedBook });
+      const plan = planMarket({ market: m, now, globals, settler, predictedBook, bookRequestAt });
       decisions += plan.length;
       let proved = false;
       for (const d of plan) {

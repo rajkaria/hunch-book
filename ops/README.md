@@ -48,6 +48,18 @@ over that file, and that file wins over `.env`. The script refuses keys and toke
 transactions, `KEEPER_ENABLED=1` or `MAKER_ENABLED=1` must be set in one of those places; otherwise
 `start` prints a warning that the service runs as a dry run, and `status` shows `enabled: false`.
 
+**Mainnet next to testnet.** A second pair runs from the same checkout with its own run directory
+(pid, log and settings file) and launchd prefix; [`services.mainnet.env.example`](./services.mainnet.env.example)
+is its settings file (`KEEPER_NETWORK` and `MAKER_NETWORK` set to `monad-mainnet`, dry run until
+checked). Off testnet the keeper's state and health files and the maker's health file are named after
+the network by default, so the pairs share nothing but the keys, and nonces are per chain:
+
+```sh
+mkdir -p .run/mainnet && cp ops/services.mainnet.env.example .run/mainnet/services.env
+RUN_DIR=$PWD/.run/mainnet LAUNCHD_PREFIX=xyz.playhunch.book.mainnet bash scripts/run-local-services.sh config
+RUN_DIR=$PWD/.run/mainnet LAUNCHD_PREFIX=xyz.playhunch.book.mainnet bash scripts/run-local-services.sh start
+```
+
 On macOS, `start` also keeps the Mac awake while a service runs (`caffeinate -is`, tied to the
 service's pid; `KEEP_AWAKE=0` skips it). A closed laptop lid still sleeps, and a sleeping Mac stops
 both services. For a machine that should keep them running, use launchd (below) or a host.
@@ -188,7 +200,7 @@ What to look at:
 | keeper `status: "warn"` / `lowBalance: true`, or maker `low-mon` lines | MON is low | Top up the wallet |
 | keeper `jobs.<job>.lastError` | One market or job failed; the others carry on | Read the `job-error` line in the log |
 | keeper `settle-later` lines that keep repeating for one market | The resolver will not answer yet (or ever: see the reason) | Nothing, unless the reason says the market can never settle; it then voids at its deadline |
-| keeper `book-request` lines (mainnet) | A pool met its rule and needs Kuru to create its book | Send the logged `deployProxy` parameters to Kuru |
+| keeper `book-request` lines (mainnet) | A pool met its rule, or is `KEEPER_BOOK_REQUEST_AT` of the way there, and needs Kuru to create its book | Send the logged `deployProxy` parameters to Kuru |
 | maker `openOrders: 0` on a graduated market | It is not quoting | Read its `quote` and `tx-skipped` lines |
 
 ## Stopping safely

@@ -73,19 +73,23 @@ contract MainnetRehearsalForkTest is Test {
 
     function setUp() public {
         json = vm.readFile(string.concat(vm.projectRoot(), "/../deployments/monad-mainnet.json"));
-        vm.createSelectFork(vm.envOr("MONAD_MAINNET_RPC", string("https://rpc.monad.xyz")));
+        try vm.createSelectFork(vm.envOr("MONAD_MAINNET_RPC", string("https://rpc.monad.xyz"))) returns (uint256) {}
+        catch {
+            vm.skip(true, "Monad mainnet RPC unreachable");
+            return;
+        }
         assertEq(block.chainid, 143);
 
         deployer = vm.addr(DEPLOYER_KEY);
         vm.deal(deployer, 1000 ether);
         script = new Deploy();
-        // The v1 rehearsal (Kuru v1 is live on mainnet; the fallback if Kuru v2 slips). The v2 launch path
-        // is rehearsed in test_mainnetFirst* below and on testnet in KuruV2.fork.t.sol.
+        // The mainnet plan: Kuru v1, live on mainnet, with Kuru creating each book. The v2 path is
+        // rehearsed in test_mainnetFirst* below and on testnet in KuruV2.fork.t.sol.
         d = script.deployWith(
             DEPLOYER_KEY,
             guardian,
             feeRecipient,
-            Deploy.Options({kuruVersion: 1, stack: "", wireKuru: true, hunchVenue: false})
+            Deploy.Options({kuruVersion: 1, stack: "forkRehearsal", wireKuru: true, hunchVenue: false})
         );
 
         usdc = IERC20Like(d.usdc);
@@ -126,16 +130,23 @@ contract MainnetRehearsalForkTest is Test {
     function test_deployRefusesTheDeployerAsMainnetGuardian() public {
         Deploy again = new Deploy();
         vm.expectRevert(bytes("mainnet guardian must be a separate multisig, not the deployer"));
-        again.deploy(DEPLOYER_KEY, deployer, feeRecipient);
+        again.deployWith(
+            DEPLOYER_KEY,
+            deployer,
+            feeRecipient,
+            Deploy.Options({kuruVersion: 1, stack: "forkRehearsal", wireKuru: true, hunchVenue: false})
+        );
     }
 
     // ------------------------------------------------------------------ mainnet first, Kuru v2 later
 
-    /// Kuru v2 is the mainnet default, and its addresses are not in the deployments file yet: a full
-    /// deploy stops with instructions instead of deploying a graduator that points nowhere.
+    /// Kuru v1 is the mainnet default (Kuru is the venue, and v1 is what Kuru runs on mainnet). Kuru v2's
+    /// addresses are not in the deployments file yet: a v2 deploy stops with instructions instead of
+    /// deploying a graduator that points nowhere.
     function test_mainnetFirst_v2NeedsKuruAddressesOrWireLater() public {
         Deploy again = new Deploy();
-        assertEq(again.options().kuruVersion, 2, "v2 is the mainnet default");
+        assertEq(again.options().kuruVersion, 1, "Kuru v1 is the mainnet default");
+        assertFalse(again.options().hunchVenue, "the venue is Kuru by default");
         vm.expectRevert(
             bytes(
                 "Kuru v2 addresses are not in the deployments file: deploy with WIRE_KURU=0, wire later (WireKuruV2.s.sol)"
@@ -145,7 +156,7 @@ contract MainnetRehearsalForkTest is Test {
             DEPLOYER_KEY,
             guardian,
             feeRecipient,
-            Deploy.Options({kuruVersion: 2, stack: "", wireKuru: true, hunchVenue: false})
+            Deploy.Options({kuruVersion: 2, stack: "forkRehearsal", wireKuru: true, hunchVenue: false})
         );
     }
 
@@ -157,7 +168,7 @@ contract MainnetRehearsalForkTest is Test {
             DEPLOYER_KEY,
             guardian,
             feeRecipient,
-            Deploy.Options({kuruVersion: 2, stack: "", wireKuru: false, hunchVenue: false})
+            Deploy.Options({kuruVersion: 2, stack: "forkRehearsal", wireKuru: false, hunchVenue: false})
         );
         HunchBookFactory f = HunchBookFactory(p.factory);
         assertEq(p.graduator, address(0));

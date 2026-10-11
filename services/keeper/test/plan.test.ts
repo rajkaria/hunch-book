@@ -12,12 +12,14 @@ import { type Address, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
 import type { Globals } from "../src/markets.js";
 import {
+  bookRequestDue,
   closeReached,
   type Decision,
   needsBookLookup,
   type PlanInput,
   type PlanMarket,
   planMarket,
+  ruleProgress,
   ruleShortfall,
 } from "../src/plan.js";
 import { defaultSettlers } from "../src/settlers/index.js";
@@ -139,6 +141,69 @@ describe("graduate", () => {
     });
     expect(deployed[0]).toMatchObject({ action: "register-book" });
     expect(deployed[0]?.reason).toContain(BOOK);
+  });
+
+  describe("Kuru v1 mainnet, asking early (KEEPER_BOOK_REQUEST_AT)", () => {
+    // 200 USDC from 5 stakers: the recommended mainnet rule.
+    const rule = { minPool: 200n * USDC, minStakers: 5, minChanceBps: 300, maxChanceBps: 9_700 };
+    const filling = market({ rule, ruleMet: false, yesTotal: 80n * USDC, noTotal: 40n * USDC, stakers: 3 });
+
+    it("by default asks only once the rule is met, as before", () => {
+      expect(needsBookLookup(filling, mainnetGlobals)).toBe(false);
+      const [d] = plan(filling, at(1n), { globals: mainnetGlobals });
+      expect(d).toEqual({ job: "graduate", reason: "rule not met: pool 120 of 200 USDC; 3 of 5 stakers" });
+    });
+
+    it("measures progress by the pool and the stakers, whichever is further behind", () => {
+      expect(ruleProgress(filling)).toBeCloseTo(0.6);
+      expect(ruleProgress({ ...filling, stakers: 1 })).toBeCloseTo(0.2);
+      expect(ruleProgress({ ...filling, yesTotal: 500n * USDC, stakers: 9 })).toBe(1);
+      expect(bookRequestDue(filling, 0.5)).toBe(true);
+      expect(bookRequestDue(filling, 0.75)).toBe(false);
+      expect(bookRequestDue({ ...filling, ruleMet: true }, 1)).toBe(true);
+    });
+
+    it("asks Kuru once the pool is far enough along, before the rule is met", () => {
+      expect(needsBookLookup(filling, mainnetGlobals, 0.5)).toBe(true);
+      const [d] = plan(filling, at(1n), {
+        globals: mainnetGlobals,
+        bookRequestAt: 0.5,
+        predictedBook: { address: BOOK, deployed: false },
+      });
+      expect(d).toMatchObject({ job: "graduate", action: "book-request" });
+      expect(d?.reason).toContain("60% of the way there");
+      // Not yet far enough along: no lookup, no request.
+      expect(needsBookLookup(filling, mainnetGlobals, 0.75)).toBe(false);
+      expect(plan(filling, at(1n), { globals: mainnetGlobals, bookRequestAt: 0.75 })[0]?.action).toBe(
+        undefined,
+      );
+    });
+
+    it("registers a book Kuru already created before the rule is met, and graduates later", () => {
+      const [d] = plan(filling, at(1n), {
+        globals: mainnetGlobals,
+        bookRequestAt: 0.5,
+        predictedBook: { address: BOOK, deployed: true },
+      });
+      expect(d).toMatchObject({ action: "register-book" });
+      expect(d?.reason).toContain("graduate once the rule is met");
+      const registered = plan({ ...filling, graduatorBook: BOOK }, at(1n), {
+        globals: mainnetGlobals,
+        bookRequestAt: 0.5,
+      });
+      expect(registered[0]?.action).toBe(undefined);
+    });
+
+    it("never asks early where the graduator creates books, on a Hunch venue, or while paused", () => {
+      expect(needsBookLookup(filling, testnetGlobals, 0.5)).toBe(false);
+      expect(plan(filling, at(1n), { bookRequestAt: 0.5 })[0]?.action).toBe(undefined);
+      const hunch: Globals = { ...mainnetGlobals, venue: "hunch" };
+      expect(needsBookLookup(filling, hunch, 0.5)).toBe(false);
+      expect(plan(filling, at(1n), { globals: hunch, bookRequestAt: 0.5 })[0]?.action).toBe(undefined);
+      const paused: Globals = { ...mainnetGlobals, graduationPaused: true };
+      expect(needsBookLookup(filling, paused, 0.5)).toBe(false);
+      expect(plan(filling, at(1n), { globals: paused, bookRequestAt: 0.5 })[0]?.action).toBe(undefined);
+    });
   });
 
   it("Kuru v2: looks for the book from creation, asks for it, registers it before the pool fills", () => {

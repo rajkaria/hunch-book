@@ -145,7 +145,7 @@ source can pick off a resting quote.
 | `MAKER_MAX_GAS_PRICE_GWEI` | `200` | Never send above this base fee, never bid above it. |
 | `MAKER_MAX_GAS_PER_TX` | `3000000` | Upper bound on any transaction's gas limit. |
 | `MAKER_DUST` | `1` | Tokens: the smallest USDC float kept in the margin account, and the smallest withdraw or merge worth a transaction. Above it, the float is one bid ladder's worth of USDC, so a requote needs no deposit; idle USDC is withdrawn only past twice the float. |
-| `MAKER_HEALTH_FILE` | `services/maker/health.json` | Where the health snapshot is written after every pass. |
+| `MAKER_HEALTH_FILE` | `services/maker/health.json` (`health.monad-mainnet.json` on mainnet) | Where the health snapshot is written after every pass. |
 | `MAKER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET /health`. |
 | `MAKER_ENV_FILE` | repository `.env` | The env file to load. |
 

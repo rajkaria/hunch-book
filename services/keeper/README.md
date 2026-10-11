@@ -38,6 +38,13 @@ carry `stack` and `venue` when there is more than one, and each health snapshot 
 stack, whose books are Kuru v1 books: on testnet the Graduate job above creates each book, and on mainnet
 the Ask and Register jobs get it from Kuru first.
 
+On a Kuru v1 stack whose graduator cannot create books (Monad mainnet, where Kuru's `deployProxy` is
+owner-only), Kuru creates each book by hand. The keeper asks for it (`book-request`: the exact
+`deployProxy` arguments and the address the book will land at) once the pool is `KEEPER_BOOK_REQUEST_AT`
+of the way to its rule, by pool size and stakers, whichever is further behind (default 1: only once the
+rule is met). As soon as Kuru's book is at that address the keeper registers it, rule met or not, and it
+graduates the market once the rule is met.
+
 On a Kuru v2 stack (`kuruVersion: 2`, [docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-order-book-venues)) only Kuru
 creates books, after a per-token setup that takes days. So the graduate job changes:
 
@@ -226,8 +233,9 @@ To run it as a service (Railway, launchd, or in the background on this machine),
 | `KEEPER_SETTLE_RETRY_SECONDS` | `60` | First wait after a settlement that could not go through. Doubles each time. |
 | `KEEPER_SETTLE_RETRY_MAX_SECONDS` | `1800` | Longest wait between settlement attempts. |
 | `KEEPER_BOOK_REQUEST_SECONDS` | `21600` | How often a book request to Kuru is repeated for one market (Kuru v1 mainnet, and every Kuru v2 stack). |
-| `KEEPER_STATE_FILE` | `services/keeper/.keeper-state.json` | Scan cursors, stakers found and book requests sent. Can be deleted at any time; it is rebuilt from the chain. |
-| `KEEPER_HEALTH_FILE` | `services/keeper/health.json` | Where the health snapshot is written after every cycle. |
+| `KEEPER_BOOK_REQUEST_AT` | `1` | Kuru v1 mainnet: how far toward its graduation rule (0 to 1, by pool size and stakers) a pool must be before the keeper asks Kuru for its book. `1` asks once the rule is met; `0.5` gives Kuru time to create the book before the pool fills. |
+| `KEEPER_STATE_FILE` | `services/keeper/.keeper-state.json` (`.keeper-state.monad-mainnet.json` on mainnet) | Scan cursors, stakers found and book requests sent. Can be deleted at any time; it is rebuilt from the chain. |
+| `KEEPER_HEALTH_FILE` | `services/keeper/health.json` (`health.monad-mainnet.json` on mainnet) | Where the health snapshot is written after every cycle. |
 | `KEEPER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET http://localhost:<port>/health` (the primary stack) and `GET /health/<stack>` (each extra stack). |
 | `KEEPER_ALERT_WEBHOOK` | none | When set, errors, a low balance, markets that cannot settle (or still have not after the longest retry wait) and book requests are posted there as JSON. |
 | `KEEPER_ALERT_REPEAT_SECONDS` | `1800` | The same alert (same event, same market) is posted at most this often. |

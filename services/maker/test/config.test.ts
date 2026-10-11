@@ -24,6 +24,16 @@ describe("parseConfig", () => {
     expect(parseConfig({ MAKER_ENABLED: "maybe", MAKER_PRIVATE_KEY: KEY }).enabled).toBe(false);
   });
 
+  it("names the default health file after the network off testnet", () => {
+    expect(parseConfig({}).healthFile).toMatch(/services\/maker\/health\.json$/);
+    expect(parseConfig({ MAKER_NETWORK: "monad-mainnet" }).healthFile).toMatch(
+      /services\/maker\/health\.monad-mainnet\.json$/,
+    );
+    expect(parseConfig({ MAKER_NETWORK: "monad-mainnet", MAKER_HEALTH_FILE: "/tmp/h.json" }).healthFile).toBe(
+      "/tmp/h.json",
+    );
+  });
+
   it("picks the RPC: override, then the network's variable, then deployments", () => {
     expect(parseConfig({ MAKER_NETWORK: "monad-mainnet" }).rpcUrl).toBe("https://rpc.monad.xyz");
     expect(parseConfig({ MONAD_TESTNET_RPC: "http://a" }).rpcUrl).toBe("http://a");
