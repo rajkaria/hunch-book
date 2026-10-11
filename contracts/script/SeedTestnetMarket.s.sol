@@ -8,6 +8,8 @@ import {TestUSDC} from "../src/mocks/TestUSDC.sol";
 import {Side} from "../src/interfaces/IHunchBookTypes.sol";
 import {PerplFundingParams} from "../src/interfaces/ITemplates.sol";
 import {IPerplExchange} from "../src/interfaces/external/IPerplExchange.sol";
+import {IImpliedProbabilityOracle} from "../src/periphery/interfaces/IImpliedProbabilityOracle.sol";
+import {IOutcomeTokenPriceAdapterFactory} from "../src/periphery/interfaces/IOutcomeTokenPriceAdapterFactory.sol";
 
 /// Testnet only. Creates a market (a Perpl funding market, template 1, unless TEMPLATE and PARAMS name
 /// another) and fills its pool from Hunch Book's
@@ -27,7 +29,12 @@ import {IPerplExchange} from "../src/interfaces/external/IPerplExchange.sol";
 /// may be negative; default 1500; 0 asks "will longs pay shorts on net"), LOCK_IN_BLOCKS (default
 /// 200,000, about 17 hours), INTERVALS (default 24 funding intervals in the window), CREATOR_STAKE (USDC,
 /// default 50, on YES), YES_STAKERS / NO_STAKERS (default 6 / 4) and YES_EACH / NO_EACH (USDC, default
-/// 60 / 70).
+/// 60 / 70), GRADUATE (default true).
+///
+/// Kuru v2 stacks (`STACK=kuruV2`): graduation needs a book only Kuru can create, so run with
+/// GRADUATE=false. The pool is filled to the rule and left open; the script also creates the market's
+/// YES and NO feeds for Kuru's withdrawal limiter and pokes the oracle, so the feeds have history before
+/// Kuru sets the tokens up. Once Kuru deploys the book, the keeper registers it and graduates the market.
 contract SeedTestnetMarket is Script {
     uint32 internal constant TEMPLATE_PERPL_FUNDING = 1;
 
@@ -64,13 +71,43 @@ contract SeedTestnetMarket is Script {
         for (uint256 i = 1; i < n; ++i) {
             m.stakeFor(stakers[i], i <= yesStakers ? Side.Yes : Side.No, i <= yesStakers ? yesEach : noEach);
         }
-        m.graduate();
-        m.claimTokensFor(stakers);
+        if (vm.envOr("GRADUATE", true)) {
+            m.graduate();
+            m.claimTokensFor(stakers);
+        }
         vm.stopBroadcast();
+        _finish(pk, m, params);
+    }
 
+    function _finish(uint256 pk, Market m, bytes memory params) internal {
+        _createKuruFeeds(pk, m);
         console2.log("market", address(m));
-        console2.log("book", m.book());
+        if (vm.envOr("GRADUATE", true)) console2.log("book", m.book());
         console2.log(m.resolver().describe(params));
+    }
+
+    /// On a stack with a Kuru feed factory (Kuru v2): the market's YES and NO limiter feeds and a first
+    /// oracle observation, as GoldenPath.s.sol does.
+    function _createKuruFeeds(uint256 pk, Market m) internal {
+        string memory json = vm.readFile(string.concat(vm.projectRoot(), "/../deployments/monad-testnet.json"));
+        string memory stack = vm.envOr("STACK", string(""));
+        string memory path = bytes(stack).length == 0 ? ".hunchBook" : string.concat(".stacks.", stack);
+        string memory feedsKey = string.concat(path, ".periphery.kuruFeedFactory");
+        if (!vm.keyExistsJson(json, feedsKey)) return;
+        IOutcomeTokenPriceAdapterFactory feeds = IOutcomeTokenPriceAdapterFactory(vm.parseJsonAddress(json, feedsKey));
+        IImpliedProbabilityOracle oracle = IImpliedProbabilityOracle(
+            vm.parseJsonAddress(json, string.concat(path, ".periphery.impliedProbabilityOracle"))
+        );
+        vm.startBroadcast(pk);
+        address yesFeed = feeds.createAdapter(address(m), Side.Yes);
+        address noFeed = feeds.createAdapter(address(m), Side.No);
+        oracle.poke(address(m));
+        vm.stopBroadcast();
+        (address yes, address no) = m.tokens();
+        console2.log("YES token", yes);
+        console2.log("YES feed (Kuru limiter)", yesFeed);
+        console2.log("NO token", no);
+        console2.log("NO feed (Kuru limiter)", noFeed);
     }
 
     function _perplFundingParams(string memory json) internal view returns (bytes memory) {
