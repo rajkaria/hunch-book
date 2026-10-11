@@ -15,7 +15,13 @@ import type { TitleClock } from "../market/title";
 import type { MarketView } from "../market/types";
 import { marketVenue } from "../stacks";
 import { MULTICALL3, type ReadClient } from "./client";
-import { listMarkets, MARKET_LIST_LIMIT, measureMsPerBlock, readChainHead } from "./reads";
+import {
+  listMarkets,
+  MARKET_LIST_LIMIT,
+  type MarketsSnapshot,
+  measureMsPerBlock,
+  readChainHead,
+} from "./reads";
 
 // What the landing page shows from the chain. Every field is either read now or absent:
 // a failed read hides that line, it never falls back to a made-up number.
@@ -193,33 +199,44 @@ export async function readAllVaultBooks(
   };
 }
 
-/** Reads the landing page's live data. Never throws. */
+/**
+ * Reads the landing page's live data. Never throws. `shared.markets`, when given, supplies the markets
+ * list and chain clock already read (the server's cached read), so only the rule and the vaults are read
+ * here.
+ */
 export async function readLandingSnapshot(
   client: ReadClient,
   deployment: Deployment,
   timeoutMs = 6_000,
+  shared?: { markets?: () => Promise<MarketsSnapshot> },
 ): Promise<LandingRead> {
   // New markets go to the default stack, so its factory says what rule they graduate by.
   const factory = defaultStackOf(deployment)?.contracts.factory;
   if (!deployment.hunchBook.factory || !factory) return { status: "not-deployed" };
 
   const work = (async (): Promise<LandingRead> => {
+    const snapshot = shared?.markets ? await shared.markets().catch(() => null) : null;
+    const known = snapshot?.list.status === "ok" ? snapshot.list.data : null;
     // Markets of every stack (testnet: the Hunch order book and Kuru v2 stacks next to the primary one).
-    const counts = await Promise.all(
-      stacksOf(deployment).map(async (s) =>
-        Number(
-          await client.readContract({
-            address: s.contracts.factory as Address,
-            abi: hunchBookFactoryAbi,
-            functionName: "marketCount",
-          }),
-        ),
-      ),
-    );
+    const counts = known
+      ? [known.total]
+      : await Promise.all(
+          stacksOf(deployment).map(async (s) =>
+            Number(
+              await client.readContract({
+                address: s.contracts.factory as Address,
+                abi: hunchBookFactoryAbi,
+                functionName: "marketCount",
+              }),
+            ),
+          ),
+        );
     const count = counts.reduce((sum, c) => sum + c, 0);
     const usdc = collateralOf(deployment);
+    const clock = snapshot?.clock ?? null;
     const [list, template, pace, books] = await Promise.allSettled([
       (async () => {
+        if (known) return known.markets;
         if (count === 0) return [];
         const result = await listMarkets(client, deployment, { limit: MARKET_LIST_LIMIT });
         return result.status === "ok" ? result.data.markets : [];
@@ -231,6 +248,7 @@ export async function readLandingSnapshot(
         args: [TemplateId.PerplFunding],
       }),
       (async () => {
+        if (clock?.measured) return { block: clock.blockNumber, time: clock.timestamp, ms: clock.msPerBlock };
         const head = await readChainHead(client);
         return {
           block: head.blockNumber,

@@ -110,8 +110,10 @@ function deps(overrides: Partial<ApiDeps> = {}): ApiDeps {
     }),
     getBlockNumber: vi.fn(async () => HEAD),
     getLogs,
+    // The vault: USDC held 700, in markets 680, owed 690 (10 of unpaid fees), surplus 10, cap 50,000.
     multicall: vi.fn(async () => [
       { status: "success", result: 700_000_000n },
+      { status: "success", result: 680_000_000n },
       { status: "success", result: 690_000_000n },
       { status: "success", result: 10_000_000n },
       { status: "success", result: 50_000_000_000n },
@@ -693,9 +695,33 @@ describe("GET /api/v1/stats", () => {
         graduatedEver: 1,
       },
       pools: { open: 1, stakedUsdc: "690" },
-      vault: { usdcHeld: "700", owedUsdc: "690", surplusUsdc: "10", solvent: true, capUsdc: "50000" },
+      vault: {
+        usdcHeld: "700",
+        inMarketsUsdc: "680",
+        feesOwedUsdc: "10",
+        owedUsdc: "690",
+        surplusUsdc: "10",
+        solvent: true,
+        capUsdc: "50000",
+      },
       activity: null,
     });
+  });
+
+  it("names what the vault holds apart from what sits in markets, so fees owed never read as a gap", async () => {
+    const d = deps();
+    await getStats(req("/api/v1/stats"), d);
+    const multicall = d.sdk.context.publicClient.multicall as unknown as ReturnType<typeof vi.fn>;
+    const contracts = multicall.mock.calls[0]?.[0].contracts as { address: string; functionName: string }[];
+    // USDC.balanceOf(vault) first, then the vault's own books.
+    expect(contracts.slice(0, 5).map((c) => c.functionName)).toEqual([
+      "balanceOf",
+      "totalCollateral",
+      "totalObligations",
+      "surplus",
+      "collateralCap",
+    ]);
+    expect(contracts[0]?.address).toBe(testnet.hunchBook.usdc);
   });
 
   it("adds indexed activity with our maker's share labelled", async () => {

@@ -24,7 +24,7 @@ import {
   wholePercent,
 } from "@/lib/market/explorer";
 import { PHASE_GROUP_LABEL, PHASE_GROUPS } from "@/lib/market/logic";
-import type { MarketView } from "@/lib/market/types";
+import type { ChainClock, MarketView } from "@/lib/market/types";
 import { venueChipLabel } from "@/lib/stacks";
 import { EmptyState, ErrorState, LoadingRows, NotDeployed } from "../states";
 import { Badge, cx } from "../ui";
@@ -120,6 +120,7 @@ export function MarketsList({
   filter,
   venue = "all",
   preset,
+  clock: servedClock = null,
 }: {
   markets: MarketView[];
   total: number;
@@ -127,8 +128,11 @@ export function MarketsList({
   venue?: VenueFilter;
   /** Set on a page that fixes the venue, such as /kuru. */
   preset?: ExplorerPreset;
+  /** The chain clock the server read with the list; without one, the browser reads the head itself. */
+  clock?: ChainClock | null;
 }) {
-  const clock = useChainClock(markets.some((m) => m.window.blockClock));
+  const live = useChainClock(!servedClock && markets.some((m) => m.window.blockClock));
+  const clock = servedClock ?? live;
   const now = useNow();
   const [query, setQuery] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
@@ -383,6 +387,7 @@ export function MarketsView({
       filter={filter}
       venue={venue ?? preset?.venue ?? "all"}
       preset={preset}
+      clock={query.data.data.clock}
     />
   );
 }

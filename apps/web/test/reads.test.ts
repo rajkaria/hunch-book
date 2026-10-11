@@ -1,8 +1,14 @@
-import { Phase } from "@hunch-book/shared";
+import {
+  encodePerplFundingParams,
+  encodePerplFundingSpikeParams,
+  Phase,
+  TemplateId,
+} from "@hunch-book/shared";
 import { type Address, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
 import {
   defaultStackFirst,
+  fundingScaleOf,
   listMarkets,
   measureMsPerBlock,
   readMarket,
@@ -14,6 +20,88 @@ import {
 } from "../src/lib/chain/reads";
 import { BOOK, deployed, marketAddr, marketHandlers, notDeployed, stubClient } from "./chain";
 import { FACTORY, perplParams, USDC, USER } from "./fixtures";
+
+describe("Perpl funding scale on funding markets", () => {
+  const perps = { 0: 64n, 1: 64n, 2: 16n } as Record<number, bigint>;
+  const fundingParams = (perpId: bigint) =>
+    encodePerplFundingParams({
+      perpId,
+      startBlock: 1n,
+      endBlock: 8_572n,
+      threshold: -31n,
+      expectedScalingExp: 2,
+    });
+  const handlers = (overrides = {}) =>
+    marketHandlers(3, {
+      templateId: (a: Address) =>
+        a === marketAddr(2) ? TemplateId.PerplFundingSpike : TemplateId.PerplFunding,
+      params: (a: Address) => {
+        const i = Number.parseInt(a.slice(-2), 16) - 0xa0;
+        const perpId = perps[i] ?? 0n;
+        return i === 2
+          ? encodePerplFundingSpikeParams({
+              perpId,
+              startBlock: 1n,
+              endBlock: 2n,
+              threshold: 25n,
+              expectedScalingExp: 0,
+            })
+          : fundingParams(perpId);
+      },
+      getFundingInterval: () => 8_571n,
+      getPerpetualInfoV2: (_a: Address, args: readonly unknown[] | undefined) =>
+        args?.[0] === 64n
+          ? { priceDecimals: 6n, markPNS: 25_000n }
+          : { priceDecimals: 1n, markPNS: 830_000n },
+      ...overrides,
+    });
+
+  it("reads each perp once, in the same multicall, and attaches its mark price and interval", async () => {
+    const client = stubClient(handlers());
+    const result = await listMarkets(client, deployed);
+    if (result.status !== "ok") throw new Error("expected ok");
+    const byAddress = Object.fromEntries(result.data.markets.map((m) => [m.address, m.funding]));
+    expect(byAddress[marketAddr(0)]).toEqual({ markUsd: 0.025, priceDecimals: 6, intervalBlocks: 8_571 });
+    expect(byAddress[marketAddr(1)]).toEqual({ markUsd: 0.025, priceDecimals: 6, intervalBlocks: 8_571 });
+    expect(byAddress[marketAddr(2)]).toEqual({ markUsd: 83_000, priceDecimals: 1, intervalBlocks: 8_571 });
+    // marketAt, the markets, then one extras multicall: two perps and one interval among the describes.
+    const multicall = client.multicall as unknown as {
+      mock: { calls: [{ contracts: { functionName: string }[] }][] };
+    };
+    const extras = multicall.mock.calls.at(-1)?.[0].contracts.map((c) => c.functionName) ?? [];
+    expect(extras.filter((f) => f === "getPerpetualInfoV2")).toHaveLength(2);
+    expect(extras.filter((f) => f === "getFundingInterval")).toHaveLength(1);
+    expect(multicall.mock.calls).toHaveLength(3);
+  });
+
+  it("leaves the scale off when Perpl does not answer, and off every other template", async () => {
+    const failing = stubClient(
+      handlers({
+        getPerpetualInfoV2: () => {
+          throw new Error("revert");
+        },
+      }),
+    );
+    const result = await listMarkets(failing, deployed);
+    if (result.status !== "ok") throw new Error("expected ok");
+    expect(result.data.markets.every((m) => m.funding === undefined)).toBe(true);
+    const price = await listMarkets(stubClient(marketHandlers(2)), deployed);
+    if (price.status !== "ok") throw new Error("expected ok");
+    expect(price.data.markets.every((m) => m.funding === undefined)).toBe(true);
+  });
+
+  it("builds the scale only from a usable price and interval", () => {
+    expect(fundingScaleOf({ priceDecimals: 2n, markPNS: 250_000n }, 8_571n)).toEqual({
+      markUsd: 2_500,
+      priceDecimals: 2,
+      intervalBlocks: 8_571,
+    });
+    expect(fundingScaleOf({ priceDecimals: 2n, markPNS: 0n }, 8_571n)).toBeNull();
+    expect(fundingScaleOf({ priceDecimals: 2n, markPNS: 1n }, 0n)).toBeNull();
+    expect(fundingScaleOf(undefined, 8_571n)).toBeNull();
+    expect(fundingScaleOf({ priceDecimals: 2n, markPNS: 1n }, undefined)).toBeNull();
+  });
+});
 
 describe("listMarkets", () => {
   it("returns not-deployed without touching the chain", async () => {

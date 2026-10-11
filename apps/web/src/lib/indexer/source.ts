@@ -13,6 +13,8 @@ export interface Sourced<T> {
   fallback?: string;
   /** The last block the indexer had processed, when it said. */
   indexedBlock?: bigint;
+  /** Milliseconds since the epoch when the figures were read, when the server read them (lib/served). */
+  readAt?: number;
 }
 
 /** How far behind the chain head (in blocks) a caught-up indexer may still be: about two minutes. */

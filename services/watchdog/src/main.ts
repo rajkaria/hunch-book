@@ -1,16 +1,19 @@
 import { writeFileSync } from "node:fs";
 import { deployments, type Network } from "@hunch-book/shared";
 import { evaluate, toMarkdown, worst } from "./checks.js";
-import { makeClient, readSnapshot } from "./read.js";
+import { readSnapshot } from "./read.js";
+import { EXIT_RATE_LIMITED, isRateLimited, makeClient, watchdogRpcUrls } from "./rpc.js";
 
 // Usage: tsx src/main.ts [--markdown <file>]
 // Env (names only; nothing secret is printed):
 //   WATCHDOG_NETWORK      monad-testnet (default) or monad-mainnet
-//   WATCHDOG_RPC_URL      RPC endpoint (default: MONAD_TESTNET_RPC / MONAD_MAINNET_RPC, then the public RPC)
+//   WATCHDOG_RPC_URL      a keyed RPC tried first (else MONAD_TESTNET_RPC / MONAD_MAINNET_RPC); the
+//                         deployment's public RPCs follow it, each retried with backoff
 //   KEEPER_HEALTH_URL     optional: the keeper's /health URL
 //   MAKER_HEALTH_URL      optional: the maker's /health URL
 //   WATCHDOG_WEBHOOK      optional: receives a JSON POST {level, text} when the result is not ok
-// Exit code: 0 ok, 1 warn, 2 fail, 3 the check itself could not run.
+// Exit code: 0 ok, 1 warn, 2 fail, 3 the check itself could not run, 4 every RPC rate-limited the
+// read (a soft warning: the chain was not read, nothing is known to be wrong).
 
 const NETWORKS: Network[] = ["monad-testnet", "monad-mainnet"];
 
@@ -18,14 +21,11 @@ async function main(): Promise<number> {
   const network = (process.env.WATCHDOG_NETWORK?.trim() || "monad-testnet") as Network;
   if (!NETWORKS.includes(network)) throw new Error(`WATCHDOG_NETWORK must be one of ${NETWORKS.join(", ")}`);
   const deployment = deployments[network];
-  const networkRpc =
-    network === "monad-testnet" ? process.env.MONAD_TESTNET_RPC : process.env.MONAD_MAINNET_RPC;
-  const rpcUrl = process.env.WATCHDOG_RPC_URL?.trim() || networkRpc?.trim() || deployment.rpc;
+  const urls = watchdogRpcUrls(network, deployment, process.env);
 
-  const snapshot = await readSnapshot(makeClient(network, rpcUrl), {
+  const snapshot = await readSnapshot(makeClient(network, urls), {
     network,
     deployment,
-    rpcUrl,
     keeperHealthUrl: process.env.KEEPER_HEALTH_URL?.trim() || undefined,
     makerHealthUrl: process.env.MAKER_HEALTH_URL?.trim() || undefined,
   });
@@ -58,9 +58,17 @@ main().then(
     process.exitCode = code;
   },
   (error: unknown) => {
-    console.error(
-      JSON.stringify({ event: "error", error: error instanceof Error ? error.message : String(error) }),
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    if (isRateLimited(error)) {
+      // viem's short message and details are enough; the full message repeats the request body.
+      const { shortMessage, details } = error as { shortMessage?: string; details?: string };
+      console.error(
+        JSON.stringify({ event: "rate-limited", error: shortMessage ?? message.split("\n")[0], details }),
+      );
+      process.exitCode = EXIT_RATE_LIMITED;
+      return;
+    }
+    console.error(JSON.stringify({ event: "error", error: message }));
     process.exitCode = 3;
   },
 );

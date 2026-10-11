@@ -1,5 +1,4 @@
 import {
-  chainsByNetwork,
   collateralOf,
   collateralVaultAbi,
   type Deployment,
@@ -9,16 +8,16 @@ import {
   type Stack,
   stacksOf,
 } from "@hunch-book/shared";
-import { type Address, createPublicClient, erc20Abi, http, type PublicClient } from "viem";
+import { type Address, erc20Abi, type PublicClient } from "viem";
 import type { MarketSnapshot, ServiceHealth, Snapshot, VaultSnapshot } from "./checks.js";
 
-// Reads one snapshot of the chain with a handful of multicalls per stack. Every value comes from
-// contracts listed in deployments/<network>.json; the only offchain inputs are the optional health URLs.
+// Reads one snapshot of the chain with four multicalls per stack, however many markets it has, so a
+// rate-limited public RPC sees a handful of requests per run. Every value comes from contracts listed
+// in deployments/<network>.json; the only offchain inputs are the optional health URLs.
 
 export interface ReadOptions {
   network: Network;
   deployment: Deployment;
-  rpcUrl: string;
   keeperHealthUrl?: string;
   makerHealthUrl?: string;
   fetchImpl?: typeof fetch;
@@ -26,8 +25,22 @@ export interface ReadOptions {
 
 const BLOCK_SAMPLE = 10_000n;
 
-export function makeClient(network: Network, rpcUrl: string): PublicClient {
-  return createPublicClient({ chain: chainsByNetwork[network], transport: http(rpcUrl, { retryCount: 3 }) });
+/** The reads each market gets, in this order, in its stack's one market multicall. */
+const MARKET_READS = [
+  "templateId",
+  "phase",
+  "outcome",
+  "window",
+  "graduated",
+  "graduationRuleMet",
+  "tokens",
+] as const;
+
+interface MarketWindow {
+  blockClock: boolean;
+  lock: bigint;
+  close: bigint;
+  settleDeadline: bigint;
 }
 
 async function readHealth(
@@ -66,6 +79,13 @@ async function readStack(
       { address: factory, abi: hunchBookFactoryAbi, functionName: "marketCount" },
     ],
   });
+  const snapshotVault = {
+    stack: stack.name,
+    address: vault,
+    balance: vaultBalance,
+    obligations: vaultObligations,
+  };
+  if (count === 0n) return { vault: snapshotVault, markets: [] };
 
   const addresses = (await client.multicall({
     ...at,
@@ -78,53 +98,56 @@ async function readStack(
     })),
   })) as Address[];
 
-  const markets: MarketSnapshot[] = [];
-  for (const address of addresses) {
-    const m = { address, abi: marketAbi } as const;
-    const [templateId, phase, outcome, window, graduated, ruleMet, tokens] = await client.multicall({
-      ...at,
-      allowFailure: false,
-      contracts: [
-        { ...m, functionName: "templateId" },
-        { ...m, functionName: "phase" },
-        { ...m, functionName: "outcome" },
-        { ...m, functionName: "window" },
-        { ...m, functionName: "graduated" },
-        { ...m, functionName: "graduationRuleMet" },
-        { ...m, functionName: "tokens" },
-      ],
-    });
-    const [yes, no] = tokens;
-    const [yesSupply, noSupply, ledger] = await client.multicall({
-      ...at,
-      allowFailure: false,
-      contracts: [
-        { address: yes, abi: erc20Abi, functionName: "totalSupply" },
-        { address: no, abi: erc20Abi, functionName: "totalSupply" },
-        { address: vault, abi: collateralVaultAbi, functionName: "ledger", args: [address] },
-      ],
-    });
-    markets.push({
+  // Every market's fields in one multicall, then every market's supplies and ledger in one more.
+  const fields = (await client.multicall({
+    ...at,
+    allowFailure: false,
+    contracts: addresses.flatMap((address) =>
+      MARKET_READS.map((functionName) => ({ address, abi: marketAbi, functionName })),
+    ),
+  })) as unknown[];
+  const read = addresses.map((address, i) => {
+    const f = fields.slice(i * MARKET_READS.length, (i + 1) * MARKET_READS.length);
+    return {
       address,
+      templateId: Number(f[0]),
+      phase: Number(f[1]),
+      outcome: Number(f[2]),
+      window: f[3] as MarketWindow,
+      graduated: f[4] as boolean,
+      ruleMet: f[5] as boolean,
+      tokens: f[6] as readonly [Address, Address],
+    };
+  });
+  const supplies = (await client.multicall({
+    ...at,
+    allowFailure: false,
+    contracts: read.flatMap((m) => [
+      { address: m.tokens[0], abi: erc20Abi, functionName: "totalSupply" },
+      { address: m.tokens[1], abi: erc20Abi, functionName: "totalSupply" },
+      { address: vault, abi: collateralVaultAbi, functionName: "ledger", args: [m.address] },
+    ]),
+  })) as unknown[];
+
+  const markets = read.map(
+    (m, i): MarketSnapshot => ({
+      address: m.address,
       stack: stack.name,
-      templateId: Number(templateId),
-      phase: Number(phase),
-      outcome: Number(outcome),
-      blockClock: window.blockClock,
-      lock: window.lock,
-      close: window.close,
-      settleDeadline: window.settleDeadline,
-      graduated,
-      ruleMet,
-      yesSupply,
-      noSupply,
-      sets: (ledger as { sets: bigint }).sets,
-    });
-  }
-  return {
-    vault: { stack: stack.name, address: vault, balance: vaultBalance, obligations: vaultObligations },
-    markets,
-  };
+      templateId: m.templateId,
+      phase: m.phase,
+      outcome: m.outcome,
+      blockClock: m.window.blockClock,
+      lock: m.window.lock,
+      close: m.window.close,
+      settleDeadline: m.window.settleDeadline,
+      graduated: m.graduated,
+      ruleMet: m.ruleMet,
+      yesSupply: supplies[i * 3] as bigint,
+      noSupply: supplies[i * 3 + 1] as bigint,
+      sets: (supplies[i * 3 + 2] as { sets: bigint }).sets,
+    }),
+  );
+  return { vault: snapshotVault, markets };
 }
 
 /**
@@ -144,16 +167,15 @@ export async function readSnapshot(client: PublicClient, o: ReadOptions): Promis
 
   const vaults: VaultSnapshot[] = [];
   const markets: MarketSnapshot[] = [];
+  // One stack after another, so the RPC never sees more than one multicall in flight.
   for (const stack of stacks) {
     const read = await readStack(client, stack, stack.contracts.usdc ?? fallbackUsdc, head.number);
     vaults.push(read.vault);
     markets.push(...read.markets);
   }
 
-  const [keeper, maker] = await Promise.all([
-    client.getBalance({ address: o.deployment.wallets.keeper, ...at }),
-    client.getBalance({ address: o.deployment.wallets.maker, ...at }),
-  ]);
+  const keeper = await client.getBalance({ address: o.deployment.wallets.keeper, ...at });
+  const maker = await client.getBalance({ address: o.deployment.wallets.maker, ...at });
 
   const fetchImpl = o.fetchImpl ?? fetch;
   const services = (

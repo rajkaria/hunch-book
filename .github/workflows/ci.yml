@@ -37,9 +37,10 @@ jobs:
   fork:
     name: contracts (fork tests against live Monad)
     runs-on: ubuntu-latest
+    # Keyed RPCs from repository secrets when set (archive state, no shared rate limit), else the public ones.
     env:
-      MONAD_TESTNET_RPC: https://testnet-rpc.monad.xyz
-      MONAD_MAINNET_RPC: https://rpc.monad.xyz
+      MONAD_TESTNET_RPC: ${{ secrets.MONAD_TESTNET_RPC || 'https://testnet-rpc.monad.xyz' }}
+      MONAD_MAINNET_RPC: ${{ secrets.MONAD_MAINNET_RPC || 'https://rpc.monad.xyz' }}
     steps:
       - uses: actions/checkout@v4
         with:

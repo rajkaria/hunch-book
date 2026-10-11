@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 import {console2} from "forge-std/console2.sol";
+import {LibString} from "solady/utils/LibString.sol";
 import {Outcome, Window} from "../../src/interfaces/IHunchBookTypes.sol";
 import {PerplFundingParams} from "../../src/interfaces/ITemplates.sol";
 import {IPerplExchange} from "../../src/interfaces/external/IPerplExchange.sol";
@@ -11,25 +12,81 @@ import {PerplFundingResolver} from "../../src/resolvers/PerplFundingResolver.sol
 /// Template S-1 against Perpl's live Exchange. Every block is picked relative to the fork head:
 /// public RPCs serve historical state only about a million blocks back, and Perpl keeps its funding
 /// history in storage, so reading it at the head is enough.
+///
+/// Public Monad RPCs sit behind load balancers: the head number can come from one node and a state read
+/// from another that has not reached that block, or no longer serves it ("Block requested not found").
+/// The fork therefore starts FORK_LAG blocks behind the head. If the RPC still cannot serve state at the
+/// fork block, a test skips with the RPC's own error instead of failing on an RPC gap; when the state is
+/// served, every assertion runs unchanged.
 /// Run with: FOUNDRY_PROFILE=fork forge test --match-path test/fork/PerplFundingResolver.fork.t.sol
 contract PerplFundingResolverForkTest is Test {
     uint256 internal constant INTERVAL = 8571;
+    /// Blocks behind the RPC's head the fork starts at: about 25 seconds on mainnet, 20 on testnet.
+    uint256 internal constant FORK_LAG = 64;
 
     IPerplExchange internal exchange;
     PerplFundingResolver internal resolver;
 
     function _forkMainnet() internal {
         string memory json = vm.readFile(string.concat(vm.projectRoot(), "/../deployments/monad-mainnet.json"));
-        vm.createSelectFork(vm.envOr("MONAD_MAINNET_RPC", string("https://rpc.monad.xyz")));
         exchange = IPerplExchange(vm.parseJsonAddress(json, ".external.perpl.exchange"));
-        resolver = new PerplFundingResolver(exchange, 1000);
+        _forkAndDeploy(vm.envOr("MONAD_MAINNET_RPC", string("https://rpc.monad.xyz")));
     }
 
     function _forkTestnet() internal returns (string memory json) {
         json = vm.readFile(string.concat(vm.projectRoot(), "/../deployments/monad-testnet.json"));
-        vm.createSelectFork(vm.envOr("MONAD_TESTNET_RPC", string("https://testnet-rpc.monad.xyz")));
         exchange = IPerplExchange(vm.parseJsonAddress(json, ".external.perpl.exchange"));
-        resolver = new PerplFundingResolver(exchange, 1000);
+        _forkAndDeploy(vm.envOr("MONAD_TESTNET_RPC", string("https://testnet-rpc.monad.xyz")));
+    }
+
+    /// Forks `rpc` FORK_LAG blocks behind its head and deploys the resolver there. Skips the test only
+    /// when the RPC cannot serve state at the fork block; a revert with a reason, or a revert while the
+    /// state is served, still fails the test.
+    function _forkAndDeploy(string memory rpc) internal {
+        vm.createSelectFork(rpc);
+        vm.rollFork(block.number - FORK_LAG);
+        _skipIfStateUnavailable(rpc);
+        try new PerplFundingResolver(exchange, 1000) returns (PerplFundingResolver deployed) {
+            resolver = deployed;
+        } catch (bytes memory reason) {
+            // A failed RPC read surfaces as a revert with no data; ask the RPC again to tell the two apart.
+            if (reason.length == 0) _skipIfStateUnavailable(rpc);
+            assembly ("memory-safe") {
+                revert(add(reason, 0x20), mload(reason))
+            }
+        }
+    }
+
+    /// Skips the test, naming the RPC's error, if `rpc` cannot serve the exchange's code at the fork block.
+    function _skipIfStateUnavailable(string memory rpc) internal {
+        string memory params = string.concat(
+            "[\"", vm.toString(address(exchange)), "\",\"", LibString.toMinimalHexString(block.number), "\"]"
+        );
+        string memory why;
+        try vm.rpc(rpc, "eth_getCode", params) returns (bytes memory) {
+            return;
+        } catch (bytes memory reason) {
+            why = _message(reason);
+        }
+        vm.skip(
+            true,
+            string.concat(
+                "the RPC cannot serve state at fork block ",
+                vm.toString(block.number),
+                " (no archive state on this node): ",
+                why
+            )
+        );
+    }
+
+    /// The string in an Error(string) or CheatcodeError(string) revert; both encode it after a selector.
+    function _message(bytes memory reason) internal pure returns (string memory) {
+        if (reason.length < 68) return "the request failed";
+        bytes memory body = new bytes(reason.length - 4);
+        for (uint256 i = 0; i < body.length; ++i) {
+            body[i] = reason[i + 4];
+        }
+        return abi.decode(body, (string));
     }
 
     function _p(uint256 perpId, uint256 start, uint256 end, int256 threshold, uint256 exp)

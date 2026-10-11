@@ -1,5 +1,6 @@
 import { formatBps, formatUsdc, type MarketInfo } from "@hunch-book/sdk";
-import { collateralVaultAbi, stacksOf } from "@hunch-book/shared";
+import { collateralOf, collateralVaultAbi, stacksOf } from "@hunch-book/shared";
+import { erc20Abi } from "viem";
 import { cached } from "./cache";
 import type { ApiDeps } from "./deps";
 import { allMarkets, PHASE_NAMES } from "./markets";
@@ -82,9 +83,12 @@ export async function protocolStats(deps: ApiDeps) {
     async () => {
       const client = deps.sdk.context.publicClient;
       // Every stack's vault, each solvent on its own; the totals below add them up.
-      const vaults = stacksOf(deps.deployment).flatMap((st) =>
-        st.contracts.vault ? [st.contracts.vault] : [],
-      );
+      const fallbackUsdc = collateralOf(deps.deployment);
+      const held = stacksOf(deps.deployment).flatMap((st) => {
+        const usdc = st.contracts.usdc ?? fallbackUsdc;
+        return st.contracts.vault && usdc ? [{ vault: st.contracts.vault, usdc }] : [];
+      });
+      const vaults = held.map((h) => h.vault);
       const vault = vaults[0];
       const [markets, head, activity] = await Promise.all([
         allMarkets(deps),
@@ -93,8 +97,13 @@ export async function protocolStats(deps: ApiDeps) {
       ]);
       let vaultJson: Record<string, unknown> | null = null;
       if (vault) {
+        // Per vault, at one block: the USDC it holds, then its books. totalCollateral is only what sits in
+        // markets (every pool and complete set); totalObligations adds the protocol and creator fees not
+        // withdrawn yet. Solvent means the USDC held covers the obligations: surplus = held - owed >= 0.
+        const PER = 5;
         const reads = await client.multicall({
-          contracts: vaults.flatMap((address) => [
+          contracts: held.flatMap(({ vault: address, usdc }) => [
+            { address: usdc, abi: erc20Abi, functionName: "balanceOf", args: [address] },
             { address, abi: collateralVaultAbi, functionName: "totalCollateral" },
             { address, abi: collateralVaultAbi, functionName: "totalObligations" },
             { address, abi: collateralVaultAbi, functionName: "surplus" },
@@ -108,25 +117,29 @@ export async function protocolStats(deps: ApiDeps) {
         const sum = (i: number): bigint | null => {
           let total = 0n;
           for (let k = 0; k < vaults.length; k++) {
-            const r = reads[k * 4 + i];
+            const r = reads[k * PER + i];
             if (r?.status !== "success") return null;
             total += r.result as bigint;
           }
           return total;
         };
-        const surpluses = vaults.map((_, k) => reads[k * 4 + 2]);
+        const usdcText = (v: bigint | null): string | null => (v === null ? null : formatUsdc(v));
+        const surpluses = vaults.map((_, k) => reads[k * PER + 3]);
         const solvent = surpluses.every((r) => r?.status === "success")
           ? surpluses.every((r) => (r?.result as bigint) >= 0n)
           : null;
-        const surplus = sum(2);
+        const inMarkets = sum(1);
+        const owed = sum(2);
         vaultJson = {
           address: vault,
           addresses: vaults,
-          usdcHeld: sum(0) === null ? null : formatUsdc(sum(0) as bigint),
-          owedUsdc: sum(1) === null ? null : formatUsdc(sum(1) as bigint),
-          surplusUsdc: surplus === null ? null : formatUsdc(surplus),
+          usdcHeld: usdcText(sum(0)),
+          inMarketsUsdc: usdcText(inMarkets),
+          feesOwedUsdc: inMarkets === null || owed === null ? null : usdcText(owed - inMarkets),
+          owedUsdc: usdcText(owed),
+          surplusUsdc: usdcText(sum(3)),
           solvent,
-          capUsdc: sum(3) === null ? null : formatUsdc(sum(3) as bigint),
+          capUsdc: usdcText(sum(4)),
         };
       }
       const byPhase = Object.fromEntries(PHASE_NAMES.map((p) => [p, 0]));

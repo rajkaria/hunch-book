@@ -1,6 +1,7 @@
 import {
   bestBidAskV2AsV1,
   type Deployment,
+  decodePerplFundingSpikeParams,
   defaultStackOf,
   type GraduationRule,
   graduatorV2Abi,
@@ -10,10 +11,12 @@ import {
   marketAbi,
   type Outcome,
   type Phase,
+  perplExchangeAbi,
   resolverAbi,
   type Stack,
   stackNamed,
   stacksOf,
+  TemplateId,
   type Window,
 } from "@hunch-book/shared";
 import {
@@ -29,7 +32,7 @@ import { usdcOf } from "../config";
 import { parseBestBidAsk } from "../market/logic";
 import { decodeMarketParams } from "../market/params";
 import { marketTitle, type TitleClock } from "../market/title";
-import type { MarketView, PortfolioEntry, ReadResult } from "../market/types";
+import type { ChainClock, FundingScale, MarketView, PortfolioEntry, ReadResult } from "../market/types";
 import { MULTICALL3, type ReadClient } from "./client";
 import { kuruOrderBookAbi } from "./kuru";
 
@@ -156,18 +159,67 @@ export function parseMarketResults(address: Address, results: CallResult[], offs
   };
 }
 
+/** The Perpl perp a funding market (template 1 or 4) reads, or null for any other market. */
+export function perplPerpOf(m: Pick<MarketView, "templateId" | "params" | "decoded">): bigint | null {
+  if (m.templateId === TemplateId.PerplFunding) {
+    return m.decoded.kind === "perpl-funding" ? m.decoded.params.perpId : null;
+  }
+  if (m.templateId === TemplateId.PerplFundingSpike) {
+    try {
+      return decodePerplFundingSpikeParams(m.params).perpId;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** A funding scale from Perpl's getPerpetualInfoV2 and getFundingInterval; null if either is unusable. */
+export function fundingScaleOf(
+  info: { priceDecimals: bigint | number; markPNS: bigint | number } | undefined,
+  interval: bigint | number | undefined,
+): FundingScale | null {
+  if (!info || interval === undefined) return null;
+  const priceDecimals = Number(info.priceDecimals);
+  const markUsd = Number(info.markPNS) / 10 ** priceDecimals;
+  const intervalBlocks = Number(interval);
+  if (!(markUsd > 0) || !(intervalBlocks > 0) || !Number.isFinite(markUsd)) return null;
+  return { markUsd, priceDecimals, intervalBlocks };
+}
+
 /**
  * Second pass: the resolver's rule sentence for each market, its book's best bid/ask once graduated (Kuru
- * v1's `bestBidAsk()`, which Hunch Book's own books answer too), and for Kuru v2 pools whether the
- * stack's GraduatorV2 (`graduator`) has the book registered.
+ * v1's `bestBidAsk()`, which Hunch Book's own books answer too), for Kuru v2 pools whether the stack's
+ * GraduatorV2 (`graduator`) has the book registered, and for Perpl funding markets the perp's mark price
+ * and funding interval from Perpl's Exchange (`perpl`), so their titles can state a rate. All in one
+ * multicall.
  */
 async function readExtras(
   client: ReadClient,
   markets: MarketView[],
   graduator?: Address,
+  perpl?: Address,
 ): Promise<MarketView[]> {
   const calls: Call[] = [];
   const slots: { describe: number; quote: number | null; bookOf: number | null }[] = [];
+  // One getPerpetualInfoV2 per perp, however many markets read it, and one getFundingInterval.
+  const perps = new Map<string, number>();
+  let intervalSlot: number | null = null;
+  if (perpl) {
+    for (const m of markets) {
+      const perpId = perplPerpOf(m);
+      if (perpId === null || perps.has(perpId.toString())) continue;
+      intervalSlot ??=
+        calls.push({ address: perpl, abi: perplExchangeAbi as Abi, functionName: "getFundingInterval" }) - 1;
+      const slot = calls.push({
+        address: perpl,
+        abi: perplExchangeAbi as Abi,
+        functionName: "getPerpetualInfoV2",
+        args: [perpId],
+      });
+      perps.set(perpId.toString(), slot - 1);
+    }
+  }
   for (const m of markets) {
     const describe = calls.push({
       address: m.resolver,
@@ -196,9 +248,17 @@ async function readExtras(
     });
   }
   const results = await multicall(client, calls);
+  const interval = intervalSlot === null ? undefined : ok<bigint>(results[intervalSlot]);
+  const scales = new Map<string, FundingScale>();
+  for (const [perpId, slot] of perps) {
+    const scale = fundingScaleOf(ok<{ priceDecimals: bigint; markPNS: bigint }>(results[slot]), interval);
+    if (scale) scales.set(perpId, scale);
+  }
   return markets.map((m, i) => {
     const slot = slots[i];
     if (!slot) return m;
+    const perpId = perplPerpOf(m);
+    const funding = perpId === null ? undefined : scales.get(perpId.toString());
     const description = ok<string>(results[slot.describe]);
     const raw =
       slot.quote === null ? undefined : ok<readonly [bigint | number, bigint | number]>(results[slot.quote]);
@@ -215,6 +275,7 @@ async function readExtras(
       description: description && description.trim().length > 0 ? description.trim() : null,
       quote: bidAsk ? parseBestBidAsk(bidAsk[0], bidAsk[1]) : null,
       ...(registered === undefined ? {} : { bookReady: !isAddressEqual(registered, zeroAddress) }),
+      ...(funding ? { funding } : {}),
     };
   });
 }
@@ -230,12 +291,14 @@ export function stackTag(stack: Stack | undefined): Pick<MarketView, "stack" | "
 
 /**
  * Reads full views for a list of market addresses. Markets whose core reads fail are skipped. `stack` is
- * the stack every address belongs to (default: the primary one).
+ * the stack every address belongs to (default: the primary one); `perpl`, Perpl's Exchange, lets
+ * funding markets carry their perp's mark price and funding interval.
  */
 export async function readMarketViews(
   client: ReadClient,
   addresses: readonly Address[],
   stack?: Stack,
+  perpl?: Address,
 ): Promise<MarketView[]> {
   const perMarket = MARKET_READS.length;
   const results = await multicall(client, addresses.flatMap(marketCalls));
@@ -243,7 +306,7 @@ export async function readMarketViews(
     const view = parseMarketResults(address, results, i * perMarket);
     return view ? [{ ...view, ...stackTag(stack) }] : [];
   });
-  return readExtras(client, views, stack?.contracts.graduator);
+  return readExtras(client, views, stack?.contracts.graduator, perpl);
 }
 
 /** One stack's markets, newest first: marketCount, then marketAt for each index. */
@@ -251,6 +314,7 @@ async function listStack(
   client: ReadClient,
   stack: Stack,
   limit: number,
+  perpl?: Address,
 ): Promise<{ markets: MarketView[]; total: number }> {
   const factory = stack.contracts.factory as Address;
   const count = await client.readContract({
@@ -273,7 +337,7 @@ async function listStack(
     const a = ok<Address>(r);
     return a ? [a] : [];
   });
-  return { markets: await readMarketViews(client, addresses, stack), total };
+  return { markets: await readMarketViews(client, addresses, stack, perpl), total };
 }
 
 /**
@@ -287,10 +351,48 @@ export async function listMarkets(
 ): Promise<ReadResult<{ markets: MarketView[]; total: number }>> {
   const stacks = defaultStackFirst(stacksOf(deployment), defaultStackOf(deployment)?.name);
   if (stacks.length === 0) return { status: "not-deployed" };
-  const lists = await Promise.all(stacks.map((s) => listStack(client, s, limit)));
+  const perpl = deployment.external.perpl?.exchange;
+  const lists = await Promise.all(stacks.map((s) => listStack(client, s, limit, perpl)));
   return {
     status: "ok",
     data: { markets: lists.flatMap((l) => l.markets), total: lists.reduce((sum, l) => sum + l.total, 0) },
+  };
+}
+
+/** The markets list with the chain clock read next to it: everything /markets renders, in one value. */
+export interface MarketsSnapshot {
+  list: ReadResult<{ markets: MarketView[]; total: number }>;
+  /** The head and pace when the list was read, or null if the head could not be read. */
+  clock: ChainClock | null;
+}
+
+/**
+ * The markets list and the chain head, read together. `pace` gives milliseconds per block for a head
+ * (the server measures it once every few minutes); if it has no answer, the chain's nominal block time
+ * is used and the clock says it was not measured.
+ */
+export async function readMarketsSnapshot(
+  client: ReadClient,
+  deployment: Deployment,
+  {
+    pace = (head) => measureMsPerBlock(client, head),
+    nominalMsPerBlock = 400,
+  }: { pace?: (head: bigint) => Promise<number | null>; nominalMsPerBlock?: number } = {},
+): Promise<MarketsSnapshot> {
+  const [list, head] = await Promise.all([
+    listMarkets(client, deployment),
+    readChainHead(client).catch(() => null),
+  ]);
+  if (!head) return { list, clock: null };
+  const ms = await pace(head.blockNumber).catch(() => null);
+  return {
+    list,
+    clock: {
+      blockNumber: head.blockNumber,
+      timestamp: head.timestamp,
+      msPerBlock: ms ?? nominalMsPerBlock,
+      measured: ms !== null,
+    },
   };
 }
 
@@ -332,17 +434,27 @@ export async function readMarket(
   const view = parseMarketResults(address, results, stacks.length);
   if (!view) throw new Error("Could not read this market from the chain.");
   const tagged = { ...view, ...stackTag(stacks[at]) };
-  const [full] = await readExtras(client, [tagged], stacks[at]?.contracts.graduator);
+  const [full] = await readExtras(
+    client,
+    [tagged],
+    stacks[at]?.contracts.graduator,
+    deployment.external.perpl?.exchange,
+  );
   return { status: "ok", data: full ?? tagged };
 }
 
-/** The connected wallet's position in every listed market; only rows with something in them. */
+/**
+ * The connected wallet's position in every listed market; only rows with something in them. `readList`
+ * supplies the market list (the browser passes the server's cached one); by default it is read here.
+ */
 export async function readPortfolio(
   client: ReadClient,
   deployment: Deployment,
   user: Address,
+  readList: () => Promise<ReadResult<{ markets: MarketView[]; total: number }>> = () =>
+    listMarkets(client, deployment),
 ): Promise<ReadResult<PortfolioEntry[]>> {
-  const list = await listMarkets(client, deployment);
+  const list = await readList();
   if (list.status !== "ok") return list;
   const markets = list.data.markets;
   const PER = 5;

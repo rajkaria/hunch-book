@@ -384,7 +384,10 @@ threshold of 1,500, so NO. The keeper settled it, late (see the [incident log](.
 ## GET /stats
 
 From the chain: markets by phase and template, USDC in open pools, and the vault's USDC against
-everything it owes (`solvent` is `surplusUsdc >= 0`, docs/PROTOCOL.md §5.1). With an indexer configured,
+everything it owes (`solvent` is `surplusUsdc >= 0`, docs/PROTOCOL.md §5.1). Summed over every stack's
+vault: `usdcHeld` is the USDC the vaults hold (`USDC.balanceOf`), `inMarketsUsdc` the part in markets
+(every pool and complete set, `totalCollateral`), `feesOwedUsdc` the protocol and creator fees not
+withdrawn yet, and `owedUsdc` both together (`totalObligations`). With an indexer configured,
 `activity` adds wallets, stakes, fills, volume, router trades and redemptions, each with the part that
 is ours: fills against our maker bot, and the maker's share of fills and of volume.
 
@@ -403,6 +406,8 @@ is ours: fills against our maker bot, and the maker's share of fills and of volu
   "vault": {
     "address": "0x81b04B3567dcaDaE6a859394248C47ddc403ba37",
     "usdcHeld": "710",
+    "inMarketsUsdc": "700",
+    "feesOwedUsdc": "10",
     "owedUsdc": "710",
     "surplusUsdc": "0",
     "solvent": true,

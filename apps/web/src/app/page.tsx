@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { LandingLive } from "@/components/landing/LandingLive";
-import { getPublicClient } from "@/lib/chain/client";
-import { readLandingSnapshot } from "@/lib/chain/landing";
-import { appDeployment } from "@/lib/config";
+import { appDeployment, appNetwork } from "@/lib/config";
+import { landingRead } from "@/lib/served/load";
 
 const TITLE = "Hunch Book: prediction markets that graduate to Kuru's onchain order book";
 const DESCRIPTION =
@@ -15,10 +14,11 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
 };
 
-// The live panel is read from the chain, then this page is regenerated at most every 30 seconds.
+// The live panel is read from the chain on the server, then this page is regenerated at most every 30
+// seconds. Its markets come from the server's cached read (lib/served), the one /markets and /proof use.
 export const revalidate = 30;
 
 export default async function Home() {
-  const live = await readLandingSnapshot(getPublicClient(), appDeployment);
+  const live = await landingRead(appNetwork, appDeployment, 12_000);
   return <LandingLive initial={live} />;
 }
