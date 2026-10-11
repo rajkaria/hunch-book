@@ -6,6 +6,7 @@ import {
   fundingFairValue,
   fundingIncrements,
   historyNeeded,
+  historyWanted,
   MAX_RATE_WINDOW,
   MIN_FUNDING_SAMPLES,
   MIN_RATE_WINDOW,
@@ -150,6 +151,12 @@ describe("the averaged forecast rate", () => {
     expect(rateWindowFor(1)).toBe(MIN_RATE_WINDOW);
     expect(rateWindowFor(33)).toBe(33);
     expect(rateWindowFor(100)).toBe(MAX_RATE_WINDOW);
+  });
+
+  it("reads about 30 days of starts beyond the window and the averaging", () => {
+    expect(historyWanted(100)).toBe(100 + MAX_RATE_WINDOW + 1_000);
+    expect(historyWanted(10)).toBe(10 + MIN_RATE_WINDOW + 1_000);
+    expect(historyWanted(100)).toBeGreaterThan(historyNeeded(100));
   });
 
   it("is the mean of the last window of increments, or of all there is", () => {

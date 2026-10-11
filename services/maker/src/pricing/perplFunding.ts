@@ -137,3 +137,16 @@ export function fundingFairValue(input: FundingFairInput): FundingFair {
 export function historyNeeded(stepsToEnd: number): number {
   return stepsToEnd + MIN_FUNDING_SAMPLES * 10;
 }
+
+/** Historical forecast starts the bot reads for its errors: about 30 days of Perpl funding intervals. */
+export const FUNDING_ERROR_STARTS = 1_000;
+
+/**
+ * How many increments the bot reads: the window, the averaging window and FUNDING_ERROR_STARTS starts.
+ * A few hundred starts cover under two weeks, one quiet or one wild stretch, and the price swings with
+ * it (SOL net funding on testnet read 0.998 from 205 starts and 0.85 from 1,000). A perp with less
+ * history gives what it has, which must still meet historyNeeded.
+ */
+export function historyWanted(stepsToEnd: number): number {
+  return stepsToEnd + rateWindowFor(stepsToEnd) + FUNDING_ERROR_STARTS;
+}

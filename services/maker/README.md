@@ -96,7 +96,9 @@ at most 96: Perpl's funding moves in cycles and steps, and on Monad testnet hist
 forecast's error by a factor of 1.3 to 5 against the latest interval alone. The uncertainty is measured, not assumed: for every start
 point in the perp's own history, the bot compares the same forecast with what was actually paid over the
 same horizon. The probability of YES is the share of those historical forecast errors that would put the
-total above X (equal is NO). The bot needs at least the window's length plus 300 intervals of history.
+total above X (equal is NO). The bot reads about 1,000 starts of history (some 30 days) beyond the window
+and the averaging, since a couple of weeks is one quiet or one wild stretch and the price swings with it;
+it needs at least the window's length plus 300 intervals.
 
 **Price at a time (template 2).** "Will ASSET/USD be at or above K at time T?" The bot treats the price as
 lognormal with no drift. Its volatility is the realised volatility of the Chainlink feed's own last 300

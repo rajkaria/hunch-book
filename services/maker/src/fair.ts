@@ -27,7 +27,7 @@ import {
   forecastRate,
   fundingFairValue,
   fundingIncrements,
-  historyNeeded,
+  historyWanted,
   rateWindowFor,
   windowSteps,
 } from "./pricing/perplFunding.js";
@@ -274,7 +274,7 @@ export class FairValues {
       });
       return { p: fair.p, decided: true, detail: base };
     }
-    const history = await this.history(params.perpId, lastEvent, now, historyNeeded(stepsToEnd));
+    const history = await this.history(params.perpId, lastEvent, now, historyWanted(stepsToEnd));
     const increments = fundingIncrements(history.samples);
     const rateWindow = rateWindowFor(stepsToEnd);
     const currentRate = forecastRate(increments, rateWindow);
