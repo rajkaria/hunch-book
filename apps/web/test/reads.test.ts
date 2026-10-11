@@ -2,6 +2,7 @@ import { Phase } from "@hunch-book/shared";
 import { type Address, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
 import {
+  defaultStackFirst,
   listMarkets,
   measureMsPerBlock,
   readMarket,
@@ -211,5 +212,20 @@ describe("measureMsPerBlock", () => {
 
   it("gives up on a young chain", async () => {
     expect(await measureMsPerBlock(stubClient({}), 5_000n)).toBeNull();
+  });
+});
+
+describe("defaultStackFirst", () => {
+  const stacks = [{ name: "primary" }, { name: "kuruV2" }, { name: "hunch" }];
+
+  it("moves the default stack to the front and keeps the rest in order", () => {
+    expect(defaultStackFirst(stacks, "hunch").map((s) => s.name)).toEqual(["hunch", "primary", "kuruV2"]);
+    expect(defaultStackFirst(stacks, "kuruV2").map((s) => s.name)).toEqual(["kuruV2", "primary", "hunch"]);
+  });
+
+  it("leaves the order alone when the default is first, unknown or unset", () => {
+    expect(defaultStackFirst(stacks, "primary")).toBe(stacks);
+    expect(defaultStackFirst(stacks, "nope")).toBe(stacks);
+    expect(defaultStackFirst(stacks, undefined)).toBe(stacks);
   });
 });

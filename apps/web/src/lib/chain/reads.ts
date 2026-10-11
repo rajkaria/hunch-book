@@ -1,6 +1,7 @@
 import {
   bestBidAskV2AsV1,
   type Deployment,
+  defaultStackOf,
   type GraduationRule,
   graduatorV2Abi,
   hunchBookFactoryAbi,
@@ -276,21 +277,30 @@ async function listStack(
 }
 
 /**
- * Lists markets from every stack's factory (the primary stack first), each newest first. `limit`
- * applies per stack.
+ * Lists markets from every stack's factory, each newest first. The default stack, where new markets
+ * are created, comes first; the others follow in deployment order. `limit` applies per stack.
  */
 export async function listMarkets(
   client: ReadClient,
   deployment: Deployment,
   { limit = MARKET_LIST_LIMIT }: { limit?: number } = {},
 ): Promise<ReadResult<{ markets: MarketView[]; total: number }>> {
-  const stacks = stacksOf(deployment);
+  const stacks = defaultStackFirst(stacksOf(deployment), defaultStackOf(deployment)?.name);
   if (stacks.length === 0) return { status: "not-deployed" };
   const lists = await Promise.all(stacks.map((s) => listStack(client, s, limit)));
   return {
     status: "ok",
     data: { markets: lists.flatMap((l) => l.markets), total: lists.reduce((sum, l) => sum + l.total, 0) },
   };
+}
+
+/** The stacks with the default one moved to the front; the rest keep their order. */
+export function defaultStackFirst<T extends { name: string }>(
+  stacks: T[],
+  defaultName: string | undefined,
+): T[] {
+  const at = stacks.findIndex((s) => s.name === defaultName);
+  return at <= 0 ? stacks : [stacks[at] as T, ...stacks.slice(0, at), ...stacks.slice(at + 1)];
 }
 
 /**
