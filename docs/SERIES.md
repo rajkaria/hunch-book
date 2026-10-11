@@ -2,8 +2,10 @@
 
 Status: **live on Monad testnet**. Our keeper runs two series there, `btc-funding-weekly` (template 1)
 and `mon-funding-spike-daily` (template 4); every market they create is ours and labelled as ours. From
-2026-10-10 new periods go to the `hunch` stack (the network's default stack) and are seeded to its
-graduation rule from our own wallets (see Seed below), so each one opens its own order book.
+2026-10-12 new periods go to a Kuru stack only (testnet: the primary stack, Kuru v1, the network's default
+stack) and are seeded from our own wallets (see Seed below). The seed is below Kuru v1's rule of 500 USDC
+from 10 wallets, so a period graduates only when outside stakes fill the rest. Periods opened before on
+the `hunch` stack, our fallback book, run to settlement there.
 
 A series is a market that repeats on a schedule: "BTC funding this week" every week, "ETH at noon UTC"
 every day. The keeper creates each period's market when its creation point arrives, from its own

@@ -75,8 +75,10 @@ cd contracts
 FOUNDRY_PROFILE=fork forge test --match-path test/fork/MainnetRehearsal.fork.t.sol -vv
 ```
 
-The recommended mainnet launch is on Hunch Book's own order book (`VENUE=hunch`), which needs nothing
-from Kuru: books are created inside `graduate()`. Its rehearsal deploys with the real script and Circle
+The mainnet launch is on Kuru v1: deployed on 2026-10-11 with `KURU_VERSION=1`, addresses in
+[deployments/monad-mainnet.json](../deployments/monad-mainnet.json). Kuru creates each YES/USDC book and anyone
+registers it. Hunch Book's own order book (`VENUE=hunch`) stays a fallback, where books are created inside
+`graduate()`. Its rehearsal deploys with the real script and Circle
 USDC, fills a pool, graduates (creating the book), quotes, trades YES and NO through the router, closes,
 settles and redeems:
 
@@ -106,7 +108,14 @@ forge script script/Deploy.s.sol --rpc-url "$MONAD_MAINNET_RPC" \
 Run it once without `--broadcast` first: a dry run prints every address and writes nothing. The
 broadcast run writes the addresses into `deployments/monad-mainnet.json` under `hunchBook`.
 
-**Venue.** `VENUE=hunch` (recommended for mainnet) deploys Hunch Book's own order book
+**Venue.** The mainnet deploy is on Kuru v1, with a guardian that is not the deployer:
+
+```bash
+KURU_VERSION=1 GUARDIAN=0xYourGuardian DEPLOYER_PRIVATE_KEY=... \
+forge script script/Deploy.s.sol --rpc-url "$MONAD_MAINNET_RPC" --broadcast --slow --gas-estimate-multiplier 110
+```
+
+`VENUE=hunch` deploys our fallback instead: Hunch Book's own order book
 (HunchOrderBookFactory, its HunchMarginAccount and the book implementation) with the v1 Graduator and
 HunchRouter on it, and writes `hunchBook.venue`. Every market graduates into its own book on the spot,
 on any network ([PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)):
@@ -122,7 +131,8 @@ A Kuru stack can be added next to it later (`STACK=kuruV2 KURU_VERSION=2`), once
 
 Foundry reads `.env` from the directory it runs in, so the key never goes on the command line.
 
-**Kuru version.** Mainnet defaults to Kuru v2 (`KURU_VERSION=2`): GraduatorV2 and HunchRouterV2,
+**Kuru version.** The script defaults to Kuru v2 on mainnet (`KURU_VERSION=2`); the 2026-10-11 deploy set
+`KURU_VERSION=1`. Kuru v2 means GraduatorV2 and HunchRouterV2,
 pointed at `external.kuruV2` in the deployments file ([PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)).
 
 - Kuru's v2 mainnet addresses are in the file: deploy as above.

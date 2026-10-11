@@ -244,7 +244,7 @@ describe("with no contracts deployed", () => {
     expect(footer.getByText("Monad mainnet: planned")).toBeTruthy();
     expect(
       footer.getByText(
-        "Built on Monad, trades on onchain order books (Hunch Book's own and Kuru's), settles from Perpl and Chainlink.",
+        "Built on Monad, trades on Kuru's onchain order book, settles from Perpl and Chainlink.",
       ),
     ).toBeTruthy();
     expect(footer.getByRole("link", { name: "MIT licensed" }).getAttribute("href")).toMatch(/LICENSE$/);
