@@ -305,7 +305,7 @@ primary stack, on Kuru v1.
 |---|---|---|---|
 | Testnet | `primary` (new markets) | Kuru v1 | the Graduator calls Kuru's `deployProxy` inside `graduate()` (open to anyone on testnet) |
 | Testnet | `kuruV2` | Kuru v2 | waits for Kuru governance to set up each token and create each book (below); Kuru has not set up the testnet tokens yet |
-| Testnet | `hunch` (fallback, no new markets) | Hunch order book | the Graduator creates the book inside `graduate()`; market creation is paused and the earlier markets run to settlement |
+| Testnet | `hunch` (fallback, no new markets) | Hunch order book | the Graduator creates the book inside `graduate()`; we open no new markets there and the earlier markets run to settlement |
 | Mainnet | Kuru stack (planned) | Kuru v1 | Kuru's owner creates each book; anyone calls `registerBook`, then `graduate()` (below) |
 
 #### Kuru
@@ -362,7 +362,7 @@ What changes, and how Hunch Book handles it:
 Status: **live on Monad testnet**, no new markets (stack `hunch`: factory [0x846C…5AF2](https://testnet.monadscan.com/address/0x846Cd400B832203befe5902ef43DAdc969985AF2), book factory [0x0DDF…46C5](https://testnet.monadscan.com/address/0x0DDF74540B6720B348483084F749907b2c3F46C5), margin account [0x6dDa…Ee1c](https://testnet.monadscan.com/address/0x6dDaC7a754A2A4bf2fF688B8F08eaA8ADC42Ee1c); every contract verified on Sourcify). Rehearsed on a fork of Monad mainnet with Circle USDC ([HunchVenueMainnet.fork.t.sol](../contracts/test/fork/HunchVenueMainnet.fork.t.sol)).
 
 Hunch Book's own fully onchain order book, built as a fallback venue. It takes no new markets: new markets go
-to Kuru, the guardian paused market creation on the `hunch` stack's factory, and that stack's earlier markets
+to Kuru (the app, SDK, MCP server and keeper create nothing on the `hunch` stack), and that stack's earlier markets
 trade and settle on their books as normal. How it works:
 
 - `HunchOrderBookFactory.deployProxy` creates a book (a minimal clone at an address salted by every parameter) for the YES token of a market a Hunch Book factory created, against that factory's USDC. Anyone can call it, on any network. The Graduator calls it inside `graduate()`.
