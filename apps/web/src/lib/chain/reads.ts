@@ -32,7 +32,7 @@ import { usdcOf } from "../config";
 import { parseBestBidAsk } from "../market/logic";
 import { decodeMarketParams } from "../market/params";
 import { marketTitle, type TitleClock } from "../market/title";
-import type { FundingScale, MarketView, PortfolioEntry, ReadResult } from "../market/types";
+import type { ChainClock, FundingScale, MarketView, PortfolioEntry, ReadResult } from "../market/types";
 import { MULTICALL3, type ReadClient } from "./client";
 import { kuruOrderBookAbi } from "./kuru";
 
@@ -359,6 +359,43 @@ export async function listMarkets(
   };
 }
 
+/** The markets list with the chain clock read next to it: everything /markets renders, in one value. */
+export interface MarketsSnapshot {
+  list: ReadResult<{ markets: MarketView[]; total: number }>;
+  /** The head and pace when the list was read, or null if the head could not be read. */
+  clock: ChainClock | null;
+}
+
+/**
+ * The markets list and the chain head, read together. `pace` gives milliseconds per block for a head
+ * (the server measures it once every few minutes); if it has no answer, the chain's nominal block time
+ * is used and the clock says it was not measured.
+ */
+export async function readMarketsSnapshot(
+  client: ReadClient,
+  deployment: Deployment,
+  {
+    pace = (head) => measureMsPerBlock(client, head),
+    nominalMsPerBlock = 400,
+  }: { pace?: (head: bigint) => Promise<number | null>; nominalMsPerBlock?: number } = {},
+): Promise<MarketsSnapshot> {
+  const [list, head] = await Promise.all([
+    listMarkets(client, deployment),
+    readChainHead(client).catch(() => null),
+  ]);
+  if (!head) return { list, clock: null };
+  const ms = await pace(head.blockNumber).catch(() => null);
+  return {
+    list,
+    clock: {
+      blockNumber: head.blockNumber,
+      timestamp: head.timestamp,
+      msPerBlock: ms ?? nominalMsPerBlock,
+      measured: ms !== null,
+    },
+  };
+}
+
 /** The stacks with the default one moved to the front; the rest keep their order. */
 export function defaultStackFirst<T extends { name: string }>(
   stacks: T[],
@@ -406,13 +443,18 @@ export async function readMarket(
   return { status: "ok", data: full ?? tagged };
 }
 
-/** The connected wallet's position in every listed market; only rows with something in them. */
+/**
+ * The connected wallet's position in every listed market; only rows with something in them. `readList`
+ * supplies the market list (the browser passes the server's cached one); by default it is read here.
+ */
 export async function readPortfolio(
   client: ReadClient,
   deployment: Deployment,
   user: Address,
+  readList: () => Promise<ReadResult<{ markets: MarketView[]; total: number }>> = () =>
+    listMarkets(client, deployment),
 ): Promise<ReadResult<PortfolioEntry[]>> {
-  const list = await listMarkets(client, deployment);
+  const list = await readList();
   if (list.status !== "ok") return list;
   const markets = list.data.markets;
   const PER = 5;

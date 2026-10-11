@@ -11,7 +11,7 @@ import { type Abi, type Address, erc20Abi, type PublicClient } from "viem";
 import { MULTICALL3 } from "../chain/client";
 import { readVaultBooks } from "../chain/landing";
 import { listMarkets } from "../chain/reads";
-import type { MarketView } from "../market/types";
+import type { MarketView, ReadResult } from "../market/types";
 import { findSettlementTx, type VerifyClient } from "../verify/read";
 import {
   countMarkets,
@@ -88,14 +88,21 @@ export async function readBacking(
   });
 }
 
-/** Everything the chain can answer for the proof page. */
+/**
+ * Everything the chain can answer for the proof page. `readList`, when given, supplies the market list
+ * already read (the server's cached list) in place of reading it again.
+ */
 export async function readProofFromChain(
   client: ProofClient,
   deployment: Deployment,
+  readList?: () => Promise<ReadResult<{ markets: MarketView[]; total: number }>>,
 ): Promise<ProofData & { listed: MarketView[] }> {
   const factory = deployment.hunchBook.factory;
   if (!factory) throw new Error("The contracts are not deployed on this network.");
-  const [list, vault] = await Promise.all([listMarkets(client, deployment), readVault(client, deployment)]);
+  const [list, vault] = await Promise.all([
+    readList ? readList() : listMarkets(client, deployment),
+    readVault(client, deployment),
+  ]);
   const markets = list.status === "ok" ? list.data.markets : [];
   const total =
     list.status === "ok"

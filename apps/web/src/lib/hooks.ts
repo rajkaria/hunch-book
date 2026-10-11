@@ -8,6 +8,7 @@ import { getPublicClient, makePublicClient } from "./chain/client";
 import { readBookSnapshot } from "./chain/kuru";
 import {
   listMarkets,
+  type MarketsSnapshot,
   measureMsPerBlock,
   readChainHead,
   readMarket,
@@ -20,6 +21,7 @@ import {
 import { appChain, appDeployment, appNetwork, isDeployed, usdcOf } from "./config";
 import { planSettlement } from "./market/settle";
 import type { ChainClock, MarketView } from "./market/types";
+import { type MarketsRead, marketsRead, marketsServedFirst } from "./served/fetch";
 import { defaultStack, deployBlockOf, routerOf } from "./stacks";
 import { findSettlementTx, runVerification } from "./verify/read";
 
@@ -64,10 +66,23 @@ export function walletQueryKeys(market: MarketView, user: Address | undefined) {
   ];
 }
 
+/**
+ * Every stack's markets: one request to the server's cached read (lib/served), or, if that fails, read
+ * from this browser. The chain clock read with them rides along for titles and countdowns.
+ */
+function readMarketsSnapshotHere(): Promise<MarketsSnapshot> {
+  const network = appNetwork;
+  const deployment = appDeployment;
+  return marketsServedFirst(network, async () => ({
+    list: await listMarkets(getPublicClient(), deployment),
+    clock: null,
+  }));
+}
+
 export function useMarkets() {
   return useQuery({
     queryKey: queryKeys.markets(),
-    queryFn: () => listMarkets(getPublicClient(), appDeployment),
+    queryFn: async (): Promise<MarketsRead> => marketsRead(await readMarketsSnapshotHere()),
     enabled: deployed(),
     refetchInterval: 15_000,
   });
@@ -85,7 +100,11 @@ export function useMarket(address: Address) {
 export function usePortfolio(user: Address | undefined) {
   return useQuery({
     queryKey: queryKeys.portfolio(user ?? "0x"),
-    queryFn: () => readPortfolio(getPublicClient(), appDeployment, user as Address),
+    // The market list comes from the server's cached read; only this wallet's positions are read here.
+    queryFn: () =>
+      readPortfolio(getPublicClient(), appDeployment, user as Address, async () => {
+        return (await readMarketsSnapshotHere()).list;
+      }),
     enabled: deployed() && Boolean(user),
     refetchInterval: 15_000,
   });

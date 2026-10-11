@@ -696,7 +696,9 @@ export function ProofView() {
     <div className={s.stack}>
       <div className={s.sourceRow}>
         <SourceTag source={source} fallback={fallback} indexedBlock={indexedBlock} />
-        <Badge tone="muted">updated {formatUtc(Math.floor(proof.dataUpdatedAt / 1000))}</Badge>
+        <Badge tone="muted">
+          updated {formatUtc(Math.floor((proof.data.readAt ?? proof.dataUpdatedAt) / 1000))}
+        </Badge>
       </div>
       {source === "chain" ? <ChainOnly /> : null}
       <MarketsPanel data={data} source={source} />

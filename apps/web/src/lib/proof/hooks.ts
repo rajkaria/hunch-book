@@ -5,52 +5,37 @@ import { useState } from "react";
 import { getPublicClient } from "../chain/client";
 import { appDeployment, appNetwork, isDeployed } from "../config";
 import { getIndexerClient } from "../indexer/client";
-import { PROOF_QUERY, type ProofResult } from "../indexer/queries";
-import { type Sourced, withIndexer } from "../indexer/source";
+import type { Sourced } from "../indexer/source";
 import type { MarketView } from "../market/types";
-import { measureSettlement, readProofFromChain, readVault } from "./chain";
-import { type ProofData, proofFromIndexer, type SettlementTiming, type VaultBalance } from "./metrics";
+import { fetchServed } from "../served/fetch";
+import { measureSettlement } from "./chain";
+import type { SettlementTiming } from "./metrics";
+import { type ProofView, readProofFrom } from "./read";
 
-export interface ProofView extends ProofData {
-  /** The vault's books read from the chain now, next to the indexer's replay. */
-  liveVault: VaultBalance | null;
-  /** Chain reads only: the markets the counts cover. */
-  listed: MarketView[] | null;
+export { PROOF_DAYS, type ProofView } from "./read";
+
+/** The proof figures read from this browser: the indexer when it answers, else the chain. */
+export async function readProof(): Promise<Sourced<ProofView>> {
+  return readProofFrom({ client: getPublicClient(), deployment: appDeployment, indexer: getIndexerClient() });
 }
 
-/** Days of daily activity the page shows. */
-export const PROOF_DAYS = 30;
-
-export async function readProof(): Promise<Sourced<ProofView>> {
-  const client = getPublicClient();
-  const deployment = appDeployment;
-  return withIndexer<ProofView>({
-    indexer: getIndexerClient(),
-    fromIndexer: async (indexer) => {
-      const [result, liveVault] = await Promise.all([
-        indexer.query<ProofResult>(PROOF_QUERY, {
-          chainId: String(deployment.chainId),
-          chain: deployment.chainId,
-          days: PROOF_DAYS,
-          markets: 200,
-          settlements: 50,
-        }),
-        readVault(client, deployment).catch(() => null),
-      ]);
-      if (!result.ProtocolStats_by_pk) throw new Error("The indexer has no totals for this chain yet.");
-      return { ...proofFromIndexer(result), liveVault, listed: null };
-    },
-    fromChain: async () => {
-      const data = await readProofFromChain(client, deployment);
-      return { ...data, liveVault: data.vault };
-    },
-  });
+/**
+ * The proof figures: one request to the server's cached read (lib/served), stamped with when the server
+ * read them; if that fails, read from this browser.
+ */
+export async function readProofServedFirst(): Promise<Sourced<ProofView>> {
+  try {
+    const served = await fetchServed<Sourced<ProofView>>("proof", appNetwork);
+    return { ...served.data, readAt: served.readAt };
+  } catch {
+    return readProof();
+  }
 }
 
 export function useProof() {
   return useQuery({
     queryKey: ["proof", appNetwork],
-    queryFn: readProof,
+    queryFn: readProofServedFirst,
     enabled: isDeployed(appDeployment),
     refetchInterval: 15_000,
   });
