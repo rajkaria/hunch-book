@@ -445,8 +445,10 @@ export function faqItems(): FaqItem[] {
             ? `On Monad testnet: the contracts, pools, graduation into order books, and trading YES and NO through the router. ${venueSentences(deployments["monad-testnet"]).join(" ")} `
             : "Nothing is deployed yet. "}
           {appNetwork === "monad-testnet" ? `${TESTNET_MONEY} ` : null}
-          {mainnetLive ? "The contracts are live on Monad mainnet with Circle USDC." : "Mainnet with real USDC is planned."} Every
-          address is in{" "}
+          {mainnetLive
+            ? "The contracts are live on Monad mainnet with Circle USDC."
+            : "Mainnet with real USDC is planned."}{" "}
+          Every address is in{" "}
           <a href={`${REPO_URL}/blob/main/deployments/${appNetwork}.json`} target="_blank" rel="noreferrer">
             deployments/{appNetwork}.json
           </a>
