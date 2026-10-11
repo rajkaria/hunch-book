@@ -127,6 +127,7 @@ chains:
       - name: KuruOrderBook
       - name: KuruSpotBook
       - name: SnapshotResolver
+        address: "0x75054C1c11A1011ea8D2A061410EB20Ffc8b214c"
       - name: AutoRedeemer
         address: "0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6"
       - name: ConditionalOrders

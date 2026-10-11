@@ -18,8 +18,13 @@
     "kuruVersion": 1,
     "marketImplementation": "0x13c5B2e982F437566991c4d9aC0a30F9f9aC15Ed",
     "resolvers": {
+      "chainlinkTouch": "0x14bAFC9CC453D7d78AdDC4E756778F24881fBe46",
+      "marketOutcome": "0xcE950DB101cf9976fEcFf6FDf25D38695E4822C8",
       "perplFunding": "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A",
-      "priceAtTime": "0x4ec0077e30EA8B626C5AA087C586E60542150951"
+      "perplFundingSpike": "0xEaE4C99BFc151c6f22f161eEeC6aC30649595994",
+      "priceAtTime": "0x4ec0077e30EA8B626C5AA087C586E60542150951",
+      "priceRange": "0xaD471a1bE411b54f48C85A74BFCB4335eA4C890f",
+      "snapshot": "0x75054C1c11A1011ea8D2A061410EB20Ffc8b214c"
     },
     "router": "0xa0C97ebC345746C37Ac15a10E076c3A3BBd2141a",
     "usdc": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
@@ -50,13 +55,25 @@
       }
     },
     "deployTxs": {
+      "addTemplate1": "0x4c24bcb28fae6e2d666cc4721199bf281fff2dfdb7c4c9e2f90636f049cd0828",
+      "addTemplate2": "0xae5c3bec9a5dc283455ba89300aedf520e2dd5c05e7c2a55d9ab69e09b4fc029",
+      "addTemplate3": "0xe44dc3cdf866809a01c4447b8b6069bd461380ad54790becb62473c3417199cf",
+      "addTemplate4": "0x0bf6bd2c8a41d1c830669065d7bb1174017203b9ef18d495701c99eb9b845ed9",
+      "addTemplate5": "0xcfa89a0790ce3790f18d6a07dcb5440b7f64aeb08b5ca7cc26781e332d563603",
+      "addTemplate6": "0x1b04e518ff758812e51f658deedc0efe95083675fb0c238196344ee94b608f23",
+      "addTemplate7": "0xe8102b17c9ad4987c5c9188b30b2c92addc9548c8028ee37e02be7417fbb9e93",
+      "chainlinkTouch": "0xba9a48a3e42cfa8d8eb752a8f9fbff48255cc45b9f4d2532301b97ef6a94a76b",
       "factory": "0xae4e637ba5c7f1592b0f28fae6e4949f0702bb90e20aa19207f8883fc7d13f8b",
       "graduator": "0xe56f3337961785804259dc9c77a1c3204cdd6e87376bfbebd8d3e6cdc6df3050",
       "marketImplementation": "0xe391e5b233e12359324feda2c47eb5ba63189851e929a5a38b6206130572d548",
+      "marketOutcome": "0x96d8d7c49624d65c1b8028b26a93a4062bd17ae0bc1fed587802b8ba5e9d85b1",
       "perplFunding": "0x7ee7a09367dceb20ac4eafa4236529fefcfbf8fbda07e9631478baf91ee413cf",
+      "perplFundingSpike": "0xce74e42611a4fdd512cea16d3751e43f2b0d064ece39904f61e2f063f5ee7504",
       "priceAtTime": "0x5bae9126597b7e3c5796c741cd8a250e995baf6d52967b9ca20d3759ca609a1e",
+      "priceRange": "0xc16ef6b97fca6b6fe00b20ae90610124686f91a248942494563edd26639ef800",
       "router": "0x614439faa00cd0588933a97285aedac2d251d5c3e3c5a5f5d962615673563959",
-      "setGraduator": "0x48b70575f901bf3f290e815c9835bfb60d1a64be4db17b1f790866a7705f2620"
+      "setGraduator": "0x48b70575f901bf3f290e815c9835bfb60d1a64be4db17b1f790866a7705f2620",
+      "snapshot": "0x35a49f29ff393432cf398d13528d4479637b696a7baa1c133beca6a2e32a7287"
     }
   },
   "wallets": {

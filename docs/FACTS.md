@@ -28,11 +28,12 @@ change. This page holds the numbers that do not change, and dated snapshots of t
 | Collateral | Circle USDC [0x7547…b603](https://monadscan.com/address/0x754704Bc059F8C67012fEd69BC8A327a5aafb603) | `hunchBook.usdc` |
 | Core contracts | 6 deployed (market implementation, [factory](https://monadscan.com/tx/0xae4e637ba5c7f1592b0f28fae6e4949f0702bb90e20aa19207f8883fc7d13f8b), [graduator](https://monadscan.com/tx/0xe56f3337961785804259dc9c77a1c3204cdd6e87376bfbebd8d3e6cdc6df3050), [router](https://monadscan.com/tx/0x614439faa00cd0588933a97285aedac2d251d5c3e3c5a5f5d962615673563959), two resolvers) plus the vault the factory deploys | `hunchBook` and `deployTxs` |
 | Periphery contracts | 8 | `hunchBook.periphery` and its `deployTxs` |
-| Source verification | all 15 contracts verified on Sourcify (match) | `forge verify-contract --verifier sourcify` |
-| Templates registered | 0 so far: the guardian registers them next | `factory.templateOf(id)` |
+| Source verification | all 20 contracts verified on Sourcify (match) | `forge verify-contract --verifier sourcify` |
+| Templates registered | 7 (ids 1 to 7), by the guardian on 2026-10-12 ([template 1](https://monadscan.com/tx/0x4c24bcb28fae6e2d666cc4721199bf281fff2dfdb7c4c9e2f90636f049cd0828)) | `factory.templateOf(id)`; `addTemplate1` to `addTemplate7` in `deployTxs` |
+| Graduation rule (every template) | a pool of at least 10 USDC from at least 2 wallets, stakes on both sides, chance between 3% and 97% | `factory.templateOf(1).rule` |
 | Guardian | [0xCaA4…4Bf8](https://monadscan.com/address/0xCaA404541A30c277a05F2A500f3F4430250f4Bf8), a single key separate from the deployer, to be rotated to a multisig | `hunchBook.guardian` |
 | Fee recipient | the deployer, [0xD183…10A8](https://monadscan.com/address/0xD183a7daECF3d539683f37e1111558E3dFC210A8) | `hunchBook.feeRecipient` |
-| Deploy gas | about 3.74 MON for core and periphery | the deployer's balance before and after |
+| Deploy gas | about 3.74 MON for core and periphery, about 1.77 MON for templates 3 to 7 and the registrations | the deployer's balance before and after |
 
 ## Markets on Kuru (Monad testnet)
 

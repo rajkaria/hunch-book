@@ -14,8 +14,13 @@
       "marketImplementation": "0x13c5b2e982f437566991c4d9ac0a30f9f9ac15ed"
     },
     "resolvers": {
+      "chainlinkTouch": "0x14bafc9cc453d7d78addc4e756778f24881fbe46",
+      "marketOutcome": "0xce950db101cf9976fecff6fdf25d38695e4822c8",
       "perplFunding": "0x2c30da53f8c384d6ed6603e3138a98fd15e4928a",
-      "priceAtTime": "0x4ec0077e30ea8b626c5aa087c586e60542150951"
+      "perplFundingSpike": "0xeae4c99bfc151c6f22f161eeec6ac30649595994",
+      "priceAtTime": "0x4ec0077e30ea8b626c5aa087c586e60542150951",
+      "priceRange": "0xad471a1be411b54f48c85a74bfcb4335ea4c890f",
+      "snapshot": "0x75054c1c11a1011ea8d2a061410eb20ffc8b214c"
     },
     "periphery": {
       "autoRedeemer": "0xb9d22c84c5e2f4329eeee1b52ad753df3268c2a6",
@@ -57,8 +62,13 @@
         "guardian": "0xcaa404541a30c277a05f2a500f3f4430250f4bf8",
         "feeRecipient": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
         "resolvers": {
+          "chainlinkTouch": "0x14bafc9cc453d7d78addc4e756778f24881fbe46",
+          "marketOutcome": "0xce950db101cf9976fecff6fdf25d38695e4822c8",
           "perplFunding": "0x2c30da53f8c384d6ed6603e3138a98fd15e4928a",
-          "priceAtTime": "0x4ec0077e30ea8b626c5aa087c586e60542150951"
+          "perplFundingSpike": "0xeae4c99bfc151c6f22f161eeec6ac30649595994",
+          "priceAtTime": "0x4ec0077e30ea8b626c5aa087c586e60542150951",
+          "priceRange": "0xad471a1be411b54f48c85a74bfcb4335ea4c890f",
+          "snapshot": "0x75054c1c11a1011ea8d2a061410eb20ffc8b214c"
         },
         "periphery": {
           "autoRedeemer": "0xb9d22c84c5e2f4329eeee1b52ad753df3268c2a6",
