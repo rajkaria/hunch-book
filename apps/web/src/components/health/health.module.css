@@ -3,6 +3,28 @@
   cursor: help;
 }
 
+/* The footer-line version: the grade's colour, no pill. */
+.text {
+  cursor: help;
+  font-weight: 600;
+}
+
+.text-good {
+  color: var(--accent);
+}
+
+.text-fair {
+  color: var(--warn);
+}
+
+.text-thin {
+  color: var(--no);
+}
+
+.text-finished {
+  color: var(--subtle);
+}
+
 .parts {
   list-style: none;
   margin: 0;

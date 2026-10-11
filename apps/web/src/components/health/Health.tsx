@@ -5,7 +5,7 @@ import { healthLabel } from "@/lib/health/score";
 import { depthWithinBand, viewHealth } from "@/lib/health/view";
 import { useBook } from "@/lib/hooks";
 import type { ChainClock, MarketView } from "@/lib/market/types";
-import { Badge, Panel, type Tone } from "../ui";
+import { Badge, cx, Panel, type Tone } from "../ui";
 import s from "./health.module.css";
 
 const HEALTH_DOC = "https://github.com/rajkaria/hunch-book/blob/main/docs/HEALTH.md";
@@ -18,12 +18,30 @@ const GRADE_WORD: Record<HealthGrade, string> = {
   finished: "finished",
 };
 
-/** "Health 72", coloured by grade, with every part's reason as its tooltip. Nothing once finished. */
-export function HealthBadge({ health }: { health: Health }) {
+/**
+ * "Health 72", coloured by grade, with every part's reason as its tooltip. Nothing once finished. The
+ * "text" variant is the same words without the pill, for a card's footer line.
+ */
+export function HealthBadge({
+  health,
+  variant = "badge",
+  className,
+}: {
+  health: Health;
+  variant?: "badge" | "text";
+  className?: string;
+}) {
   if (health.score === null) return null;
   const why = health.parts.map((p) => `${p.name} ${p.points}/${p.max}: ${p.why}`).join("\n");
+  if (variant === "text") {
+    return (
+      <span title={why} className={cx(s.text, s[`text-${health.grade}`], className)}>
+        {healthLabel(health)}
+      </span>
+    );
+  }
   return (
-    <span title={why} className={s.badge}>
+    <span title={why} className={cx(s.badge, className)}>
       <Badge tone={TONE[health.grade]}>{healthLabel(health)}</Badge>
     </span>
   );
@@ -34,13 +52,17 @@ export function CardHealth({
   m,
   clock,
   now,
+  variant,
+  className,
 }: {
   m: MarketView;
   clock: ChainClock | null;
   now: number | null;
+  variant?: "badge" | "text";
+  className?: string;
 }) {
   if (now === null) return null;
-  return <HealthBadge health={viewHealth(m, clock, now)} />;
+  return <HealthBadge health={viewHealth(m, clock, now)} variant={variant} className={className} />;
 }
 
 /** The market page's panel: the score and what each part saw, with depth from the full book. */

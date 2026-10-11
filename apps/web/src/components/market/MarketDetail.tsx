@@ -12,9 +12,9 @@ import { phaseLabel, phaseTone } from "@/lib/market/logic";
 import { templateLabel } from "@/lib/market/params";
 import { titleDiffersFromRule } from "@/lib/market/title";
 import type { ChainClock, MarketView } from "@/lib/market/types";
-import { marketTag } from "@/lib/stacks";
 import { HealthPanel } from "../health/Health";
 import { Countdown, marketHeadline } from "../markets/MarketCard";
+import { VenueBadge } from "../markets/VenueChip";
 import { OrdersPanel } from "../orders/OrdersPanel";
 import { ReferralBindPrompt } from "../referral/ReferralBindPrompt";
 import { ShareMarket } from "../referral/ShareMarket";
@@ -64,8 +64,10 @@ export function MarketBody({
           <Badge tone={phaseTone(m.phase)} dot>
             {phaseLabel(m.phase)}
           </Badge>
+          <VenueBadge m={m} />
           <span>{templateLabel(m.templateId)}</span>
-          <span className="mono">Market {marketTag(m)}</span>
+          {/* The venue badge tells same-numbered markets on different stacks apart. */}
+          <span className="mono">Market #{m.marketId.toString()}</span>
           <span className="mono">
             <Countdown m={m} clock={clock} now={now} />
           </span>

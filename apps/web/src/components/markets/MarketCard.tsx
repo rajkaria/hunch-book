@@ -1,21 +1,15 @@
 import Link from "next/link";
 import { appDeployment } from "@/lib/config";
-import { formatUsdc } from "@/lib/format";
-import {
-  chanceDisplay,
-  marketChance,
-  milestoneText,
-  nextMilestone,
-  phaseLabel,
-  phaseTone,
-} from "@/lib/market/logic";
+import { formatChance, formatCount } from "@/lib/format";
+import { cardBody, compactUsdc, isUrgent, milestoneShort } from "@/lib/market/explorer";
+import { milestoneText, nextMilestone, phaseGroup, phaseLabel, phaseTone } from "@/lib/market/logic";
 import { templateLabel } from "@/lib/market/params";
 import { marketTitle, type TitleClock } from "@/lib/market/title";
 import type { ChainClock, MarketView } from "@/lib/market/types";
-import { marketTag } from "@/lib/stacks";
 import { CardHealth } from "../health/Health";
-import { Badge, ChanceBar } from "../ui";
-import s from "./markets.module.css";
+import { cx } from "../ui";
+import s from "./explorer.module.css";
+import { VenueChip } from "./VenueChip";
 
 /**
  * The market's title (lib/market/title.ts): Perpl block windows read as estimated clock times once the
@@ -41,6 +35,59 @@ export function Countdown({
   return <span>{milestoneText(milestone, now)}</span>;
 }
 
+/** "62.0%" with the percent sign set smaller, as on the main Hunch cards. */
+function ChanceFigure({ bps }: { bps: bigint }) {
+  const text = formatChance(bps);
+  return (
+    <span className={s.chanceValue}>
+      {text.slice(0, -1)}
+      <span className={s.chanceUnit}>%</span>
+    </span>
+  );
+}
+
+function CardFigures({ m }: { m: MarketView }) {
+  const body = cardBody(m);
+  if (body.kind === "outcome") {
+    return (
+      <p className={cx(s.note, body.side === "yes" && s.noteYes, body.side === "no" && s.noteNo)}>
+        {body.text}
+      </p>
+    );
+  }
+  if (body.kind === "note") return <p className={s.note}>{body.text}</p>;
+  const pct = Number(body.bps) / 100;
+  return (
+    <>
+      <div className={s.chanceRow}>
+        <ChanceFigure bps={body.bps} />
+        <span className={s.chanceCaption}>Chance of YES</span>
+      </div>
+      <div className={s.track} aria-hidden="true">
+        <div className={s.fill} style={{ width: `${pct}%` }} />
+      </div>
+      {body.tiles ? (
+        <div className={s.tiles}>
+          {body.tiles.map((tile, i) => (
+            <span key={tile.label} className={cx(s.tile, i === 0 ? s.tileYes : s.tileNo)}>
+              <span className={s.tileLabel}>{tile.label}</span>
+              <span className={s.tileValue}>
+                {tile.value}
+                {tile.unit ? <span className={s.tileUnit}> {tile.unit}</span> : null}
+              </span>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * One market in the list, in the main Hunch card's anatomy: phase and venue tags with the countdown
+ * across the top, the question, the chance with its bar and the two sides, then a footer line with the
+ * pool, the stakers, the health score and the template.
+ */
 export function MarketCard({
   m,
   clock,
@@ -50,36 +97,45 @@ export function MarketCard({
   clock: ChainClock | null;
   now: number | null;
 }) {
-  const chance = marketChance(m);
-  const shown = chanceDisplay(chance);
+  const milestone = now === null ? null : nextMilestone(m, clock, now);
+  const urgent = now !== null && isUrgent(milestone, now);
+  const over = phaseGroup(m.phase) === "settled";
+  const tone = phaseTone(m.phase);
+  const live = tone === "accent";
   return (
-    <li className={s.card}>
-      <div className={s.meta}>
-        <Badge tone={phaseTone(m.phase)}>{phaseLabel(m.phase)}</Badge>
-        <span>{templateLabel(m.templateId)}</span>
-        <span className="mono">{marketTag(m)}</span>
-        <span className={s.metaRight}>
-          <CardHealth m={m} clock={clock} now={now} />
-          <Countdown m={m} clock={clock} now={now} />
-        </span>
+    <li className={cx(s.card, urgent && s.cardUrgent, over && s.cardOver)}>
+      <div className={s.cardTop}>
+        <div className={s.tags}>
+          <span className={cx(s.tag, s[`tag-${tone}`])}>
+            {live ? <span className={cx(s.dot, s.pulse)} aria-hidden="true" /> : null}
+            {phaseLabel(m.phase)}
+          </span>
+          <VenueChip m={m} />
+        </div>
+        {milestone && now !== null ? (
+          <span className={cx(s.time, urgent && s.timeUrgent)}>
+            <span className={cx(s.dot, urgent && s.pulse)} aria-hidden="true" />
+            <span aria-hidden="true">{milestoneShort(milestone, now)}</span>
+            <span className="visually-hidden">{milestoneText(milestone, now)}</span>
+          </span>
+        ) : null}
       </div>
       <h2 className={s.title}>
         <Link className={s.titleLink} href={`/m/${m.address}`}>
           {marketHeadline(m, clock)}
         </Link>
       </h2>
-      <div className={s.figures}>
-        <div className={s.chance}>
-          <span className={s.chanceValue}>{shown.value}</span>
-          <span className={s.chanceLabel}>{shown.caption}</span>
-        </div>
-        <div className={s.barWrap}>
-          <ChanceBar bps={chance.bps} />
-          <span className={s.poolLine}>
-            Pool {formatUsdc(m.pool.total)} USDC · {m.pool.stakers}{" "}
-            {m.pool.stakers === 1 ? "staker" : "stakers"}
-          </span>
-        </div>
+      <div className={s.body}>
+        <CardFigures m={m} />
+      </div>
+      <div className={s.foot}>
+        <span className={s.footItem}>Pool {compactUsdc(m.pool.total)} USDC</span>
+        <span className={s.footItem}>{formatCount(m.pool.stakers, "staker")}</span>
+        <CardHealth m={m} clock={clock} now={now} variant="text" className={s.footHealth} />
+        <span className={s.footEnd}>
+          <span className={s.footTemplate}>{templateLabel(m.templateId)}</span>
+          <span className={s.footItem}>#{m.marketId.toString()}</span>
+        </span>
       </div>
     </li>
   );

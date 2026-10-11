@@ -3,6 +3,7 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CreatorPage from "../src/app/creator/[address]/page";
 import ErrorPage from "../src/app/error";
+import KuruPage from "../src/app/kuru/page";
 import MarketPage from "../src/app/m/[address]/page";
 import MarketsPage from "../src/app/markets/page";
 import NotFound from "../src/app/not-found";
@@ -324,15 +325,138 @@ describe("with contracts deployed", () => {
     await renderWithProviders(await MarketsPage(noSearch));
     const items = screen.getAllByRole("listitem");
     expect(items).toHaveLength(2);
-    expect(within(items[0] as HTMLElement).getByText("75.0%")).toBeTruthy();
-    expect(within(items[0] as HTMLElement).getByText(/Locks in 11d 13h/)).toBeTruthy();
-    expect(within(items[0] as HTMLElement).getByText(/Pool 400.00 USDC · 4 stakers/)).toBeTruthy();
-    expect(within(items[1] as HTMLElement).getByText("62.0%")).toBeTruthy();
+    const [first, second] = items as [HTMLElement, HTMLElement];
+    expect(first.textContent).toContain("75.0%");
+    expect(within(first).getByText(/Locks in 11d 13h/)).toBeTruthy();
+    expect(within(first).getByText("Pool 400 USDC")).toBeTruthy();
+    expect(within(first).getByText("4 stakers")).toBeTruthy();
+    // A pool shows what each side has staked; a live book what a share costs: YES at the ask, NO at 1 - bid.
+    expect(first.textContent).toContain("Yes pool300.00 USDC");
+    expect(first.textContent).toContain("No pool100.00 USDC");
+    expect(second.textContent).toContain("62.0%");
+    expect(second.textContent).toContain("Yes64c");
+    expect(second.textContent).toContain("No40c");
     expect(screen.getByRole("link", { name: /Trading/ }).textContent).toBe("Trading1");
+    expect(screen.getByText("Showing", { exact: false }).textContent).toBe("Showing 2 of 2 markets");
 
     await renderWithProviders(await MarketsPage({ searchParams: Promise.resolve({ phase: "trading" }) }));
     const lists = screen.getAllByRole("list");
     expect(within(lists[lists.length - 1] as HTMLElement).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  // The test deployment has one stack (Kuru v1), so a market on Hunch Book's own book carries the venue
+  // from its read, as one on a stack the deployment no longer lists would.
+  const ownBook = makeMarket({
+    address: "0x00000000000000000000000000000000000000a3",
+    marketId: 2n,
+    stack: "hunch",
+    venue: "hunch",
+    kuruVersion: 1,
+    description: "Will ETH longs pay shorts on net this week?",
+  });
+
+  it("/markets names each market's book venue and filters by it, with the phase", async () => {
+    state.markets = ok({ markets: [pool, trading, ownBook], total: 3 });
+    const all = await renderWithProviders(await MarketsPage(noSearch));
+    const items = screen.getAllByRole("listitem") as HTMLElement[];
+    expect(items.map((li) => within(li).getByText(/^Order book on/).parentElement?.textContent)).toEqual([
+      "Order book on Kuru",
+      "Order book on Kuru",
+      "Order book on Hunch book",
+    ]);
+    const venues = screen.getByRole("navigation", { name: "Filter markets by book venue" });
+    expect(within(venues).getByRole("link", { name: "Kuru, 2 markets" }).getAttribute("href")).toBe(
+      "/markets?venue=kuru",
+    );
+    expect(within(venues).getByRole("link", { name: "Hunch book, 1 market" }).getAttribute("href")).toBe(
+      "/markets?venue=hunch",
+    );
+    expect(
+      within(venues).getByRole("link", { name: "All venues, 3 markets" }).getAttribute("aria-current"),
+    ).toBe("page");
+    all.unmount();
+
+    await renderWithProviders(
+      await MarketsPage({ searchParams: Promise.resolve({ venue: "kuru", phase: "pools" }) }),
+    );
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByRole("listitem").textContent).toContain("Will BTC/USD be at or above");
+    // Each filter keeps the other one, and the counts are for the other filter's choice.
+    const phases = screen.getByRole("navigation", { name: "Filter markets by phase" });
+    expect(within(phases).getByRole("link", { name: "Trading, 1 market" }).getAttribute("href")).toBe(
+      "/markets?phase=trading&venue=kuru",
+    );
+    expect(
+      within(phases).getByRole("link", { name: "Pools filling, 1 market" }).getAttribute("aria-current"),
+    ).toBe("page");
+    const venues2 = screen.getByRole("navigation", { name: "Filter markets by book venue" });
+    expect(within(venues2).getByRole("link", { name: "Hunch book, 1 market" }).getAttribute("href")).toBe(
+      "/markets?phase=pools&venue=hunch",
+    );
+    expect(screen.getByRole("link", { name: /Clear all/ }).getAttribute("href")).toBe("/markets");
+    expect(screen.getByRole("button", { name: /Filters/ }).textContent).toContain("2");
+  });
+
+  it("/markets says plainly when a filter has nothing, and links back to every market", async () => {
+    state.markets = ok({ markets: [pool, trading], total: 2 });
+    await renderWithProviders(
+      await MarketsPage({ searchParams: Promise.resolve({ venue: "hunch", phase: "settled" }) }),
+    );
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.getByText('No markets in "Settled on Hunch book" right now.')).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Show all markets" }).getAttribute("href")).toBe("/markets");
+  });
+
+  it("/markets searches by question, template and number as you type", async () => {
+    state.markets = ok({ markets: [pool, trading, ownBook], total: 3 });
+    await renderWithProviders(await MarketsPage(noSearch));
+    const box = screen.getByRole("searchbox", { name: "Search markets" });
+    fireEvent.change(box, { target: { value: "eth longs" } });
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByText(/market matches/).textContent).toBe('1 market matches "eth longs"');
+    fireEvent.change(box, { target: { value: "#8" } });
+    expect(screen.getByRole("listitem").textContent).toContain("Will BTC longs pay shorts");
+    fireEvent.change(box, { target: { value: "nothing like this" } });
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+  });
+
+  it("/markets folds its filters behind one button on phones", async () => {
+    state.markets = ok({ markets: [pool], total: 1 });
+    await renderWithProviders(await MarketsPage(noSearch));
+    const toggle = screen.getByRole("button", { name: /Filters/ });
+    const panel = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
+    expect(panel?.getAttribute("data-open")).toBe("false");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(panel?.getAttribute("data-open")).toBe("true");
+  });
+
+  it("/kuru lists only markets whose books are on Kuru, and keeps its phase links on /kuru", async () => {
+    state.markets = ok({ markets: [pool, trading, ownBook], total: 3 });
+    await renderWithProviders(await KuruPage(noSearch));
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Kuru markets");
+    const kuru = screen.getByRole("link", { name: /Visit Kuru/ });
+    expect(kuru.getAttribute("href")).toBe("https://www.kuru.io");
+    expect(kuru.getAttribute("rel")).toBe("noreferrer");
+    const items = screen.getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    for (const li of items) expect(li.textContent).toContain("Order book on Kuru");
+    expect(screen.getByText("Showing", { exact: false }).textContent).toBe("Showing 2 of 2 markets");
+    const phases = screen.getByRole("navigation", { name: "Filter markets by phase" });
+    expect(within(phases).getByRole("link", { name: "Trading, 1 market" }).getAttribute("href")).toBe(
+      "/kuru?phase=trading",
+    );
+    const venues = screen.getByRole("navigation", { name: "Filter markets by book venue" });
+    expect(within(venues).getByRole("link", { name: "Kuru, 2 markets" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(within(venues).getByRole("link", { name: "Hunch book, 1 market" }).getAttribute("href")).toBe(
+      "/markets?venue=hunch",
+    );
+    expect(screen.queryByRole("link", { name: /Clear all/ })).toBeNull();
   });
 
   it("/markets has empty, loading and error states", async () => {
@@ -355,6 +479,9 @@ describe("with contracts deployed", () => {
     state.market = ok(pool);
     await renderWithProviders(await MarketPage(params(MARKET)));
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(pool.description);
+    // The header names the venue the pool's book will open on, beside its phase.
+    expect(screen.getByText(/^Order book on/).parentElement?.textContent).toBe("Order book on Kuru");
+    expect(screen.getByText("Market #7")).toBeTruthy();
     for (const title of [
       "Implied chance",
       "Graduation rule",

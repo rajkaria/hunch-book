@@ -14,7 +14,7 @@ export interface NavLink {
  * and Status answers "is it solvent right now?", so both sit here beside trading and proof.
  */
 export const NAV_LINKS: readonly NavLink[] = [
-  { href: "/markets", label: "Markets", match: ["/markets", "/m/"] },
+  { href: "/markets", label: "Markets", match: ["/markets", "/kuru", "/m/"] },
   { href: "/create", label: "Create", match: ["/create"] },
   { href: "/hedge", label: "Hedge", match: ["/hedge"] },
   { href: "/portfolio", label: "Portfolio", match: ["/portfolio"] },
@@ -35,6 +35,7 @@ export const SHEET_LINKS: readonly NavLink[] = [NAV_LINKS[0] as NavLink, FEED_LI
  */
 export const MORE_LINKS: readonly NavLink[] = [
   FEED_LINK,
+  { href: "/kuru", label: "Kuru markets", match: ["/kuru"] },
   { href: "/calculator", label: "Funding calculator", match: ["/calculator"] },
   { href: "/ladder", label: "Ladders", match: ["/ladder"] },
   { href: "/parlay", label: "Parlays", match: ["/parlay"] },

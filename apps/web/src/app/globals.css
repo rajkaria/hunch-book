@@ -60,6 +60,27 @@
   --warn-line: rgba(246, 189, 79, 0.35);
   --danger: #ff6f7d;
 
+  /*
+   * The markets list follows the main Hunch markets page's matte look: flat cards on a hairline,
+   * a raised filter panel, square-ish chips. Text on these fills still uses --text, --muted and
+   * --subtle, so the contrast figures above hold.
+   */
+  --raised: #0e0e12;
+  --card-fill: rgba(250, 250, 247, 0.03);
+  --card-fill-hover: rgba(250, 250, 247, 0.05);
+  --card-line: rgba(250, 250, 247, 0.08);
+  --card-line-hover: rgba(250, 250, 247, 0.2);
+  --chip-fill: rgba(250, 250, 247, 0.045);
+  --chip-fill-hover: rgba(250, 250, 247, 0.075);
+  --chip-fill-quiet: rgba(250, 250, 247, 0.02);
+  --accent-tint: rgba(203, 255, 93, 0.08);
+  --accent-chip-line: rgba(203, 255, 93, 0.45);
+  --accent-count: rgba(203, 255, 93, 0.15);
+  --no-tint: rgba(255, 111, 125, 0.06);
+  --no-line-strong: rgba(255, 111, 125, 0.6);
+  --cyan-line: rgba(94, 234, 212, 0.35);
+  --violet-line: rgba(139, 92, 246, 0.4);
+
   /* ---------- type ---------- */
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -99,6 +120,9 @@
   --radius-lg: 18px;
   --radius-xl: 22px;
   --radius-pill: 999px;
+  /* The main Hunch app's control (chips, buttons, inputs) and card corners. */
+  --radius-control: 12px;
+  --radius-card: 16px;
 
   --shadow-lift: 0 24px 80px rgba(0, 0, 0, 0.36);
   --shadow-card: 0 1px 0 rgba(250, 250, 247, 0.04) inset, 0 16px 40px rgba(0, 0, 0, 0.28);
