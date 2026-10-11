@@ -70,6 +70,21 @@ export interface MarketView {
    * books, so a pool can meet its rule before it can graduate). Absent elsewhere.
    */
   bookReady?: boolean;
+  /**
+   * Perpl funding markets (templates 1 and 4): the perp's mark price and funding interval, read with the
+   * market, so the title can state the threshold as a funding rate. Absent elsewhere or if the read failed.
+   */
+  funding?: FundingScale;
+}
+
+/** What turns a Perpl funding threshold (USD per unit of the asset) into a rate (lib/market/title.ts). */
+export interface FundingScale {
+  /** The perp's mark price in USD when the market was read: markPNS / 10^priceDecimals. */
+  markUsd: number;
+  /** Perpl's priceDecimals for the perp. Funding sums carry priceDecimals + the scaling exponent. */
+  priceDecimals: number;
+  /** Blocks between two Perpl funding events (getFundingInterval). */
+  intervalBlocks: number;
 }
 
 /** The chain head, used for block-clock estimates and countdowns. */

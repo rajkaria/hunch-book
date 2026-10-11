@@ -1,15 +1,23 @@
-import { deployments, encodePerplFundingSpikeParams, TemplateId } from "@hunch-book/shared";
+import {
+  deployments,
+  encodePerplFundingParams,
+  encodePerplFundingSpikeParams,
+  TemplateId,
+} from "@hunch-book/shared";
 import { describe, expect, it } from "vitest";
 import { formatInt, formatShortUtc } from "../src/lib/format";
 import { decodeMarketParams } from "../src/lib/market/params";
 import {
   blockWindowWords,
   friendlyQuestion,
+  fundingThresholdRate,
   marketTitle,
+  ratePercentText,
   roundedBlockTime,
   type TitleClock,
   titleDiffersFromRule,
 } from "../src/lib/market/title";
+import type { FundingScale } from "../src/lib/market/types";
 import { makeMarket } from "./fixtures";
 
 // Market titles: Perpl's resolver sentences name block numbers; titles read them as estimated times.
@@ -191,5 +199,186 @@ describe("marketTitle", () => {
   it("never throws on bad params", () => {
     const m = makeMarket({ templateId: TemplateId.PerplFunding, params: "0x1234", description: null });
     expect(marketTitle(m, testnet, clock)).toBe("Market with an unknown template");
+    const scaled = { ...m, funding: { markUsd: 1, priceDecimals: 6, intervalBlocks: 8_571 } };
+    expect(marketTitle(scaled, testnet, clock)).toBe("Market with an unknown template");
+  });
+});
+
+// ---------- funding thresholds as rates ----------
+
+// Perpl's funding interval on Monad (getFundingInterval, testnet and mainnet alike).
+const INTERVAL = 8_571;
+// MON as Perpl reads it: funding sums carry priceDecimals 6 + scaling exponent 2 = 8 decimals.
+const MON_SCALE: FundingScale = { markUsd: 0.025, priceDecimals: 6, intervalBlocks: INTERVAL };
+// BTC: priceDecimals 1, scaling exponent 0.
+const BTC_SCALE: FundingScale = { markUsd: 83_000, priceDecimals: 1, intervalBlocks: INTERVAL };
+
+function perplMarket(args: {
+  perpId: bigint;
+  threshold: bigint;
+  scalingExp: number;
+  intervals: number;
+  funding?: FundingScale;
+  description?: string | null;
+}) {
+  const params = encodePerplFundingParams({
+    perpId: args.perpId,
+    startBlock: START,
+    endBlock: START + BigInt(args.intervals * INTERVAL),
+    threshold: args.threshold,
+    expectedScalingExp: args.scalingExp,
+  });
+  return makeMarket({
+    templateId: TemplateId.PerplFunding,
+    params,
+    decoded: decodeMarketParams(TemplateId.PerplFunding, params),
+    description: args.description ?? null,
+    ...(args.funding ? { funding: args.funding } : {}),
+  });
+}
+
+describe("ratePercentText", () => {
+  it("keeps two significant digits and never rounds a small rate to zero", () => {
+    expect(ratePercentText(0.0024276)).toBe("0.0024%");
+    expect(ratePercentText(-0.00062)).toBe("-0.00062%");
+    expect(ratePercentText(0.0053999999)).toBe("0.0054%");
+    expect(ratePercentText(0.000999)).toBe("0.0010%");
+    expect(ratePercentText(7.609)).toBe("7.6%");
+    expect(ratePercentText(-7.609)).toBe("-7.6%");
+    expect(ratePercentText(22.35)).toBe("22%");
+    expect(ratePercentText(150.4)).toBe("150%");
+    expect(ratePercentText(0)).toBe("0%");
+    expect(ratePercentText(Number.NaN)).toBe("0%");
+  });
+});
+
+describe("fundingThresholdRate", () => {
+  it("spreads a window total over its funding events, as a percent of the mark price", () => {
+    // -$0.00000031 per MON over 2 intervals at $0.025: -0.00000031 / 2 / 0.025 = -0.00062%.
+    // At 400 ms per block an interval is 3,428.4 s, so a year holds about 9,204.7 of them.
+    const r = fundingThresholdRate({
+      threshold: -31n,
+      scalingExp: 2,
+      scale: MON_SCALE,
+      events: 2,
+      msPerBlock: 400,
+    });
+    expect(r?.perInterval).toBeCloseTo(-0.00062, 10);
+    expect(r?.perYear).toBeCloseTo(-0.00062 * (31_557_600 / 3_428.4), 6);
+  });
+
+  it("gives no yearly rate without a block time, and nothing without a price or events", () => {
+    const base = { threshold: 135n, scalingExp: 2, scale: MON_SCALE, events: 1 };
+    const noClock = fundingThresholdRate({ ...base, msPerBlock: null });
+    expect(noClock?.perInterval).toBeCloseTo(0.0054, 10);
+    expect(noClock?.perYear).toBeNull();
+    expect(
+      fundingThresholdRate({ ...base, msPerBlock: 400, scale: { ...MON_SCALE, markUsd: 0 } }),
+    ).toBeNull();
+    expect(fundingThresholdRate({ ...base, msPerBlock: 400, events: 0 })).toBeNull();
+    expect(
+      fundingThresholdRate({ ...base, msPerBlock: 400, scale: { ...MON_SCALE, intervalBlocks: 0 } }),
+    ).toBeNull();
+  });
+});
+
+describe("Perpl funding titles state a rate", () => {
+  it("turns a tiny negative USD threshold into a rate per interval and a year", () => {
+    const rule = `Will MON longs pay more than -$0.00000031 per MON in funding on Perpl (MON Perp, perp 64) between block ${START} and block ${START + 17_142n}?`;
+    const m = perplMarket({
+      perpId: 64n,
+      threshold: -31n,
+      scalingExp: 2,
+      intervals: 2,
+      funding: MON_SCALE,
+      description: rule,
+    });
+    const title = marketTitle(m, testnet, clock);
+    expect(title).toBe(
+      "Will MON's funding rate on Perpl average above about -0.00062% per interval (-5.7% a year) between about Oct 4, 06:10 and Oct 4, 08:05 UTC?",
+    );
+    // The resolver's sentence stays the rule of record, shown next to the title.
+    expect(titleDiffersFromRule(m, title)).toBe(true);
+  });
+
+  it("reads a long BTC window as an average rate", () => {
+    // $1,080 per BTC over 536 intervals at $83,000: 0.0024% per interval, 22% a year at 400 ms blocks.
+    const m = perplMarket({
+      perpId: 16n,
+      threshold: 10_800n,
+      scalingExp: 0,
+      intervals: 536,
+      funding: BTC_SCALE,
+    });
+    expect(marketTitle(m, testnet, clock)).toMatch(
+      /^Will BTC's funding rate on Perpl average above about 0\.0024% per interval \(22% a year\) between about Oct 4, 06:10 and Oct \d+, \d\d:\d\d UTC\?$/,
+    );
+  });
+
+  it("states a spike threshold as one event's rate", () => {
+    const params = encodePerplFundingSpikeParams({
+      perpId: 64n,
+      startBlock: START,
+      endBlock: END,
+      threshold: 135n,
+      expectedScalingExp: 2,
+    });
+    const m = makeMarket({
+      templateId: TemplateId.PerplFundingSpike,
+      params,
+      decoded: decodeMarketParams(TemplateId.PerplFundingSpike, params),
+      description: null,
+      funding: MON_SCALE,
+    });
+    expect(marketTitle(m, testnet, clock)).toBe(
+      "Will any single MON funding event on Perpl charge longs more than about 0.0054% of the price (50% a year) between about Oct 4, 06:10 and Oct 5, 01:00 UTC?",
+    );
+  });
+
+  it("drops the yearly figure without a clock, and names blocks", () => {
+    const m = perplMarket({ perpId: 64n, threshold: -31n, scalingExp: 2, intervals: 2, funding: MON_SCALE });
+    expect(marketTitle(m, testnet, null)).toBe(
+      `Will MON's funding rate on Perpl average above about -0.00062% per interval between block ${formatInt(START)} and block ${formatInt(START + 17_142n)}?`,
+    );
+  });
+
+  it("keeps the net-funding question and the dollar title when there is no rate to give", () => {
+    const net = perplMarket({ perpId: 16n, threshold: 0n, scalingExp: 0, intervals: 2, funding: BTC_SCALE });
+    expect(marketTitle(net, testnet, null)).toBe(
+      `Will BTC longs pay shorts on net on Perpl between block ${formatInt(START)} and block ${formatInt(START + 17_142n)}?`,
+    );
+    // No funding scale (Perpl did not answer): the resolver's sentence, with times.
+    const m = makeMarket({ templateId: TemplateId.PerplFunding, description: RULE_1 });
+    expect(marketTitle(m, testnet, clock)).toBe(
+      "Will MON longs pay more than $0.000015 per MON in funding on Perpl between about Oct 4, 06:10 and Oct 5, 01:00 UTC?",
+    );
+  });
+});
+
+describe("price rules asked as questions", () => {
+  it("asks a touch rule over its window", () => {
+    const touch =
+      "YES if Chainlink's BTC/USD feed reports a price at or above $86,000 in any round updated from 2026-10-04 13:36:39 UTC to 2026-10-07 13:06:39 UTC; NO if nobody proves that by 2026-10-08 13:06:39 UTC, the end of a 24-hour challenge period.";
+    expect(friendlyQuestion(touch, null)).toBe(
+      "Will Chainlink's BTC/USD feed report a price at or above $86,000 between Oct 4, 13:36 and Oct 7, 13:06 UTC?",
+    );
+    expect(friendlyQuestion(touch.replace("at or above", "at or below"), null)).toContain(
+      "report a price at or below $86,000",
+    );
+  });
+
+  it("drops the unix time from a price-at-time question and a price range rule", () => {
+    expect(
+      friendlyQuestion(
+        "Will BTC/USD be at or above $120,000 at 2027-01-16 08:00:00 UTC (unix time 1800086400), per Chainlink's BTC/USD feed?",
+        null,
+      ),
+    ).toBe("Will BTC/USD be at or above $120,000 at Jan 16, 08:00 UTC, per Chainlink?");
+    expect(
+      friendlyQuestion(
+        "YES if Pyth's SOL/USD feed puts SOL/USD at or above $100 and below $120 at 2027-01-16 08:00:00 UTC (unix time 1800086400); NO otherwise.",
+        null,
+      ),
+    ).toBe("Will SOL/USD be at or above $100 and below $120 at Jan 16, 08:00 UTC, per Pyth?");
   });
 });
