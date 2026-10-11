@@ -256,9 +256,17 @@ describe("generated config", () => {
       deployBlock: p.deployBlock,
     });
     expect(testnet.resolvers.snapshot).toBe(testnetFile.hunchBook.resolvers.snapshot.toLowerCase());
-    const mainnet = networkConstants(deployment("monad-mainnet"));
-    expect(mainnet.periphery.autoRedeemer).toBeNull();
-    expect(mainnet.resolvers).toEqual({});
+    // A network with no Hunch Book addresses has no periphery and no resolvers.
+    const empty = networkConstants({ ...deployment("monad-mainnet"), hunchBook: {} });
+    expect(empty.periphery.autoRedeemer).toBeNull();
+    expect(empty.resolvers).toEqual({});
+    // Mainnet reads its own file the same way as testnet.
+    const mainnetFile = deployment("monad-mainnet");
+    const mainnet = networkConstants(mainnetFile);
+    expect(mainnet.periphery.autoRedeemer).toBe(
+      mainnetFile.hunchBook.periphery?.autoRedeemer?.toLowerCase() ?? null,
+    );
+    expect(mainnet.resolvers.perplFunding).toBe(mainnetFile.hunchBook.resolvers?.perplFunding?.toLowerCase());
   });
 
   it("reads every stack: one address per stack, the primary first, and each stack's constants", () => {
@@ -327,7 +335,7 @@ describe("generated config", () => {
     expect(n.contracts.factory).toBe(testnet.hunchBook.factory.toLowerCase());
     expect(n.kuruV2?.spotRouter).toBe(testnet.external.kuruV2.spotRouter.toLowerCase());
     // A network that is not deployed lists no stacks.
-    expect(networkConstants(deployment("monad-mainnet")).stacks).toEqual([]);
+    expect(networkConstants({ ...deployment("monad-mainnet"), hunchBook: {} }).stacks).toEqual([]);
   });
 
   it("writes event signatures Envio can read, from the contracts' ABIs", () => {
