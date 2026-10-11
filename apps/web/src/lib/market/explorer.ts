@@ -51,6 +51,18 @@ export interface ExplorerPreset {
 
 export const KURU_PRESET: ExplorerPreset = { path: "/kuru", venue: "kuru" };
 
+/**
+ * A pool that locked without graduating with every stake on one side, so its chance reads 0% or 100%
+ * and cannot move. The list leaves these out; their own pages still work.
+ */
+export function isOneSidedLockedPool(
+  m: Pick<MarketView, "phase" | "graduated" | "outcome" | "pool" | "quote" | "venue" | "kuruVersion">,
+): boolean {
+  if (m.phase !== Phase.PoolLocked || m.graduated) return false;
+  const { bps } = marketChance(m);
+  return bps === 0n || bps === BPS;
+}
+
 export function matchesPhase(m: Pick<MarketView, "phase">, phase: PhaseFilter): boolean {
   return phase === "all" || phaseGroup(m.phase) === phase;
 }

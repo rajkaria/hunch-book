@@ -12,6 +12,7 @@ import {
   explorerHref,
   explorerStats,
   filterMarkets,
+  isOneSidedLockedPool,
   matchesSearch,
   type PhaseFilter,
   searchTerms,
@@ -146,17 +147,20 @@ export function MarketsList({
   }
 
   const selection = { phase: filter, venue };
+  // Pools that locked one-sided cannot move, so they are left out of the list and its counts.
+  const listed = markets.filter((m) => !isOneSidedLockedPool(m));
+  const hiddenPools = markets.length - listed.length;
   const terms = searchTerms(query);
   const searched =
     terms.length === 0
-      ? markets
-      : markets.filter((m) => matchesSearch(searchText(m, marketHeadline(m, clock)), terms));
+      ? listed
+      : listed.filter((m) => matchesSearch(searchText(m, marketHeadline(m, clock)), terms));
   const counts = explorerCounts(searched, selection);
   const shown = filterMarkets(searched, selection);
-  const present = explorerCounts(markets, { phase: "all", venue: "all" }).venue;
-  // The page's own markets: every one on /markets, the preset venue's on /kuru. The panel's figures
-  // and the "of" count read these.
-  const scope = preset ? filterMarkets(markets, { phase: "all", venue: preset.venue }) : markets;
+  const present = explorerCounts(listed, { phase: "all", venue: "all" }).venue;
+  // The page's own markets: every listed one on /markets, the preset venue's on /kuru. The panel's
+  // figures and the "of" count read these.
+  const scope = preset ? filterMarkets(listed, { phase: "all", venue: preset.venue }) : listed;
   const stats = explorerStats(scope);
   const active = activeFilterCount(selection, preset);
   const clearHref = explorerHref({ phase: "all", venue: preset?.venue ?? "all" }, preset);
@@ -326,6 +330,12 @@ export function MarketsList({
           {total > markets.length ? (
             <p className={s.footnote}>
               Showing the newest {markets.length} of {total} markets. Older markets arrive with the indexer.
+            </p>
+          ) : null}
+          {hiddenPools > 0 ? (
+            <p className={s.footnote}>
+              Not listed: {formatCount(hiddenPools, "pool")} that locked without graduating with every stake
+              on one side. Each one's own page still works.
             </p>
           ) : null}
         </section>

@@ -10,6 +10,7 @@ import {
   explorerHref,
   explorerStats,
   filterMarkets,
+  isOneSidedLockedPool,
   isUrgent,
   KURU_PRESET,
   matchesSearch,
@@ -204,6 +205,26 @@ describe("filters, counts and links", () => {
     expect(activeFilterCount({ phase: "trading", venue: "kuru" })).toBe(2);
     expect(activeFilterCount({ phase: "all", venue: "kuru" }, KURU_PRESET)).toBe(0);
     expect(activeFilterCount({ phase: "pools", venue: "kuru" }, KURU_PRESET)).toBe(1);
+  });
+});
+
+describe("one-sided locked pools", () => {
+  const locked = (yes: number, no: number) =>
+    makeMarket({ phase: Phase.PoolLocked, pool: { yes: USDC(yes), no: USDC(no), total: 0n, stakers: 2 } });
+
+  it("are pools that locked without graduating at 0% or 100%", () => {
+    expect(isOneSidedLockedPool(locked(50, 0))).toBe(true);
+    expect(isOneSidedLockedPool(locked(0, 50))).toBe(true);
+  });
+
+  it("leave out two-sided, empty, open and graduated markets", () => {
+    expect(isOneSidedLockedPool(locked(50, 1))).toBe(false);
+    expect(isOneSidedLockedPool(locked(0, 0))).toBe(false);
+    expect(isOneSidedLockedPool(makeMarket({ pool: { yes: USDC(50), no: 0n, total: 0n, stakers: 1 } }))).toBe(
+      false,
+    );
+    expect(isOneSidedLockedPool({ ...locked(50, 0), graduated: true })).toBe(false);
+    expect(isOneSidedLockedPool(makeMarket({ phase: Phase.Settled, outcome: Outcome.Yes }))).toBe(false);
   });
 });
 

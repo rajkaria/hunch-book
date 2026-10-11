@@ -407,6 +407,22 @@ describe("with contracts deployed", () => {
     expect(screen.getByRole("link", { name: "Show all markets" }).getAttribute("href")).toBe("/markets");
   });
 
+  it("/markets leaves out pools that locked with every stake on one side, and says so", async () => {
+    const oneSided = makeMarket({
+      address: "0x00000000000000000000000000000000000000a4",
+      marketId: 9n,
+      phase: Phase.PoolLocked,
+      pool: { yes: USDC(40), no: 0n, total: 0n, stakers: 1 },
+    });
+    state.markets = ok({ markets: [pool, oneSided], total: 2 });
+    await renderWithProviders(await MarketsPage(noSearch));
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByText("Showing", { exact: false }).textContent).toBe("Showing 1 of 1 markets");
+    const phases = screen.getByRole("navigation", { name: "Filter markets by phase" });
+    expect(within(phases).getByRole("link", { name: "Settling, 0 markets" })).toBeTruthy();
+    expect(screen.getByText(/^Not listed: 1 pool that locked/)).toBeTruthy();
+  });
+
   it("/markets searches by question, template and number as you type", async () => {
     state.markets = ok({ markets: [pool, trading, ownBook], total: 3 });
     await renderWithProviders(await MarketsPage(noSearch));
