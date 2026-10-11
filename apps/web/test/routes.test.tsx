@@ -33,6 +33,14 @@ const state = vi.hoisted(() => ({
   creatorFees: {} as QueryState,
 }));
 
+// These tests describe the app while Monad mainnet has no addresses, so mainnet stays undeployed here
+// whatever deployments/monad-mainnet.json holds.
+vi.mock("@hunch-book/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hunch-book/shared")>();
+  const mainnet = { ...actual.deployments["monad-mainnet"], hunchBook: {} };
+  return { ...actual, deployments: { ...actual.deployments, "monad-mainnet": mainnet } };
+});
+
 vi.mock("@/lib/config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/config")>();
   // One stack each way, so the routes do not move when deployments/*.json gains a stack.
@@ -161,7 +169,7 @@ describe("with no contracts deployed", () => {
   it("/ is the landing page, and says plainly that nothing is deployed", async () => {
     await renderWithProviders(await Home());
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
-      "Start as a pool. Graduate to a book. Settle from the chain.",
+      "Start as a pool. Graduate to Kuru. Settle from the chain.",
     );
     expect(screen.getByText("Monad testnet: not deployed yet")).toBeTruthy();
     expect(screen.getByText("The contracts are not deployed on Monad testnet yet.")).toBeTruthy();
@@ -236,7 +244,7 @@ describe("with no contracts deployed", () => {
     expect(footer.getByText("Monad mainnet: planned")).toBeTruthy();
     expect(
       footer.getByText(
-        "Built on Monad, trades on onchain order books (Hunch Book's own and Kuru's), settles from Perpl and Chainlink.",
+        "Built on Monad, trades on Kuru's onchain order book, settles from Perpl and Chainlink.",
       ),
     ).toBeTruthy();
     expect(footer.getByRole("link", { name: "MIT licensed" }).getAttribute("href")).toMatch(/LICENSE$/);
@@ -397,6 +405,31 @@ describe("with contracts deployed", () => {
     expect(screen.getByRole("button", { name: /Filters/ }).textContent).toContain("2");
   });
 
+  it("/markets lists Kuru's markets first and our fallback book's after, under a heading", async () => {
+    state.markets = ok({ markets: [ownBook, pool, trading], total: 3 });
+    const all = await renderWithProviders(await MarketsPage(noSearch));
+    const items = screen.getAllByRole("listitem") as HTMLElement[];
+    expect(items.map((li) => within(li).getByText(/^Order book on/).parentElement?.textContent)).toEqual([
+      "Order book on Kuru",
+      "Order book on Kuru",
+      "Order book on Hunch book",
+    ]);
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Our fallback book: earlier markets" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/before every new market moved to Kuru\. They still trade/)).toBeTruthy();
+    const fallback = screen.getByRole("list", { name: "Our fallback book: earlier markets" });
+    expect(within(fallback).getByRole("listitem").textContent).toContain("Will ETH longs pay shorts");
+    all.unmount();
+
+    // Filtered to the Hunch book, its markets keep the label.
+    await renderWithProviders(await MarketsPage({ searchParams: Promise.resolve({ venue: "hunch" }) }));
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Our fallback book: earlier markets" }),
+    ).toBeTruthy();
+  });
+
   it("/markets says plainly when a filter has nothing, and links back to every market", async () => {
     state.markets = ok({ markets: [pool, trading], total: 2 });
     await renderWithProviders(
@@ -460,6 +493,7 @@ describe("with contracts deployed", () => {
     const items = screen.getAllByRole("listitem");
     expect(items).toHaveLength(2);
     for (const li of items) expect(li.textContent).toContain("Order book on Kuru");
+    expect(screen.queryByRole("heading", { name: /fallback book/ })).toBeNull();
     expect(screen.getByText("Showing", { exact: false }).textContent).toBe("Showing 2 of 2 markets");
     const phases = screen.getByRole("navigation", { name: "Filter markets by phase" });
     expect(within(phases).getByRole("link", { name: "Trading, 1 market" }).getAttribute("href")).toBe(

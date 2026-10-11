@@ -44,8 +44,9 @@ import { type CycleJob, type JobContext, type JobRun, wentOut } from "./context.
 // repeat on a schedule. When the next period's creation point arrives, the keeper:
 // 1. checks the period has no market yet: none of the keeper's own markets has the same template, asset
 //    and window, and no stack's factory has a market under the exact params (its canonical key). Series
-//    run on the default stack; asking the other stacks' factories too means a period created on another
-//    stack before `defaultStack` changed is never created again;
+//    run on one Kuru stack, never on Hunch Book's own order book (seriesStackOf in stacks.ts); asking the
+//    other stacks' factories too means a period created on another stack before the series moved (such
+//    as the `hunch` stack, which ran series while it was the default) is never created again;
 // 2. measures the strike at the creation point (a Chainlink round at or before that time, or Perpl
 //    funding at or before that block), so a rerun computes the same params;
 // 3. approves the vault for the first stake (and the seed) if needed and calls factory.createMarket with

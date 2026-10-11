@@ -3,41 +3,77 @@
     "chainId": 143,
     "network": "monad-mainnet",
     "explorer": "https://monadscan.com",
-    "deployed": false,
-    "deployBlock": null,
+    "deployed": true,
+    "deployBlock": 112517059,
     "contracts": {
-      "factory": null,
-      "vault": null,
-      "router": null,
-      "graduator": null,
+      "factory": "0xaef7f97a739c8ea93d4f5fc497b0181cf92d8ce6",
+      "vault": "0x0e63594ffbfc8fed1c3d6d3e2f4c3ccb501c20fb",
+      "router": "0xa0c97ebc345746c37ac15a10e076c3a3bbd2141a",
+      "graduator": "0x5582e5aeb12e15eada88402e2903bc628cc28b3c",
       "usdc": "0x754704bc059f8c67012fed69bc8a327a5aafb603",
-      "marketImplementation": null
+      "marketImplementation": "0x13c5b2e982f437566991c4d9ac0a30f9f9ac15ed"
     },
-    "resolvers": {},
+    "resolvers": {
+      "perplFunding": "0x2c30da53f8c384d6ed6603e3138a98fd15e4928a",
+      "priceAtTime": "0x4ec0077e30ea8b626c5aa087c586e60542150951"
+    },
     "periphery": {
-      "autoRedeemer": null,
-      "conditionalOrders": null,
-      "referralRegistry": null,
-      "merkleDistributor": null,
-      "impliedProbabilityOracle": null,
-      "priceAdapterFactory": null,
-      "templateTimelock": null,
-      "deployBlock": null
+      "autoRedeemer": "0xb9d22c84c5e2f4329eeee1b52ad753df3268c2a6",
+      "conditionalOrders": "0xd380bd141d668b5555e07ba47858080f09878a9d",
+      "referralRegistry": "0x364ebdbc275ae3a9733539e8b2d315a832767a89",
+      "merkleDistributor": "0x90736e2fad90b49407b70b936209bb6ed3015163",
+      "impliedProbabilityOracle": "0x5da9bc829d8af32cb5d7a2198d77d4b84683b624",
+      "priceAdapterFactory": "0x3cc3be448d355909570841f52d55da6ee58ced7f",
+      "templateTimelock": "0x08f33463bcaaaf0680ff2d4cd08b87cc64d547d6",
+      "deployBlock": 112518289
     },
     "ours": {
       "maker": "0x0f1156eb25dbebee5386ec80f1eb0b85c7dd232a",
       "keeper": "0x1f5ac9bb0df7d0e0dd133cbd71388e1078475569",
-      "guardian": null,
-      "feeRecipient": null,
-      "distributorFunder": null,
-      "timelockProposer": null
+      "guardian": "0xcaa404541a30c277a05f2a500f3f4430250f4bf8",
+      "feeRecipient": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+      "distributorFunder": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+      "timelockProposer": "0xcaa404541a30c277a05f2a500f3f4430250f4bf8"
     },
     "kuru": {
       "router": "0xd651346d7c789536ebf06dc72ae3c8502cd695cc",
       "marginAccount": "0x2a68ba1833cdf93fa9da1eebd7f46242ad8e90c5"
     },
     "kuruV2": null,
-    "stacks": [],
+    "stacks": [
+      {
+        "name": "primary",
+        "primary": true,
+        "kuruVersion": 1,
+        "venue": "kuru",
+        "kuru": {
+          "router": "0xd651346d7c789536ebf06dc72ae3c8502cd695cc",
+          "marginAccount": "0x2a68ba1833cdf93fa9da1eebd7f46242ad8e90c5"
+        },
+        "factory": "0xaef7f97a739c8ea93d4f5fc497b0181cf92d8ce6",
+        "vault": "0x0e63594ffbfc8fed1c3d6d3e2f4c3ccb501c20fb",
+        "router": "0xa0c97ebc345746c37ac15a10e076c3a3bbd2141a",
+        "graduator": "0x5582e5aeb12e15eada88402e2903bc628cc28b3c",
+        "guardian": "0xcaa404541a30c277a05f2a500f3f4430250f4bf8",
+        "feeRecipient": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+        "resolvers": {
+          "perplFunding": "0x2c30da53f8c384d6ed6603e3138a98fd15e4928a",
+          "priceAtTime": "0x4ec0077e30ea8b626c5aa087c586e60542150951"
+        },
+        "periphery": {
+          "autoRedeemer": "0xb9d22c84c5e2f4329eeee1b52ad753df3268c2a6",
+          "conditionalOrders": "0xd380bd141d668b5555e07ba47858080f09878a9d",
+          "referralRegistry": "0x364ebdbc275ae3a9733539e8b2d315a832767a89",
+          "merkleDistributor": "0x90736e2fad90b49407b70b936209bb6ed3015163",
+          "impliedProbabilityOracle": "0x5da9bc829d8af32cb5d7a2198d77d4b84683b624",
+          "priceAdapterFactory": "0x3cc3be448d355909570841f52d55da6ee58ced7f",
+          "kuruFeedFactory": "0x7a13e93ce6fc4371811270c4e114d07944835f2e",
+          "templateTimelock": "0x08f33463bcaaaf0680ff2d4cd08b87cc64d547d6",
+          "distributorFunder": "0xd183a7daecf3d539683f37e1111558e3dfc210a8",
+          "timelockProposer": "0xcaa404541a30c277a05f2a500f3f4430250f4bf8"
+        }
+      }
+    ],
     "perps": {
       "1": "BTC",
       "10": "MON",

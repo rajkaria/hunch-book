@@ -10,7 +10,7 @@ export const TAGLINE = ["Start as a pool.", "Graduate to a book.", "Settle from 
 
 /** Where each part comes from. */
 export const BUILT_ON =
-  "Built on Monad, trades on onchain order books (Hunch Book's own and Kuru's), settles from Perpl and Chainlink.";
+  "Built on Monad, trades on Kuru's onchain order book, settles from Perpl and Chainlink.";
 
 /** Said wherever testnet money could be mistaken for real money. */
 export const TESTNET_MONEY = "Testnet: stakes use Hunch Book's own test USDC, not real money.";

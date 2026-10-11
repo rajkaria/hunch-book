@@ -67,10 +67,16 @@ describe("venues", () => {
     expect(defaultStackOf({ ...d, hunchBook: {}, stacks: {} })).toBeUndefined();
   });
 
-  it("the testnet file has a Hunch stack and makes it the default", () => {
+  it("the testnet file sends new markets to Kuru v1 (the primary stack) and keeps its Hunch stack", () => {
     const t = deployments["monad-testnet"];
-    const hunch = defaultStackOf(t);
-    expect(hunch?.name).toBe("hunch");
+    expect(t.defaultStack).toBe("primary");
+    const fresh = defaultStackOf(t);
+    expect(fresh?.name).toBe("primary");
+    expect(fresh?.venue).toBe("kuru");
+    expect(fresh?.kuruVersion).toBe(1);
+    expect(fresh?.contracts.factory).toBe(t.hunchBook.factory);
+    // The hunch stack is still deployed and read: its earlier markets trade and run to settlement.
+    const hunch = stacksOf(t).find((s) => s.name === "hunch");
     expect(hunch?.venue).toBe("hunch");
     expect(hunch?.kuruVersion).toBe(1);
     expect(hunch?.contracts.venue?.marginAccount).toMatch(/^0x[0-9a-fA-F]{40}$/);

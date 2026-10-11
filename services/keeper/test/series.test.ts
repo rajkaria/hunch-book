@@ -238,11 +238,11 @@ describe("params and identity", () => {
 });
 
 describe("the series job across stacks", () => {
-  // Series run on the default stack. A period already created on another stack (before `defaultStack`
-  // moved, for example from the primary stack to `hunch`) is found there by its exact params and never
-  // created again.
-  const OWN = "0x846Cd400B832203befe5902ef43DAdc969985AF2" as Address;
-  const OTHER = "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A" as Address;
+  // Series run on one Kuru stack. A period already created on another stack (before the series moved,
+  // as from `hunch` back to the primary Kuru v1 stack on testnet) is found there by its exact params and
+  // never created again.
+  const OWN = "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A" as Address;
+  const OTHER = "0x846Cd400B832203befe5902ef43DAdc969985AF2" as Address;
   const EXISTING = "0x2A44B99014cF73065BFb89197a08DE09D18d3982" as Address;
   const KEEPER = "0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569" as Address;
   const fixed: SeriesSpec = {

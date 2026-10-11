@@ -14,7 +14,9 @@ import {
   deployBlockOf,
   marketTag,
   marketVenueLabel,
+  newMarketsOnKuru,
   onDefaultStack,
+  onFallbackBook,
   routerOf,
   stackOf,
   vaultOf,
@@ -138,14 +140,33 @@ describe("venue words", () => {
     expect(marketTag({ marketId: 3n, ...v2 })).toBe("#3 · Kuru v2");
   });
 
-  it("says where testnet's markets trade, new ones first, without claiming more", () => {
+  it("says where testnet's markets trade, new ones (on Kuru) first, without claiming more", () => {
     expect(venueSentences(deployments["monad-testnet"])).toEqual([
+      "New markets graduate to Kuru's onchain order book.",
+      "Kuru v2 is supported: pools on a Kuru v2 stack graduate once Kuru creates their books.",
+      "Earlier markets trade on Hunch Book's own onchain order book, our fallback book, and run to settlement there.",
+    ]);
+    // A network whose new markets go to Hunch Book's own order book has no fallback book.
+    expect(venueSentences(withHunch)).toEqual([
       "New markets graduate to Hunch Book's own onchain order book, so graduation waits on no third party.",
       "Kuru is supported too: markets created on a Kuru stack graduate to Kuru's books.",
-      "Kuru v2 is supported: pools on a Kuru v2 stack graduate once Kuru creates their books.",
     ]);
     expect(venueSentences({ ...deployed })).toEqual(["New markets graduate to Kuru's onchain order book."]);
     expect(venueSentences({ ...deployed, hunchBook: {} })).toEqual([]);
+  });
+
+  it("calls Hunch Book's own order book our fallback book once new markets go to Kuru", () => {
+    const testnet = deployments["monad-testnet"];
+    expect(newMarketsOnKuru(testnet)).toBe(true);
+    expect(defaultStack(testnet)).toMatchObject({ name: "primary", venue: "kuru", kuruVersion: 1 });
+    const onHunchStack = makeMarket({ stack: "hunch", venue: "hunch", kuruVersion: 1 });
+    expect(onFallbackBook(onHunchStack, testnet)).toBe(true);
+    expect(onFallbackBook(makeMarket({}), testnet)).toBe(false);
+    expect(onFallbackBook(makeMarket({ stack: "kuruV2", kuruVersion: 2 }), testnet)).toBe(false);
+    // While the hunch stack is where new markets go, it is nobody's fallback.
+    expect(newMarketsOnKuru(withHunch)).toBe(false);
+    expect(onFallbackBook({ stack: "hunch" }, withHunch)).toBe(false);
+    expect(newMarketsOnKuru({ ...deployed, hunchBook: {} })).toBe(false);
   });
 
   it("puts the venue in the chance note, the graduate action and the API's words", () => {

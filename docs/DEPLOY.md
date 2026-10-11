@@ -103,6 +103,8 @@ FOUNDRY_PROFILE=fork forge test --match-path "test/fork/Mainnet*" -vv
   owner creates (at the address `computeAddress` predicts), anyone registers it, the market
   graduates, and trades route through Kuru.
 - `MainnetRehearsal.fork.t.sol`: the whole launch, guardian batch included, and the Kuru v2 paths.
+- `HunchVenueMainnet.fork.t.sol`: the fallback, Hunch Book's own order book (`VENUE=hunch`), where books
+  are created inside `graduate()`.
 
 The gas table above comes from broadcasting the real scripts to a local anvil fork, and
 `RehearseMainnetMarket.s.sol` walks one market through its life there (it refuses any RPC but
@@ -136,11 +138,15 @@ first: a dry run prints every address and writes nothing. The broadcast run writ
 `DEPLOYER_PRIVATE_KEY` in `.env` works in place of `--account`; Foundry reads `.env` from the directory
 it runs in, so the key never goes on the command line.
 
+The 2026-10-11 mainnet deploy ran this script with `KURU_VERSION=1` (now the default) and a separate
+guardian, so it registered no template.
+
 `GRADUATION_MIN_POOL` and `GRADUATION_MIN_STAKERS` set the rule every template gets. The defaults (500
 USDC, 10 stakers) are the testnet v0 rule; the line above uses 200 USDC from 5 stakers as an example.
-Choose before the deploy: a template's rule cannot change once the guardian adds it.
+Choose before the guardian's first registration: a template's rule cannot change once the guardian adds
+it.
 
-**Other venues.** `VENUE=hunch` deploys Hunch Book's own order book instead
+**Other venues.** `VENUE=hunch` deploys the fallback, Hunch Book's own order book, instead
 (HunchOrderBookFactory, its HunchMarginAccount and the book implementation, with the v1 Graduator and
 HunchRouter on it): every market graduates into its own book on the spot, with no third party
 ([PROTOCOL.md §8.1](./PROTOCOL.md#81-order-book-venues)). Its rehearsal is
@@ -149,6 +155,8 @@ HunchRouter on it): every market graduates into its own book on the spot, with n
 deploys everything but the graduator and router, and `WireKuruV2.s.sol` wires them later with the same
 deployer (the factory's `setGraduator` is one-time and deployer-only). `KURU_TAKER_FEE_PPS` and
 `KURU_MAKER_FEE_PPS` set the fees asked of Kuru for v2 books (default 7000 and 4000 parts per 10^7).
+GraduatorV2 accepts any book Kuru creates within its limits (tick up to 0.01 USDC, minimum order up to
+10 USDC, taker fee up to 0.3%), so a different choice by Kuru does not need a redeploy.
 
 Then verify the contracts on Sourcify (the same way testnet was verified):
 

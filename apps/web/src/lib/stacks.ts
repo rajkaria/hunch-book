@@ -96,6 +96,19 @@ export function marketVenue(
   return { venue, kuruVersion: venue === "kuru" && m.kuruVersion === 2 ? 2 : 1 };
 }
 
+/**
+ * True when new markets go to a Kuru stack (deployments `defaultStack`). Then Hunch Book's own order
+ * book is our fallback book: it holds earlier markets, which still trade and run to settlement.
+ */
+export const newMarketsOnKuru = (deployment: Deployment = appDeployment): boolean =>
+  defaultStackOf(deployment)?.venue === "kuru";
+
+/** True for a market on our fallback book: Hunch Book's own order book, while new markets go to Kuru. */
+export const onFallbackBook = (
+  m: Pick<MarketView, "stack"> & VenueSource,
+  deployment: Deployment = appDeployment,
+): boolean => marketVenue(m, deployment).venue === "hunch" && newMarketsOnKuru(deployment);
+
 /** The venue chip on a market card and header: "Hunch book", "Kuru v2" or "Kuru". */
 export function venueChipLabel(
   m: Pick<MarketView, "stack"> & VenueSource,
@@ -120,7 +133,8 @@ export const venueShort = (m: VenueSource): string =>
 
 /**
  * Where a network's markets trade, one sentence per venue, read from its stacks: the venue new markets
- * go to first, then the others the app still reads.
+ * go to first, then the others the app still reads (Hunch Book's own order book, once new markets go to
+ * Kuru, as our fallback book for earlier markets).
  */
 export function venueSentences(deployment: Deployment): string[] {
   const first = defaultStackOf(deployment);
@@ -138,6 +152,11 @@ export function venueSentences(deployment: Deployment): string[] {
   }
   if (others.some((s) => !onHunchVenue(s) && s.kuruVersion === 2)) {
     out.push("Kuru v2 is supported: pools on a Kuru v2 stack graduate once Kuru creates their books.");
+  }
+  if (!onHunchVenue(first) && others.some((s) => onHunchVenue(s))) {
+    out.push(
+      "Earlier markets trade on Hunch Book's own onchain order book, our fallback book, and run to settlement there.",
+    );
   }
   return out;
 }

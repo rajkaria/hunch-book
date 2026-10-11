@@ -129,7 +129,8 @@ async function readStack(
 
 /**
  * Every stack's vault and markets (the primary first), the service wallets' gas and the services'
- * health, all at one block. New markets on testnet go to the `hunch` stack, so every stack is read.
+ * health, all at one block. Markets live on every stack (on testnet, new ones on the primary Kuru stack
+ * and earlier ones on `kuruV2` and `hunch`), so every stack is read.
  */
 export async function readSnapshot(client: PublicClient, o: ReadOptions): Promise<Snapshot> {
   const stacks = stacksOf(o.deployment);

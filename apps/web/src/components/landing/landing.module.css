@@ -888,6 +888,14 @@
   color: var(--accent);
 }
 
+/* ---------- on Kuru ---------- */
+
+.kuruNote {
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
 /* ---------- audiences ---------- */
 
 .audiences {

@@ -9,7 +9,56 @@
     "https://rpc-mainnet.monadinfra.com"
   ],
   "explorer": "https://monadscan.com",
-  "hunchBook": {},
+  "hunchBook": {
+    "deployBlock": 112517059,
+    "factory": "0xAEf7f97A739C8ea93D4F5Fc497B0181Cf92d8cE6",
+    "feeRecipient": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+    "graduator": "0x5582e5Aeb12e15EAda88402E2903Bc628Cc28B3C",
+    "guardian": "0xCaA404541A30c277a05F2A500f3F4430250f4Bf8",
+    "kuruVersion": 1,
+    "marketImplementation": "0x13c5B2e982F437566991c4d9aC0a30F9f9aC15Ed",
+    "resolvers": {
+      "perplFunding": "0x2c30da53F8C384D6eD6603E3138a98fd15E4928A",
+      "priceAtTime": "0x4ec0077e30EA8B626C5AA087C586E60542150951"
+    },
+    "router": "0xa0C97ebC345746C37Ac15a10E076c3A3BBd2141a",
+    "usdc": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+    "vault": "0x0e63594FFbFC8FED1C3d6d3e2f4C3cCb501c20fb",
+    "periphery": {
+      "autoRedeemer": "0xB9D22C84c5e2F4329EEee1B52Ad753dF3268c2a6",
+      "conditionalOrders": "0xD380Bd141d668b5555e07ba47858080f09878a9d",
+      "deployBlock": 112518289,
+      "distributorFunder": "0xD183a7daECF3d539683f37e1111558E3dFC210A8",
+      "impliedProbabilityOracle": "0x5dA9bc829d8aF32cb5d7a2198d77D4B84683b624",
+      "kuruFeedFactory": "0x7A13e93Ce6FC4371811270c4E114D07944835F2e",
+      "merkleDistributor": "0x90736e2fAd90b49407b70B936209Bb6ED3015163",
+      "priceAdapterFactory": "0x3CC3BE448d355909570841f52d55dA6Ee58CEd7F",
+      "referralDuration": 15552000,
+      "referralRegistry": "0x364ebdBC275AE3A9733539e8B2D315A832767A89",
+      "templateTimelock": "0x08f33463bCAAaf0680fF2d4Cd08B87cC64d547D6",
+      "timelockDelay": 172800,
+      "timelockProposer": "0xCaA404541A30c277a05F2A500f3F4430250f4Bf8",
+      "deployTxs": {
+        "autoRedeemer": "0xbc81c550ee7bb0307c313e80322fb8248a3fd6ce90a80a07b2517a77f799a5ec",
+        "conditionalOrders": "0xcc802dc80d4c600fcbc0d9d12c4b049b92ffc7071fd54b4f6ab519d304d5fc7d",
+        "impliedProbabilityOracle": "0xb33bf7df59a930ef98e49f32abe1d390d51fce9d255cc15d8d971681e1ef5577",
+        "kuruFeedFactory": "0xdbc9962853984b48c6e7d9be1e5de03943586da064974275ff0926db286c0ca4",
+        "merkleDistributor": "0x0cb0e7cd79bd904bc07636880d85461f65797a267c13270f79de8aa890a3677b",
+        "priceAdapterFactory": "0x09e7fc9304e8fe94e135ce351aa181d795438e1746db4b01d685f62b98646370",
+        "referralRegistry": "0xe904458dce4dbbf9ef5382e886f4538c00f44435c0a1afedde46b1d5cd5395e9",
+        "templateTimelock": "0x9b5b19727f6ca8fc6cfae168b6ed1ab45f6faceb5d6644e98fcd7bdd0b510421"
+      }
+    },
+    "deployTxs": {
+      "factory": "0xae4e637ba5c7f1592b0f28fae6e4949f0702bb90e20aa19207f8883fc7d13f8b",
+      "graduator": "0xe56f3337961785804259dc9c77a1c3204cdd6e87376bfbebd8d3e6cdc6df3050",
+      "marketImplementation": "0xe391e5b233e12359324feda2c47eb5ba63189851e929a5a38b6206130572d548",
+      "perplFunding": "0x7ee7a09367dceb20ac4eafa4236529fefcfbf8fbda07e9631478baf91ee413cf",
+      "priceAtTime": "0x5bae9126597b7e3c5796c741cd8a250e995baf6d52967b9ca20d3759ca609a1e",
+      "router": "0x614439faa00cd0588933a97285aedac2d251d5c3e3c5a5f5d962615673563959",
+      "setGraduator": "0x48b70575f901bf3f290e815c9835bfb60d1a64be4db17b1f790866a7705f2620"
+    }
+  },
   "wallets": {
     "maker": "0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A",
     "keeper": "0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569"

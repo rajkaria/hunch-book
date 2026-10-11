@@ -13,6 +13,7 @@ import {
   explorerStats,
   filterMarkets,
   isOneSidedLockedPool,
+  listSections,
   matchesSearch,
   type PhaseFilter,
   searchTerms,
@@ -133,6 +134,7 @@ export function MarketsList({
   const [panelOpen, setPanelOpen] = useState(false);
   const searchId = useId();
   const panelId = useId();
+  const sectionsId = useId();
 
   if (markets.length === 0) {
     return (
@@ -321,11 +323,27 @@ export function MarketsList({
               </Link>
             </div>
           ) : (
-            <ul className={s.grid}>
-              {shown.map((m) => (
-                <MarketCard key={m.address} m={m} clock={clock} now={now} />
-              ))}
-            </ul>
+            // Kuru's markets first, then our fallback book's (earlier markets) under their own heading.
+            listSections(shown).map((section) => {
+              const headingId = `${sectionsId}-${section.id}`;
+              return (
+                <div key={section.id} className={s.block}>
+                  {section.heading ? (
+                    <div className={s.blockHead}>
+                      <h2 id={headingId} className={s.blockTitle}>
+                        {section.heading}
+                      </h2>
+                      {section.note ? <p className={s.blockNote}>{section.note}</p> : null}
+                    </div>
+                  ) : null}
+                  <ul className={s.grid} aria-labelledby={section.heading ? headingId : undefined}>
+                    {section.markets.map((m) => (
+                      <MarketCard key={m.address} m={m} clock={clock} now={now} />
+                    ))}
+                  </ul>
+                </div>
+              );
+            })
           )}
           {total > markets.length ? (
             <p className={s.footnote}>

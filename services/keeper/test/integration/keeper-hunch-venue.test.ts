@@ -190,15 +190,30 @@ describe("graduation on Hunch Book's own order book", () => {
   });
 });
 
-// A seeded series on the hunch stack, end to end: the keeper creates the period's market with its first
-// stake, stakes for our other wallets right after (minting the test USDC it lacks from the TestUSDC
-// faucet), graduates the pool once the rule holds, and pushes every staker's tokens, so the maker
-// receives its NO as inventory. The rule here is the core's test rule (50 USDC from 4 stakers).
-describe("a seeded series on the hunch stack", () => {
+// A seeded series, end to end: the keeper creates the period's market with its first stake, stakes for
+// our other wallets right after (minting the test USDC it lacks from the TestUSDC faucet), graduates the
+// pool once the rule holds, and pushes every staker's tokens, so the maker receives its NO as inventory.
+// The rule here is the core's test rule (50 USDC from 4 stakers). Series open on Kuru only, never on
+// Hunch Book's own order book, so here the same contracts are a Kuru v1 stack (the primary, as on
+// testnet) whose graduator creates books: this chain has no Kuru, so `external.kuru` names Hunch Book's
+// book factory and margin account, which speak Kuru v1's interface.
+describe("a seeded series on a Kuru v1 stack", () => {
   const OTHER = getAddress("0x00000000000000000000000000000000000000c1");
   let maker: Address;
   let seriesDeployment: Deployment;
   let seriesFile: string;
+  const seriesConfig = (stateFile: string, healthFile: string) =>
+    parseConfig({
+      KEEPER_ENABLED: "1",
+      KEEPER_PRIVATE_KEY: keeperKey,
+      KEEPER_RPC_URL: chain?.url,
+      KEEPER_RPC_RPS: "200",
+      KEEPER_STATE_FILE: join(dir, stateFile),
+      KEEPER_HEALTH_FILE: join(dir, healthFile),
+      KEEPER_MAX_GAS_PRICE_GWEI: "10000",
+      KEEPER_SERIES_FILE: seriesFile,
+      KEEPER_SERIES_ENABLED: "1",
+    });
 
   beforeAll(async () => {
     if (!chain) return;
@@ -209,12 +224,18 @@ describe("a seeded series on the hunch stack", () => {
     await chain.send(deployer, perpl, abiOf("mockPerpl"), "listPerp", [1n, "BTC Perp", "BTC", 1n, 0n, 1n]);
     const head = await chain.client.getBlockNumber();
     const now = (await chain.client.getBlock()).timestamp;
-    const hunch = deployment.stacks?.hunch;
+    const { venue: _hunchVenue, ...contracts } = deployment.stacks?.hunch ?? {};
     seriesDeployment = {
       ...deployment,
       wallets: { ...deployment.wallets, maker },
-      stacks: { hunch: { ...hunch, guardian: deployer.address } },
-      external: { ...deployment.external, perpl: { exchange: perpl, perps: { BTC: 1 } } },
+      hunchBook: { ...contracts, guardian: deployer.address },
+      stacks: undefined,
+      defaultStack: undefined,
+      external: {
+        ...deployment.external,
+        kuru: { router: bookFactory, marginAccount },
+        perpl: { exchange: perpl, perps: { BTC: 1 } },
+      },
     };
     seriesFile = join(dir, "series.json");
     writeFileSync(
@@ -247,21 +268,31 @@ describe("a seeded series on the hunch stack", () => {
     );
   });
 
+  it("never runs the series on Hunch Book's own order book, even as the only and default stack", async (ctx) => {
+    if (!chain) return ctx.skip();
+    const hunchOnly: Deployment = {
+      ...seriesDeployment,
+      hunchBook: {},
+      stacks: { hunch: { ...seriesDeployment.hunchBook, venue: deployment.stacks?.hunch?.venue } },
+      defaultStack: "hunch",
+    };
+    const [keeper, ...rest] = buildKeepers(
+      seriesConfig("hunch-only-state.json", "hunch-only-health.json"),
+      hunchOnly,
+    );
+    expect(rest).toHaveLength(0);
+    expect(keeper?.venue).toBe("hunch");
+    expect(keeper?.cycleJobs.map((j) => j.name)).not.toContain("series");
+    expect(events("series-off").at(-1)).toMatchObject({ level: "warn", seriesStack: null });
+  });
+
   it("creates, seeds, graduates and pushes the maker its tokens", async (ctx) => {
     if (!chain) return ctx.skip();
-    const config = parseConfig({
-      KEEPER_ENABLED: "1",
-      KEEPER_PRIVATE_KEY: keeperKey,
-      KEEPER_RPC_URL: chain.url,
-      KEEPER_RPC_RPS: "200",
-      KEEPER_STATE_FILE: join(dir, "series-state.json"),
-      KEEPER_HEALTH_FILE: join(dir, "series-health.json"),
-      KEEPER_MAX_GAS_PRICE_GWEI: "10000",
-      KEEPER_SERIES_FILE: seriesFile,
-      KEEPER_SERIES_ENABLED: "1",
-    });
-    const [keeper] = buildKeepers(config, seriesDeployment);
+    const config = seriesConfig("series-state.json", "series-health.json");
+    const [keeper, ...rest] = buildKeepers(config, seriesDeployment);
     if (!keeper) throw new Error("no keeper");
+    expect(rest).toHaveLength(0);
+    expect([keeper.stackName, keeper.venue]).toEqual(["primary", "kuru"]);
     const keeperAddress = keeper.keeper;
     expect(await c().balance(core.usdc, keeperAddress)).toBe(0n);
 
@@ -292,9 +323,13 @@ describe("a seeded series on the hunch stack", () => {
     expect(await c().readMarket<boolean>(created, "graduationRuleMet")).toBe(true);
     expect(await c().balance(core.usdc, keeperAddress)).toBe(0n);
 
-    // Cycle 2: the graduate job sees the rule met and graduates into a new Hunch order book.
+    // Cycle 2: the graduate job sees the rule met and graduates; the graduator creates the book.
     lines.length = 0;
     await keeper.cycle();
+    expect(events("plan").find((l) => l.market === created && l.job === "graduate")).toMatchObject({
+      action: "graduate",
+      reason: "rule met; the graduator creates the Kuru book in the same transaction",
+    });
     expect(events("tx").find((l) => l.action === "graduate")).toMatchObject({
       market: created,
       status: "success",
@@ -315,7 +350,8 @@ describe("a seeded series on the hunch stack", () => {
     expect(await c().read<bigint>(no, erc20Abi as Abi, "balanceOf", [maker])).toBe(33n * USDC);
 
     // The health record names the seed, every stake ours.
-    const health = JSON.parse(readFileSync(join(dir, "series-health.hunch.json"), "utf8")) as HealthSnapshot;
+    const health = JSON.parse(readFileSync(join(dir, "series-health.json"), "utf8")) as HealthSnapshot;
+    expect(health).toMatchObject({ stack: "primary", venue: "kuru" });
     const info = health.jobs.series.info as { series: { seed?: { status: string }[] }[] };
     expect(info.series[0]?.seed?.map((s) => s.status)).toEqual(["staked", "staked", "staked"]);
   });

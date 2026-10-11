@@ -218,9 +218,9 @@ export function HeroCard({ live }: { live: LandingRead }) {
 export function Hero({ live }: { live: LandingRead }) {
   const deployed = isDeployed(appDeployment);
   const mainnetLive = isDeployed(deployments["monad-mainnet"]);
-  // New markets get their book from Hunch Book's own order book: graduation needs nobody else.
+  // Kuru is the venue for every new market; the line follows the stack new markets go to.
   const stack = defaultStack();
-  const newBooksOurs = deployed && stack !== undefined && onHunchVenue(stack);
+  const newBooksOnKuru = deployed && stack !== undefined && !onHunchVenue(stack);
   return (
     <section className={s.hero} aria-labelledby="hero-title">
       <div className={`${s.wrap} ${s.heroGrid}`}>
@@ -232,13 +232,14 @@ export function Hero({ live }: { live: LandingRead }) {
           <h1 className={`${s.h1} rise-in`} id="hero-title">
             <span className={s.h1Line}>Start as a pool.</span>{" "}
             <span className={s.h1Line}>
-              Graduate to a <span className="highlight">book</span>.
+              Graduate to <span className="highlight">Kuru</span>.
             </span>{" "}
             <span className={s.h1Line}>Settle from the chain.</span>
           </h1>
           <p className={`${s.heroSub} rise-in-2`}>
             Stake USDC on YES or NO from the first dollar. When the pool fills, it graduates to its own
-            onchain order book you can sell into, and a contract settles it by reading the chain.
+            YES/USDC book on Kuru, Monad's onchain order book, so you can sell before the answer. A contract
+            settles it by reading the chain.
           </p>
           <div className={`${s.ctas} rise-in-2`}>
             <ButtonLink href="/markets" variant="primary" size="lg" arrow>
@@ -247,11 +248,14 @@ export function Hero({ live }: { live: LandingRead }) {
             <ButtonLink href="/create" size="lg">
               Start a market
             </ButtonLink>
+            <ButtonLink href="/kuru" size="lg">
+              Kuru markets
+            </ButtonLink>
           </div>
           <ul className={`${s.proofPoints} rise-in-3`}>
             <li>No one sets an outcome by hand</li>
             <li>1 YES + 1 NO is always backed by 1 USDC</li>
-            {newBooksOurs ? <li>Graduation waits on no third party</li> : null}
+            {newBooksOnKuru ? <li>Every new market graduates to Kuru</li> : null}
             <li>Open source, MIT</li>
           </ul>
           <div className={`${s.badges} rise-in-3`}>

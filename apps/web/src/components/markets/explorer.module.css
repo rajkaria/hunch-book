@@ -580,6 +580,55 @@
   list-style: none;
 }
 
+/* Kuru's markets first, then our fallback book's under a heading of its own. */
+.block {
+  min-width: 0;
+}
+
+.block + .block {
+  margin-top: var(--space-6);
+}
+
+.blockHead {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.block + .block .blockHead {
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--card-line);
+}
+
+.blockTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--violet-text);
+}
+
+.blockTitle::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--violet);
+}
+
+.blockNote {
+  max-width: 64ch;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
 @media (min-width: 1024px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

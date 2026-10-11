@@ -114,7 +114,7 @@
     },
     "circleUsdc": "0x534b2f3A21130d7a60830c2Df862319e593943A3"
   },
-  "notes": "Testnet collateral is Hunch Book's own mintable test USDC (deployed with the protocol), because Kuru's testnet USDC cannot be minted. Kuru market creation is permissionless on testnet. The `hunch` stack trades on Hunch Book's own onchain order book (venue), so its markets graduate and trade with no third party; it is the default stack for new markets.",
+  "notes": "Testnet collateral is Hunch Book's own mintable test USDC (deployed with the protocol), because Kuru's testnet USDC cannot be minted. Kuru market creation is permissionless on testnet. New markets go to the primary stack, whose books are on Kuru (`defaultStack`). The `hunch` stack trades on Hunch Book's own onchain order book (venue): our fallback book, which holds earlier markets that still trade and run to settlement.",
   "stacks": {
     "kuruV2": {
       "deployBlock": 68935420,
@@ -226,5 +226,5 @@
       }
     }
   },
-  "defaultStack": "hunch"
+  "defaultStack": "primary"
 }

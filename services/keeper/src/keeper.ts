@@ -88,7 +88,7 @@ export interface KeeperDeps {
   fetchFn?: typeof fetch;
   /**
    * The stack this keeper works on, when the deployment has several (main.ts runs one keeper each).
-   * `series`: this stack is the default one, so it runs the series job (absent: only the primary does).
+   * `series`: this stack is the one Kuru stack that runs the series job (absent: only the primary does).
    * `otherFactories`: the other stacks' factories, which the series job checks for a period's market.
    */
   stack?: { name: string; primary: boolean; series?: boolean; otherFactories?: readonly Address[] };

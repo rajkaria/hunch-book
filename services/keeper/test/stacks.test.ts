@@ -5,7 +5,7 @@ import { parseConfig } from "../src/config.js";
 import type { JobContext } from "../src/jobs/context.js";
 import { setLogSink } from "../src/log.js";
 import type { MarketSnapshot } from "../src/markets.js";
-import { buildKeepers } from "../src/stacks.js";
+import { buildKeepers, seriesStackOf } from "../src/stacks.js";
 
 const a = (n: number) => `0x${n.toString(16).padStart(40, "0")}` as Address;
 const testnet = deployments["monad-testnet"];
@@ -97,7 +97,8 @@ describe("one keeper per stack", () => {
 });
 
 // Testnet's layout: the primary stack on Kuru v1, `kuruV2` on Kuru v2, and `hunch` on Hunch Book's own
-// order book, which is where new markets go (`defaultStack`).
+// order book. Here `hunch` is still the default stack (`defaultStack`), as it was on testnet before new
+// markets moved to Kuru: series must stay on Kuru even then.
 const SERIES_FILE = new URL("../series.example.json", import.meta.url).pathname;
 const venue = { kind: "hunch" as const, bookFactory: a(31), marginAccount: a(32), bookImplementation: a(33) };
 const threeStacks: Deployment = {
@@ -178,14 +179,85 @@ describe("the hunch stack", () => {
     expect(poked.map(getAddress)).toEqual([getAddress(a(42))]);
   });
 
-  it("runs series on the default stack, checking the other stacks' factories for each period", () => {
+  it("never runs series on Hunch Book's own order book, even when it is the default stack", () => {
     const keepers = buildKeepers(seriesConfig, threeStacks);
+    expect(keepers.map((k) => [k.stackName, jobNames(k)?.includes("series")])).toEqual([
+      ["primary", true],
+      ["kuruV2", false],
+      ["hunch", false],
+    ]);
+    // The series stack checks the others for each period, the hunch stack's factory among them.
+    expect(seriesOtherFactories(keepers[0])).toEqual([a(11), a(21)]);
+    expect(seriesStackOf(threeStacks)?.name).toBe("primary");
+  });
+
+  it("runs series on the default stack when its books are on Kuru, v1 or v2", () => {
+    const onPrimary = buildKeepers(seriesConfig, { ...threeStacks, defaultStack: "primary" });
+    expect(onPrimary.map((k) => [k.stackName, jobNames(k)?.includes("series")])).toEqual([
+      ["primary", true],
+      ["kuruV2", false],
+      ["hunch", false],
+    ]);
+    const onV2 = buildKeepers(seriesConfig, { ...threeStacks, defaultStack: "kuruV2" });
+    expect(onV2.map((k) => [k.stackName, jobNames(k)?.includes("series")])).toEqual([
+      ["primary", false],
+      ["kuruV2", true],
+      ["hunch", false],
+    ]);
+    expect(seriesOtherFactories(onV2[1])).toEqual([a(1), a(21)]);
+  });
+
+  it("moves series off a Hunch venue to the first Kuru v1 stack, else Kuru v2, else nowhere", () => {
+    // The primary stack itself on a Hunch venue: series go to the Kuru v1 stack after it.
+    const hunchPrimary: Deployment = {
+      ...threeStacks,
+      hunchBook: { ...threeStacks.hunchBook, venue },
+      stacks: {
+        kuruV2: threeStacks.stacks?.kuruV2 ?? {},
+        kuruV1: { factory: a(51), vault: a(52), usdc: a(3), deployBlock: 4, kuruVersion: 1 },
+      },
+      defaultStack: undefined,
+    };
+    expect(seriesStackOf(hunchPrimary)?.name).toBe("kuruV1");
+    const keepers = buildKeepers(seriesConfig, hunchPrimary);
     expect(keepers.map((k) => [k.stackName, jobNames(k)?.includes("series")])).toEqual([
       ["primary", false],
       ["kuruV2", false],
-      ["hunch", true],
+      ["kuruV1", true],
     ]);
-    expect(seriesOtherFactories(keepers[2])).toEqual([a(1), a(11)]);
+    // Only Kuru v2 next to it: series go there.
+    const v2Only: Deployment = { ...hunchPrimary, stacks: { kuruV2: threeStacks.stacks?.kuruV2 ?? {} } };
+    expect(seriesStackOf(v2Only)?.name).toBe("kuruV2");
+    // No Kuru stack at all: no series anywhere, and the keeper says so.
+    const lines: Record<string, unknown>[] = [];
+    setLogSink((line) => lines.push(JSON.parse(line)));
+    try {
+      const alone: Deployment = { ...hunchPrimary, stacks: undefined };
+      expect(seriesStackOf(alone)).toBeUndefined();
+      const only = buildKeepers(seriesConfig, alone);
+      expect(only.map((k) => [k.stackName, jobNames(k)?.includes("series")])).toEqual([["primary", false]]);
+      expect(lines.find((l) => l.event === "series-off")).toMatchObject({
+        level: "warn",
+        seriesStack: null,
+        defaultStack: "primary",
+      });
+    } finally {
+      setLogSink((line) => console.log(line));
+    }
+  });
+
+  it("runs series on the real testnet deployment's Kuru v1 stack, never on its hunch stack", () => {
+    expect(seriesStackOf(testnet)).toMatchObject({ name: "primary", venue: "kuru", kuruVersion: 1 });
+    const keepers = buildKeepers(seriesConfig, testnet);
+    const series = keepers.filter((k) => jobNames(k)?.includes("series"));
+    expect(series.map((k) => k.stackName)).toEqual(["primary"]);
+    expect(series[0]?.deployment.hunchBook.factory).toBe(testnet.hunchBook.factory);
+    expect(series[0]?.venue).toBe("kuru");
+    const hunch = keepers.find((k) => k.stackName === "hunch");
+    expect(hunch?.venue).toBe("hunch");
+    expect(jobNames(hunch)).not.toContain("series");
+    // Periods the hunch stack already has (it ran series while it was the default) are never created again.
+    expect(seriesOtherFactories(series[0])).toContain(testnet.stacks?.hunch?.factory);
   });
 
   it("keeps series on the primary stack when defaultStack is absent", () => {
@@ -201,16 +273,17 @@ describe("the hunch stack", () => {
     expect(jobNames(typo[0])).toContain("series");
   });
 
-  it("warns, and runs no series, when KEEPER_STACKS leaves the default stack out", () => {
+  it("warns, and runs no series, when KEEPER_STACKS leaves the series stack out", () => {
     const lines: Record<string, unknown>[] = [];
     setLogSink((line) => lines.push(JSON.parse(line)));
     try {
-      const keepers = buildKeepers({ ...seriesConfig, stacks: ["primary", "kuruV2"] }, threeStacks);
+      const keepers = buildKeepers({ ...seriesConfig, stacks: ["kuruV2", "hunch"] }, threeStacks);
       expect(keepers.some((k) => jobNames(k)?.includes("series"))).toBe(false);
       expect(lines.find((l) => l.event === "series-off")).toMatchObject({
         level: "warn",
+        seriesStack: "primary",
         defaultStack: "hunch",
-        stacks: ["primary", "kuruV2"],
+        stacks: ["kuruV2", "hunch"],
       });
     } finally {
       setLogSink((line) => console.log(line));

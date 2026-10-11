@@ -11,7 +11,8 @@ with a link to the explorer (<https://testnet.monadscan.com>).
 
 ## What is prepared for you
 
-New markets go to the `hunch` stack, which trades on Hunch Book's own order book. Its graduation rule
+New markets go to Kuru v1 (the primary stack). The prepared market is on the `hunch` stack, our fallback
+book, from before that switch. Its graduation rule
 is a pool of at least 100 USDC from at least 3 different wallets, with stakes on both sides and a chance
 between 3% and 97%, so the prepared pool needs only one of your wallets to graduate (the older Kuru v1
 stack keeps the v0 rule below, with `STACK` unset).

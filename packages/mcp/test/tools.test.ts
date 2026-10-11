@@ -343,9 +343,9 @@ describe("tool handlers", () => {
         s.default,
       ]),
     ).toEqual([
-      ["primary", "kuru", "Kuru", false],
+      ["primary", "kuru", "Kuru", true],
       ["kuruV2", "kuru", "Kuru v2", false],
-      ["hunch", "hunch", "Hunch order book", true],
+      ["hunch", "hunch", "Hunch order book", false],
     ]);
   });
 
@@ -467,8 +467,8 @@ describe("tool handlers", () => {
       firstStake: "5",
     });
     expect(json.market).toBe("0x000000000000000000000000000000000000beef");
-    // Testnet's default stack: the market graduates to Hunch Book's own order book.
-    expect(json).toMatchObject({ stack: "hunch", venue: "hunch", venueLabel: "Hunch order book" });
+    // Testnet's default stack: the primary one, so the market graduates to a Kuru book.
+    expect(json).toMatchObject({ stack: "primary", venue: "kuru", venueLabel: "Kuru" });
     expect(sdk.actions.createMarket).toHaveBeenCalledWith({
       templateId: 1,
       params: { perpId: 16n, startBlock: 1_000n, endBlock: 9_571n, threshold: 0n, expectedScalingExp: 2 },

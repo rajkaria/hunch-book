@@ -18,14 +18,12 @@ export interface Stage {
   more: { href: string; label: string };
 }
 
-/** What graduation opens, on the venue new markets go to. */
+/** What graduation opens, on the venue new markets go to (Kuru for every new market). */
 export function graduationOpens(venue: VenueSource | undefined): string {
-  if (venue && onHunchVenue(venue)) {
-    return "opens its own YES/USDC order book, fully onchain, so graduation waits on no third party";
-  }
+  if (venue && onHunchVenue(venue)) return "opens its own YES/USDC order book, fully onchain";
   return venue?.kuruVersion === 2
     ? "opens trading on its YES/USDC book on Kuru v2, which Kuru creates first"
-    : "opens a YES/USDC book on Kuru";
+    : "opens its YES/USDC book on Kuru, Monad's onchain order book";
 }
 
 /**
@@ -113,7 +111,7 @@ const statusWords = (status: Stage["status"]): string =>
 export function LifecycleDiagram({ rule }: { rule: GraduationRule | null }) {
   const gradLabel = rule ? `${usdcWords(rule.minPool)}, ${formatInt(rule.minStakers)} wallets` : "rule met";
   const label =
-    "Lifecycle: a pool graduates into an onchain order book when its rule is met, and the book settles from the chain when the window closes. A pool that never graduates settles as a pool.";
+    "Lifecycle: a pool graduates into a YES/USDC book on Kuru, Monad's onchain order book, when its rule is met, and the market settles from the chain when the window closes. A pool that never graduates settles as a pool.";
   return (
     <div className={s.diagram}>
       <svg className={s.diagramWide} viewBox="0 0 1000 236" role="img" aria-label={label}>
@@ -171,7 +169,7 @@ export function LifecycleDiagram({ rule }: { rule: GraduationRule | null }) {
             02 BOOK
           </text>
           <text x="416" y="108" className={s.dgTitle}>
-            Trade the book
+            Trade on Kuru
           </text>
         </g>
         <g>
@@ -230,7 +228,7 @@ export function LifecycleDiagram({ rule }: { rule: GraduationRule | null }) {
             02 BOOK
           </text>
           <text x="32" y="248" className={s.dgTitle}>
-            Trade the book
+            Trade on Kuru
           </text>
         </g>
         <path d="M135 274 V346" className={s.dgFlow} markerEnd="url(#lc-arrow-tall)" />
@@ -268,7 +266,8 @@ export function HowItWorks({ rule, stats }: { rule: GraduationRule | null; stats
           </h2>
           <p className={s.lede}>
             Pools need no market maker, so a new question works from its first stake. Once people show up, the
-            market graduates into an order book you can trade in and out of, and it ends by reading the chain.
+            market graduates into a YES/USDC book on Kuru that you can trade in and out of, and it ends by
+            reading the chain.
           </p>
         </div>
         <LifecycleDiagram rule={rule} />

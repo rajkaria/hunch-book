@@ -7,7 +7,7 @@ import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
 // The share card, in the main Hunch look: ink with a lime and a violet glow, the lime tile, and the
 // three-stage headline in Archivo (read from public/fonts at build time, no network). Built once.
 
-export const alt = "Hunch Book: start as a pool, graduate to a book, settle from the chain";
+export const alt = "Hunch Book: start as a pool, graduate to Kuru, settle from the chain";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -114,7 +114,7 @@ export default async function OpengraphImage() {
       <div style={{ display: "flex", flexDirection: "column", fontSize: 84, fontWeight: 800, lineHeight: 1 }}>
         <div style={{ display: "flex", letterSpacing: -4 }}>Start as a pool.</div>
         <div style={{ display: "flex", letterSpacing: -4, marginTop: 6 }}>
-          Graduate to a
+          Graduate to
           <div
             style={{
               display: "flex",
@@ -123,7 +123,7 @@ export default async function OpengraphImage() {
               backgroundImage: `linear-gradient(180deg, transparent 64%, ${LIME} 64%, ${LIME} 90%, transparent 90%)`,
             }}
           >
-            book
+            Kuru
           </div>
           .
         </div>
@@ -147,7 +147,7 @@ export default async function OpengraphImage() {
             : null}
         </div>
         <div style={{ display: "flex", fontSize: 20, fontWeight: 500, color: MUTED }}>
-          Monad · onchain order books · Perpl · Chainlink
+          Monad · Kuru order book · Perpl · Chainlink
         </div>
       </div>
     </div>,
