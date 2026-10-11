@@ -120,7 +120,8 @@ export const venueShort = (m: VenueSource): string =>
 
 /**
  * Where a network's markets trade, one sentence per venue, read from its stacks: the venue new markets
- * go to first, then the others the app still reads.
+ * go to first, then the others the app still reads (Hunch Book's own order book, once new markets go to
+ * Kuru, as our fallback book for earlier markets).
  */
 export function venueSentences(deployment: Deployment): string[] {
   const first = defaultStackOf(deployment);
@@ -138,6 +139,11 @@ export function venueSentences(deployment: Deployment): string[] {
   }
   if (others.some((s) => !onHunchVenue(s) && s.kuruVersion === 2)) {
     out.push("Kuru v2 is supported: pools on a Kuru v2 stack graduate once Kuru creates their books.");
+  }
+  if (!onHunchVenue(first) && others.some((s) => onHunchVenue(s))) {
+    out.push(
+      "Earlier markets trade on Hunch Book's own onchain order book, our fallback book, and run to settlement there.",
+    );
   }
   return out;
 }

@@ -45,6 +45,30 @@ describe("readCreateConfig", () => {
     expect(config?.templates[4]?.rule).toEqual(RULE);
   });
 
+  it("creates on Kuru on testnet: the primary stack's factory and vault, never the hunch stack's", async () => {
+    const testnet = deployments["monad-testnet"];
+    const asked: Address[] = [];
+    const client = stubClient({
+      creationPaused: (a) => {
+        asked.push(a);
+        return false;
+      },
+      caps: () => CAPS,
+      templateOf: () => ({ resolver: RESOLVER, rule: RULE }),
+    });
+    const config = await readCreateConfig(client, testnet);
+    expect(config).toMatchObject({
+      stack: "primary",
+      venue: "kuru",
+      kuruVersion: 1,
+      factory: testnet.hunchBook.factory,
+      vault: testnet.hunchBook.vault,
+      usdc: testnet.hunchBook.usdc,
+    });
+    expect(asked).toEqual([testnet.hunchBook.factory]);
+    expect(asked).not.toContain(testnet.stacks?.hunch?.factory);
+  });
+
   it("returns null before deployment and throws when the factory does not answer", async () => {
     expect(await readCreateConfig(stubClient({}), notDeployed)).toBeNull();
     await expect(readCreateConfig(stubClient({ caps: () => CAPS }), deployed)).rejects.toThrow(

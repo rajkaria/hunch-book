@@ -138,11 +138,16 @@ describe("venue words", () => {
     expect(marketTag({ marketId: 3n, ...v2 })).toBe("#3 · Kuru v2");
   });
 
-  it("says where testnet's markets trade, new ones first, without claiming more", () => {
+  it("says where testnet's markets trade, new ones (on Kuru) first, without claiming more", () => {
     expect(venueSentences(deployments["monad-testnet"])).toEqual([
+      "New markets graduate to Kuru's onchain order book.",
+      "Kuru v2 is supported: pools on a Kuru v2 stack graduate once Kuru creates their books.",
+      "Earlier markets trade on Hunch Book's own onchain order book, our fallback book, and run to settlement there.",
+    ]);
+    // A network whose new markets go to Hunch Book's own order book has no fallback book.
+    expect(venueSentences(withHunch)).toEqual([
       "New markets graduate to Hunch Book's own onchain order book, so graduation waits on no third party.",
       "Kuru is supported too: markets created on a Kuru stack graduate to Kuru's books.",
-      "Kuru v2 is supported: pools on a Kuru v2 stack graduate once Kuru creates their books.",
     ]);
     expect(venueSentences({ ...deployed })).toEqual(["New markets graduate to Kuru's onchain order book."]);
     expect(venueSentences({ ...deployed, hunchBook: {} })).toEqual([]);

@@ -356,10 +356,11 @@ describe("contract links", () => {
     const testnet = deployments["monad-testnet"];
     const groups = contractGroups(testnet);
     const titles = groups.map((g) => g.title);
-    expect(titles).toContain("Hunch Book core: primary stack (Kuru v1)");
+    // New markets go to Kuru v1, the primary stack; the hunch stack holds earlier markets.
+    expect(titles).toContain("Hunch Book core: primary stack (Kuru v1, new markets)");
     expect(titles).toContain("Stack kuruV2 (Kuru v2)");
-    expect(titles).toContain("Stack hunch (Hunch order book, new markets)");
-    const own = groups.find((g) => g.title === "Stack hunch (Hunch order book, new markets)");
+    expect(titles).toContain("Stack hunch (Hunch order book)");
+    const own = groups.find((g) => g.title === "Stack hunch (Hunch order book)");
     const venue = testnet.stacks?.hunch?.venue;
     expect(own?.items).toEqual(
       expect.arrayContaining([
@@ -372,7 +373,7 @@ describe("contract links", () => {
     );
     expect(own?.items.map((i) => i.label)).not.toContain("Resolver 1: Perpl funding");
     expect(own?.items.map((i) => i.label)).not.toContain("Kuru router");
-    const primary = groups.find((g) => g.title === "Hunch Book core: primary stack (Kuru v1)");
+    const primary = groups.find((g) => g.title === "Hunch Book core: primary stack (Kuru v1, new markets)");
     expect(primary?.items).toEqual(
       expect.arrayContaining([{ label: "Kuru router", address: testnet.external.kuru.router }]),
     );
@@ -458,8 +459,10 @@ describe("chain reads", () => {
       primary: false,
       venue: "hunch",
       kuruVersion: 1,
-      isDefault: true,
+      isDefault: false,
     });
+    // New markets go to the primary stack, on Kuru v1.
+    expect(all[0]?.stack).toMatchObject({ name: "primary", venue: "kuru", isDefault: true });
     expect(own?.vault.address).toBe(testnet.stacks?.hunch?.vault);
     expect(own?.factory.address).toBe(testnet.stacks?.hunch?.factory);
     // Its markets carry the venue, so their tags tell them apart from the primary stack's.
