@@ -185,6 +185,24 @@ describe("chain checks", () => {
     expect(pending.details?.[0]).toMatch(/waiting to be accepted/);
   });
 
+  it("a creation pause on a stack new markets no longer go to is the plan, not a warning", () => {
+    const hunch = { name: "hunch", primary: false, venue: "hunch" as const, kuruVersion: 1 as const };
+    const noCreate = { ...snapshot().factory, creationPaused: true };
+    const retired = checkGuardian(snapshot({ stack: { ...hunch, isDefault: false }, factory: noCreate }));
+    expect(retired.level).toBe("ok");
+    expect(retired.summary).toMatch(/^The guardian has paused creating markets here, as planned/);
+    expect(retired.summary).toMatch(/still trade, graduate and settle/);
+    // On the stack new markets go to, or on a one-stack network, it is still a warning.
+    const fresh = checkGuardian(snapshot({ stack: { ...hunch, isDefault: true }, factory: noCreate }));
+    expect(fresh.level).toBe("warn");
+    expect(checkGuardian(snapshot({ factory: noCreate })).level).toBe("warn");
+    // A graduation pause is always a warning: pools there cannot open their books.
+    const both = { ...noCreate, graduationPaused: true };
+    expect(checkGuardian(snapshot({ stack: { ...hunch, isDefault: false }, factory: both })).level).toBe(
+      "warn",
+    );
+  });
+
   it("gas: the watchdog's thresholds", () => {
     expect(checkGas("keeper", 2n * MON).level).toBe("ok");
     expect(checkGas("keeper", MON / 2n).level).toBe("warn");
