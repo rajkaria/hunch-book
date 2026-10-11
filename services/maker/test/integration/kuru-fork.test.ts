@@ -29,6 +29,7 @@ import {
   createRuntime,
   type MakerDeps,
   type MarketRuntime,
+  marginFloat,
   quoteMarket,
   unwindMarket,
 } from "../../src/maker.js";
@@ -189,7 +190,9 @@ describe("maker on a fork of Monad testnet's Kuru", () => {
     const balances = await readBalances(client, maker.account.address, tokens, deps.marginAccount);
     expect(balances.walletNo).toBe(20n * USDC); // 20 sets minted: their YES rests on the asks
     expect(balances.marginYes).toBe(0n);
-    expect(balances.marginUsdc).toBe(1n * USDC); // the float kept against Kuru's rounding
+    // The float: one bid ladder's worth (0.405 × 10 + 0.395 × 10), so a requote needs no deposit.
+    expect(balances.marginUsdc).toBe(8n * USDC);
+    expect(marginFloat(rt.tracker.quotes().bids, rt.info, 1n * USDC)).toBe(8n * USDC);
     expect(gasOf("batchUpdate")).toHaveLength(1);
   });
 
@@ -220,7 +223,7 @@ describe("maker on a fork of Monad testnet's Kuru", () => {
     expect(revertReason(error, kuruOrderBookAbi)).toBe("OnlyOwnerAllowedError");
   });
 
-  it("detects a taker's fills, requotes, and withdraws the proceeds", async (ctx) => {
+  it("detects a taker's fills, requotes, and keeps proceeds inside the float in margin", async (ctx) => {
     if (!anvil) return ctx.skip();
     const spend = 6n * USDC;
     await taker.publicClient.waitForTransactionReceipt({
@@ -253,10 +256,21 @@ describe("maker on a fork of Monad testnet's Kuru", () => {
       [525_000, false],
     ]);
     expect(fresh.find((l) => l.event === "quote")?.reason).toBe("fill");
-    expect(fresh.some((l) => l.event === "tx" && l.action === "marginWithdraw")).toBe(true);
+    // About 6 USDC of proceeds on top of an 8 USDC float is not worth a withdraw transaction; the
+    // margin is withdrawn down to the float only past twice the float.
+    // (The asks it sold need YES again: that deposit is of YES, never of USDC.)
+    const usdcMoves = fresh.filter(
+      (l) =>
+        l.event === "tx" &&
+        (l.action === "marginDeposit" || l.action === "marginWithdraw") &&
+        String(l.token).toLowerCase() === tokens.usdc.toLowerCase(),
+    );
+    expect(usdcMoves).toEqual([]);
 
     const balances = await readBalances(client, maker.account.address, tokens, deps.marginAccount);
-    expect(balances.marginUsdc).toBeLessThanOrEqual(1n * USDC);
+    expect(balances.marginUsdc).toBeLessThanOrEqual(
+      2n * marginFloat(rt.tracker.quotes().bids, rt.info, 1n * USDC),
+    );
     // Sold about 11.65 YES: the bot is now short YES (long NO) and skews its quotes up.
     expect(rt.health.position).toBeLessThan(-11);
     expect(rt.health.position).toBeGreaterThan(-12);

@@ -20,6 +20,7 @@ import {
 import { log } from "./log.js";
 import { type Fill, OrderTracker, parseOrderCreated } from "./orders.js";
 import {
+  type BookSpec,
   baseAmount,
   decideRequote,
   externalTopOfBook,
@@ -28,6 +29,7 @@ import {
   priceLadder,
   type QuoteParams,
   type Quotes,
+  quoteCostToPlace,
   quoteRefundOnCancel,
   sizeQuotes,
 } from "./quotes.js";
@@ -331,9 +333,10 @@ export async function quoteMarket(
       return;
   }
   if (plan.depositUsdc > 0n) {
-    // A small float on top, so Kuru's round-up on placing never forces a deposit on the next requote.
+    // A float on top: one bid ladder's worth, so the next requote (bids a little higher, or Kuru's
+    // round-up on placing) never forces another deposit. Every deposit and withdraw is a transaction.
     const room = balances.walletUsdc - plan.mint;
-    const withFloat = plan.depositUsdc + dust;
+    const withFloat = plan.depositUsdc + marginFloat(desired.bids, book, dust);
     const amount = withFloat < room ? withFloat : room;
     if (!(await depositToMargin(deps.tx, deps.marginAccount, rt.tokens.usdc, amount, ceiling, fields)))
       return;
@@ -357,14 +360,25 @@ export async function quoteMarket(
   await tidyMargin(deps, rt);
 }
 
-/** After a batch: withdraw idle USDC beyond a small float, and merge YES no order needs with NO. */
+/**
+ * USDC kept idle in the margin account between requotes: what the bid ladder locks, at least the dust
+ * float. Requotes then move the ladder without a deposit or withdraw around each batch.
+ */
+export function marginFloat(bids: readonly Order[], book: BookSpec, dust: bigint): bigint {
+  const ladder = bids.reduce((sum, o) => sum + quoteCostToPlace(o.price, o.size, book), 0n);
+  return ladder > dust ? ladder : dust;
+}
+
+/** After a batch: withdraw idle USDC beyond the float, and merge YES no order needs with NO. */
 async function tidyMargin(deps: MakerDeps, rt: MarketRuntime): Promise<void> {
   const me = accountAddress(deps.tx);
   const after = await readBalances(deps.tx.publicClient, me, rt.tokens, deps.marginAccount);
   const dust = units(deps.dustTokens, rt.info.quoteDecimals);
   const fields = { market: rt.market, book: rt.book };
-  if (after.marginUsdc > 2n * dust) {
-    await withdrawFromMargin(deps.tx, deps.marginAccount, rt.tokens.usdc, after.marginUsdc - dust, fields);
+  const float = marginFloat(rt.tracker.quotes().bids, rt.info, dust);
+  // Only a clear excess (fills sold YES for USDC, or a ladder that shrank) is worth a withdraw.
+  if (after.marginUsdc > 2n * float) {
+    await withdrawFromMargin(deps.tx, deps.marginAccount, rt.tokens.usdc, after.marginUsdc - float, fields);
   }
   const spare = after.marginYes < after.walletNo ? after.marginYes : after.walletNo;
   if (spare >= dust && spare > 0n) {

@@ -41,6 +41,8 @@ export interface MakerConfig {
   templates: number[] | undefined;
   /** Quote only on these stacks ("primary" or names under `stacks`); every deployed stack when unset. */
   stacks: string[] | undefined;
+  /** Annualised volatility per snapshot source id, over the model's defaults (MAKER_SNAPSHOT_VOLS). */
+  snapshotVols: Record<number, number>;
 }
 
 type Env = Record<string, string | undefined>;
@@ -56,6 +58,23 @@ function num(env: Env, name: string, fallback: number, check: (x: number) => boo
 }
 
 const positive = (x: number) => x > 0;
+
+/** MAKER_SNAPSHOT_VOLS: "sourceId=vol" pairs, comma separated, for example "1=0.45,7=1.5". */
+export function parseSnapshotVols(raw: string | undefined): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const item of (raw ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0)) {
+    const match = /^(\d+)\s*=\s*([0-9.]+)$/.exec(item);
+    const vol = match ? Number(match[2]) : Number.NaN;
+    if (!match || !(vol > 0) || !Number.isFinite(vol)) {
+      throw new Error(`MAKER_SNAPSHOT_VOLS must be sourceId=vol pairs with vol above zero (got "${item}")`);
+    }
+    out[Number(match[1])] = vol;
+  }
+  return out;
+}
 const nonNegative = (x: number) => x >= 0;
 
 export function parseBool(raw: string | undefined): boolean {
@@ -156,6 +175,7 @@ export function parseConfig(env: Env): MakerConfig {
         .filter((x) => x.length > 0);
       return items.length > 0 ? items : undefined;
     })(),
+    snapshotVols: parseSnapshotVols(env.MAKER_SNAPSHOT_VOLS),
   };
 }
 

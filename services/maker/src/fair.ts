@@ -6,6 +6,7 @@ import {
   decodePerplFundingSpikeParams,
   decodePriceAtTimeParams,
   decodePriceRangeParams,
+  decodeSnapshotParams,
   KURU_BEST_PRICE_SCALE,
   KURU_EMPTY_ASK,
   KURU_EMPTY_BID,
@@ -14,6 +15,7 @@ import {
   Outcome,
   Phase,
   PriceSource,
+  snapshotResolverAbi,
   TemplateId,
   TouchDirection,
   touchesStrike,
@@ -23,6 +25,7 @@ import { chainlinkAggregatorAbi, perplExchangeAbi } from "./abis.js";
 import { type LegValue, parlayFairValue } from "./pricing/parlay.js";
 import { fundingFairValue, fundingIncrements, historyNeeded, windowSteps } from "./pricing/perplFunding.js";
 import { priceAtTimeFairValue, rangeFairValue, realisedVariancePerSecond } from "./pricing/priceAtTime.js";
+import { type Comparator, snapshotFairValue, snapshotVolFor } from "./pricing/snapshot.js";
 import {
   type ChainlinkRound,
   type FundingHistory,
@@ -51,7 +54,7 @@ export interface FairResult {
 /** A template the maker has no model for: it does not quote such markets (logged once, not an error). */
 export class NoModelError extends Error {}
 
-/** Templates with a pricing model: 1 to 6. Template 7 (snapshot) has none. */
+/** Templates with a pricing model: all seven. */
 export const PRICED_TEMPLATES: readonly number[] = [
   TemplateId.PerplFunding,
   TemplateId.PriceAtTime,
@@ -59,6 +62,7 @@ export const PRICED_TEMPLATES: readonly number[] = [
   TemplateId.PerplFundingSpike,
   TemplateId.PriceRange,
   TemplateId.Parlay,
+  TemplateId.Snapshot,
 ];
 
 const VOL_ROUNDS = 300;
@@ -68,6 +72,13 @@ const PERP_INFO_TTL_SECONDS = 600;
 const MAX_FEED_AGE_SECONDS = 3_600;
 /** History kept for spike markets, in funding events, beyond the events left in the window. */
 const SPIKE_HISTORY = 600;
+
+/** What a snapshot source is, read once: the resolver fixes its sources at deployment. */
+interface SnapshotSourceInfo {
+  label: string;
+  unit: string;
+  decimals: number;
+}
 
 interface FeedState {
   at: number;
@@ -83,11 +94,14 @@ export class FairValues {
   private readonly funding = new Map<string, FundingHistory>();
   private readonly startSums = new Map<string, number>();
   private readonly feeds = new Map<Address, FeedState>();
+  private readonly snapshotSources = new Map<string, SnapshotSourceInfo>();
   private interval: number | undefined;
 
   constructor(
     private readonly client: PublicClient,
     private readonly deployment: Deployment,
+    /** Annualised volatility per snapshot source id, over the defaults (MAKER_SNAPSHOT_VOLS). */
+    private readonly snapshotVols: Readonly<Record<number, number>> = {},
   ) {}
 
   async forMarket(templateId: number, params: Hex, now: ChainNow, depth = 0): Promise<FairResult> {
@@ -105,6 +119,8 @@ export class FairValues {
       case TemplateId.Parlay:
         if (depth > 0) throw new NoModelError("a parlay of parlays is priced from its book only");
         return this.parlay(params, now);
+      case TemplateId.Snapshot:
+        return this.snapshot(params, now);
       default:
         throw new NoModelError(`template ${templateId} has no pricing model: the maker does not quote it`);
     }
@@ -442,6 +458,76 @@ export class FairValues {
     }
     const fair = parlayFairValue(values);
     return { p: fair.p, decided: fair.decided, detail: { assumption: fair.assumption, legs: fair.legs } };
+  }
+
+  // ---------------------------------------------------------------- template 7
+
+  private async snapshot(raw: Hex, now: ChainNow): Promise<FairResult> {
+    const params = decodeSnapshotParams(raw);
+    const resolver = this.deployment.hunchBook.resolvers?.snapshot;
+    if (!resolver) throw new NoModelError("this stack has no snapshot resolver in deployments");
+    const source = await this.snapshotSource(resolver, params.sourceId);
+    const secondsToClose = Number(params.closeTime) - now.timestamp;
+    let snapshot: bigint | undefined;
+    if (secondsToClose <= 0) {
+      const [, stored] = await this.client.readContract({
+        address: resolver,
+        abi: snapshotResolverAbi,
+        functionName: "snapshotFor",
+        args: [raw],
+      });
+      if (stored.blockNumber !== 0n) snapshot = stored.value;
+    }
+    // The resolver's own read: it refuses a stale or changed source, and so does the maker.
+    const value =
+      snapshot ??
+      (await this.client.readContract({
+        address: resolver,
+        abi: snapshotResolverAbi,
+        functionName: "currentValue",
+        args: [params.sourceId],
+      }));
+    const annualVol = snapshotVolFor(params.sourceId, source.label, this.snapshotVols);
+    const fair = snapshotFairValue({
+      value,
+      threshold: params.threshold,
+      comparator: params.comparator as Comparator,
+      annualVol,
+      secondsToClose,
+      snapshot,
+    });
+    const scale = 10 ** source.decimals;
+    return {
+      p: fair.p,
+      decided: fair.decided,
+      detail: {
+        sourceId: params.sourceId,
+        source: source.label,
+        unit: source.unit,
+        value: Number(value) / scale,
+        threshold: Number(params.threshold) / scale,
+        comparator: params.comparator,
+        secondsToClose,
+        annualVol,
+        snapshot: snapshot === undefined ? "not taken" : "taken",
+      },
+    };
+  }
+
+  private async snapshotSource(resolver: Address, sourceId: number): Promise<SnapshotSourceInfo> {
+    const key = `${resolver}:${sourceId}`;
+    let info = this.snapshotSources.get(key);
+    if (!info) {
+      const src = await this.client.readContract({
+        address: resolver,
+        abi: snapshotResolverAbi,
+        functionName: "source",
+        args: [sourceId],
+      });
+      info = { label: src.label, unit: src.unit, decimals: Number(src.decimals) };
+      this.snapshotSources.set(key, info);
+    }
+    return info;
   }
 
   /** A two-sided book's mid (YES per USDC), or undefined. */

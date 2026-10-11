@@ -128,7 +128,8 @@ source can pick off a resting quote.
 | `MAKER_RPC_URL` | network default | RPC override; otherwise `MONAD_TESTNET_RPC` or `MONAD_MAINNET_RPC`, then the public RPC. |
 | `MAKER_RPC_RPS` | `10` | Requests per second the bot allows itself. Monad's public testnet RPC refuses more than 15. |
 | `MAKER_MARKETS` | all | Comma-separated market addresses to quote. |
-| `MAKER_TEMPLATES` | all priced | Comma-separated template ids to quote (1 to 6 have models). |
+| `MAKER_TEMPLATES` | all priced | Comma-separated template ids to quote (1 to 7 have models). |
+| `MAKER_SNAPSHOT_VOLS` | none | Snapshot markets: annualised volatility per source id over the defaults, as `sourceId=vol` pairs. |
 | `MAKER_INVENTORY_CAP` | `100` | Most net YES or NO per market, in tokens. |
 | `MAKER_ORDER_SIZE` | `20` | Tokens per price level. |
 | `MAKER_LEVELS` | `1` | Price levels per side, 1 to 5. |
@@ -143,7 +144,7 @@ source can pick off a resting quote.
 | `MAKER_WIDEN_MAX` | `3` | Spread multiplier at close. |
 | `MAKER_MAX_GAS_PRICE_GWEI` | `200` | Never send above this base fee, never bid above it. |
 | `MAKER_MAX_GAS_PER_TX` | `3000000` | Upper bound on any transaction's gas limit. |
-| `MAKER_DUST` | `1` | Tokens: the USDC float kept in Kuru's margin account, and the smallest withdraw or merge worth a transaction. |
+| `MAKER_DUST` | `1` | Tokens: the smallest USDC float kept in the margin account, and the smallest withdraw or merge worth a transaction. Above it, the float is one bid ladder's worth of USDC, so a requote needs no deposit; idle USDC is withdrawn only past twice the float. |
 | `MAKER_HEALTH_FILE` | `services/maker/health.json` | Where the health snapshot is written after every pass. |
 | `MAKER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET /health`. |
 | `MAKER_ENV_FILE` | repository `.env` | The env file to load. |
@@ -162,7 +163,7 @@ capture-fixtures [--only name]`). Fair value is the chance of YES; quotes sit ar
 | 4, Perpl funding spike | The share of past stretches of as many funding events as are left in which one single-interval increment was above the threshold. Funding stays at Perpl's clamp for hours, and whole stretches keep that persistence. With too little history, 1 − (1 − q)^n with q the share of single events above the threshold, flagged as assuming independent events. A spike already in the window makes it 1. | Perpl's single-interval increments |
 | 5, price range | The chance of ending at or above the lower bound minus the chance of ending at or above the upper one. | As template 2 |
 | 6, parlay | The product of the legs' chances, **flagged as assuming the legs are independent**. Each leg's chance is its book's mid when it has a two-sided book, otherwise the model for its template. A leg settled NO makes it 0; a voided leg makes it 0.50 unless another leg can still settle NO. | Each leg's book and model |
-| 7, snapshot | No model: not quoted. | |
+| 7, snapshot | Lognormal value with no drift, as template 2, from the value the resolver reads now. A snapshot source keeps no history onchain, so the volatility is a prior per source: mark price BTC 50%, ETH 65%, SOL 80%, MON 120% a year; open interest and other sources 100%; `MAKER_SNAPSHOT_VOLS` overrides it. Below comparators are one minus the above chance. A stored snapshot makes it 1 or 0. | The resolver's `currentValue`, `source` and `snapshotFor` |
 
 Markets settled by Pyth prices (assets with no Chainlink feed on the network) are not quoted: historical
 Pyth updates need an API key. A feed that has not reported for an hour is treated as stopped.

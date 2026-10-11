@@ -36,7 +36,13 @@ import type { HealthSnapshot } from "../../src/health.js";
 import { readBalances, vaultSetOps } from "../../src/inventory.js";
 import { type BookInfo, findOwnOrders, readBookInfo, readL2Book, readMarketState } from "../../src/kuru.js";
 import { setLogSink } from "../../src/log.js";
-import { createRuntime, type MarketRuntime, quoteMarket, unwindMarket } from "../../src/maker.js";
+import {
+  createRuntime,
+  type MarketRuntime,
+  marginFloat,
+  quoteMarket,
+  unwindMarket,
+} from "../../src/maker.js";
 import { buildMakers } from "../../src/stacks.js";
 import { revertReason } from "../../src/tx.js";
 import { type Anvil, type Artifact, artifact, startAnvil } from "./anvil.js";
@@ -316,7 +322,8 @@ describe("the v1 maker on Hunch Book's own order book", () => {
     expect(found.map((o) => o.id).sort()).toEqual(rt.tracker.cancelIds());
     const balances = await readBalances(client, bot.maker, tokens, marginAccount);
     expect(balances.walletNo).toBe(20n * USDC); // 20 sets minted on the vault: their YES rests on the asks
-    expect(balances.marginUsdc).toBe(1n * USDC); // the float
+    // The float: one bid ladder's worth (0.405 × 10 + 0.395 × 10), so a requote needs no deposit.
+    expect(balances.marginUsdc).toBe(8n * USDC);
     expect(
       events("tx")
         .filter((l) => l.action === "marginDeposit")
@@ -324,10 +331,18 @@ describe("the v1 maker on Hunch Book's own order book", () => {
     ).toEqual([marginAccount, marginAccount]);
   });
 
-  it("requotes in one batch, then sees a taker's fills and withdraws the proceeds", async (ctx) => {
+  it("requotes in one batch with no margin moves, then sees a taker's fills and keeps proceeds as float", async (ctx) => {
     if (!anvil) return ctx.skip();
+    const requote = lines.length;
     await quoteMarket(bot.deps, rt, { fair: 0.5, widen: 1, now: 1_010 });
     expect((await readL2Book(client, book)).asks.map((l) => l.price)).toEqual([515_000n, 525_000n]);
+    // Bids 8 cents higher cost 1.6 USDC more: the float covers it, so the requote is one transaction.
+    expect(
+      lines
+        .slice(requote)
+        .filter((l) => l.event === "tx")
+        .map((l) => l.action),
+    ).toEqual(["batchUpdate"]);
 
     // A taker buys 6 USDC of YES from the wallet (approve the book; no fee).
     await send(taker, usdc, erc20Abi, "approve", [book, 6n * USDC]);
@@ -341,7 +356,19 @@ describe("the v1 maker on Hunch Book's own order book", () => {
       [525_000, false],
     ]);
     expect(fresh.find((l) => l.event === "quote")?.reason).toBe("fill");
-    expect(fresh.some((l) => l.event === "tx" && l.action === "marginWithdraw")).toBe(true);
+    // About 6 USDC of proceeds stays as float: withdrawn only past twice the float. (The YES the asks
+    // sold is deposited again: that deposit is of YES, never of USDC.)
+    const usdcMoves = fresh.filter(
+      (l) =>
+        l.event === "tx" &&
+        (l.action === "marginDeposit" || l.action === "marginWithdraw") &&
+        String(l.token).toLowerCase() === usdc.toLowerCase(),
+    );
+    expect(usdcMoves).toEqual([]);
+    const after = await readBalances(client, bot.maker, tokens, marginAccount);
+    expect(after.marginUsdc).toBeLessThanOrEqual(
+      2n * marginFloat(rt.tracker.quotes().bids, rt.info, 1n * USDC),
+    );
     expect(rt.health.position).toBeLessThan(-11);
     expect(rt.health.position).toBeGreaterThan(-12);
   });

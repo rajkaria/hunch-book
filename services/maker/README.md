@@ -104,8 +104,14 @@ for an hour, and never uses a volatility below 5% a year.
 **Touch, funding spike, range and parlay (templates 3 to 6).** The chance a driftless lognormal price
 reaches the strike within the window (corrected for a feed that writes rounds, not a path); the share of
 past stretches of Perpl funding events with one increment above the threshold; the difference of two
-lognormal tails; and the product of the legs' chances, flagged as assuming independent legs. Template 7
-(snapshot) has no model and is not quoted. [docs/MAKER-KIT.md](../../docs/MAKER-KIT.md#pricing-models)
+lognormal tails; and the product of the legs' chances, flagged as assuming independent legs.
+
+**Snapshot (template 7).** "Will SOURCE be at or above K in the first snapshot taken from T?" The same
+driftless lognormal as template 2, run from the value the resolver reads now (`currentValue`). A snapshot
+source is current state with no onchain history, so its volatility is a prior: 50% a year for BTC's mark
+price, 65% for ETH, 80% for SOL, 120% for MON, and 100% for open interest and anything else, which
+`MAKER_SNAPSHOT_VOLS` overrides per source id. Once the snapshot is stored the answer is fixed and the bot
+stops quoting. [docs/MAKER-KIT.md](../../docs/MAKER-KIT.md#pricing-models)
 describes each model and its assumptions.
 
 ## Maker kit and paper mode
@@ -179,9 +185,10 @@ local state.
 | `MAKER_WIDEN_MAX` | `3` | Spread multiplier at close. |
 | `MAKER_MAX_GAS_PRICE_GWEI` | `200` | Never send while the base fee is above this, and never bid above it. |
 | `MAKER_MAX_GAS_PER_TX` | `3000000` | Upper bound on any transaction's gas limit. |
-| `MAKER_DUST` | `1` | Tokens. The USDC float kept in the margin account, and the smallest withdraw or merge worth a transaction. |
+| `MAKER_DUST` | `1` | Tokens. The smallest USDC float kept in the margin account, and the smallest withdraw or merge worth a transaction. Above it, the float is one bid ladder's worth of USDC, so a requote needs no deposit, and idle USDC is withdrawn only past twice the float. |
 | `MAKER_MARKETS` | all | Comma-separated market addresses to quote; all graduated markets when unset. |
-| `MAKER_TEMPLATES` | all priced | Comma-separated template ids to quote; every template with a model (1 to 6) when unset. |
+| `MAKER_TEMPLATES` | all priced | Comma-separated template ids to quote; every template with a model (1 to 7) when unset. |
+| `MAKER_SNAPSHOT_VOLS` | none | Snapshot markets: annualised volatility per source id over the defaults, as `sourceId=vol` pairs (`1=0.45,7=1.5`). |
 | `MAKER_STACKS` | all | Comma-separated stacks to quote on (`primary`, or names under `stacks`, such as `kuruV2` or `hunch`); every deployed stack when unset. |
 | `MAKER_HEALTH_FILE` | `services/maker/health.json` | Where the health snapshot is written after every pass. |
 | `MAKER_HEALTH_PORT` | none | When set, the snapshot is also served at `GET http://localhost:<port>/health`. |
@@ -274,7 +281,8 @@ pnpm --filter @hunch-book/maker test
 - The Perpl model assumes the latest interval's funding carries on, and takes its uncertainty from the
   perp's own history. It does not know about Perpl's price administrator's plans or rate clamps.
 - Price markets settled by Pyth (assets with no Chainlink feed on Monad, such as SOL) are not quoted:
-  historical Pyth updates need an API key. Snapshot markets (template 7) have no model and are not quoted.
+  historical Pyth updates need an API key.
+- Snapshot markets (template 7) price from a fixed volatility prior per source, not a measured one.
 - The parlay model multiplies the legs' chances, so it is wrong for legs that move together (two
   questions on one asset). The quote's detail says so.
 - Paper mode cannot know how others would have reacted to its quotes, and counts no fill at a price equal

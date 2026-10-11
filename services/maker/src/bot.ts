@@ -150,7 +150,7 @@ export class Maker {
         dustTokens: config.dustTokens,
       };
     }
-    this.fair = new FairValues(this.client, this.deployment);
+    this.fair = new FairValues(this.client, this.deployment, config.snapshotVols);
     this.paper =
       config.mode === "paper" ? new PaperDesk(this.client, this.deps, config.paperUsdc) : undefined;
     const factory = this.deployment.hunchBook.factory;
