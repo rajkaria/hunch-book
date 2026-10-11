@@ -23,7 +23,14 @@ import {
 import { type Address, type Hex, isAddressEqual, type PublicClient, zeroAddress } from "viem";
 import { chainlinkAggregatorAbi, perplExchangeAbi } from "./abis.js";
 import { type LegValue, parlayFairValue } from "./pricing/parlay.js";
-import { fundingFairValue, fundingIncrements, historyNeeded, windowSteps } from "./pricing/perplFunding.js";
+import {
+  forecastRate,
+  fundingFairValue,
+  fundingIncrements,
+  historyNeeded,
+  rateWindowFor,
+  windowSteps,
+} from "./pricing/perplFunding.js";
 import { priceAtTimeFairValue, rangeFairValue, realisedVariancePerSecond } from "./pricing/priceAtTime.js";
 import { type Comparator, snapshotFairValue, snapshotVolFor } from "./pricing/snapshot.js";
 import {
@@ -269,12 +276,22 @@ export class FairValues {
     }
     const history = await this.history(params.perpId, lastEvent, now, historyNeeded(stepsToEnd));
     const increments = fundingIncrements(history.samples);
-    const currentRate = increments[increments.length - 1] ?? 0;
-    const fair = fundingFairValue({ accrued, currentRate, stepsToStart, stepsToEnd, threshold, increments });
+    const rateWindow = rateWindowFor(stepsToEnd);
+    const currentRate = forecastRate(increments, rateWindow);
+    const lastRate = increments[increments.length - 1] ?? 0;
+    const fair = fundingFairValue({
+      accrued,
+      currentRate,
+      rateWindow,
+      stepsToStart,
+      stepsToEnd,
+      threshold,
+      increments,
+    });
     return {
       p: fair.p,
       decided: false,
-      detail: { ...base, currentRate, expected: fair.expected, samples: fair.samples },
+      detail: { ...base, currentRate, rateWindow, lastRate, expected: fair.expected, samples: fair.samples },
     };
   }
 

@@ -157,7 +157,7 @@ capture-fixtures [--only name]`). Fair value is the chance of YES; quotes sit ar
 
 | Template | Model | Inputs |
 |---|---|---|
-| 1, Perpl net funding | Funding paid so far in the window plus the latest interval's funding for every event left; the uncertainty is the perp's own history of errors of that same forecast. | `getFundingSumAtBlock` on Perpl's funding grid |
+| 1, Perpl net funding | Funding paid so far in the window plus the recent average rate for every event left (the mean of as many past intervals as are left, at least 24 and at most 96); the uncertainty is the perp's own history of errors of that same forecast. | `getFundingSumAtBlock` on Perpl's funding grid |
 | 2, price at a time | Lognormal price with no drift: the chance it ends at or above the strike. | Spot and realised volatility from the feed's last 300 Chainlink rounds |
 | 3, price touch | The chance a driftless lognormal price reaches the strike in [T1, T2] (closed form). Before the window opens, averaged over where the price may be at T1. The barrier is moved away from spot by exp(0.5826 σ √Δt), Δt the feed's average time between rounds, because a move that never makes it into a round is not a touch. A touch already in a round of the window makes it 1. | As template 2, plus the feed's round spacing |
 | 4, Perpl funding spike | The share of past stretches of as many funding events as are left in which one single-interval increment was above the threshold. Funding stays at Perpl's clamp for hours, and whole stretches keep that persistence. With too little history, 1 − (1 − q)^n with q the share of single events above the threshold, flagged as assuming independent events. A spike already in the window makes it 1. | Perpl's single-interval increments |

@@ -421,7 +421,7 @@ None of these hold user funds or decide outcomes. If all of them stop, users can
 ### 9.2 Maker bot (open source, labelled)
 
 - Fair value per template:
-  - Funding threshold: funding accrued so far in the window plus the expected remainder (current rate × blocks left), with uncertainty estimated from Perpl's historical funding changes; `p = P(ΔF > X)`.
+  - Funding threshold: funding accrued so far in the window plus the expected remainder (recent average rate × intervals left), with uncertainty estimated from Perpl's historical funding changes; `p = P(ΔF > X)`.
   - Price threshold: probability that a lognormal price ends above the strike, using recent realised volatility from the Chainlink feed's own round history (read onchain with `getRoundData`, no API key). Assets with no Chainlink feed use Pyth history instead.
 - Quotes `p ± spread/2`, skewed by inventory, clamped to [0.01, 0.99], with a minimum spread of 2 cents and per-market inventory caps. It widens near close and cancels everything at close.
 - It mints and merges complete sets to manage inventory.

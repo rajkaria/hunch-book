@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   type FundingSample,
   forecastErrors,
+  forecastRate,
   fundingFairValue,
   fundingIncrements,
   historyNeeded,
+  MAX_RATE_WINDOW,
   MIN_FUNDING_SAMPLES,
+  MIN_RATE_WINDOW,
+  rateWindowFor,
   windowSteps,
 } from "../src/pricing/perplFunding.js";
 import { fundingFixture } from "./fixtures.js";
@@ -138,5 +142,63 @@ describe("fundingIncrements", () => {
     const before = fx.samples.map((s, i) => (i < 10 ? { ...s, sum: 0, eventBlock: 0 } : s));
     expect(fundingIncrements(before)).toEqual(fundingIncrements(fx.samples.slice(10)));
     expect(fundingIncrements(before.map((s) => ({ ...s, eventBlock: 0 })))).toEqual([]);
+  });
+});
+
+describe("the averaged forecast rate", () => {
+  it("averages as many intervals as are left, within 24 and 96", () => {
+    expect(rateWindowFor(1)).toBe(MIN_RATE_WINDOW);
+    expect(rateWindowFor(33)).toBe(33);
+    expect(rateWindowFor(100)).toBe(MAX_RATE_WINDOW);
+  });
+
+  it("is the mean of the last window of increments, or of all there is", () => {
+    expect(forecastRate([1, 2, 3, 4], 2)).toBe(3.5);
+    expect(forecastRate([1, 2, 3, 4], 10)).toBe(2.5);
+    expect(forecastRate([], 24)).toBe(0);
+  });
+
+  it("matches the latest-interval forecast's errors at window 1", () => {
+    const increments = [3, -1, 4, 1, -5, 9, 2, 6, -5, 3, 5, 8];
+    const manual: number[] = [];
+    for (let t = 0; t + 3 < increments.length; t++) {
+      const actual = increments.slice(t + 2, t + 4).reduce((a, b) => a + b, 0);
+      manual.push(actual - 2 * (increments[t] as number));
+    }
+    expect(forecastErrors(increments, 1, 3)).toEqual(manual);
+    expect(forecastErrors(increments, 1, 3, 1)).toEqual(manual);
+    // A window of 4 starts once four increments exist and forecasts from their mean.
+    const w4 = forecastErrors(increments, 1, 3, 4);
+    expect(w4).toHaveLength(manual.length - 3);
+    expect(w4[0]).toBe(9 + 2 - 2 * ((3 - 1 + 4 + 1) / 4)); // increments 5 and 6, against the mean of 0 to 3
+  });
+
+  // Perpl's testnet ETH funding cycles 0, 5, 10, 10, 10, 5 per interval. Read at the trough, the latest
+  // interval says 0, and "more than 625 over 100 intervals" is YES only for history read at a trough
+  // too (one start in six); the cycle's mean says about 667, which is YES from every start.
+  it("prices a cycling funding rate from its mean, not the trough it was read at", () => {
+    const cycle = [5, 10, 10, 10, 5, 0];
+    const increments = Array.from({ length: 120 }, () => cycle).flat();
+    const steps = { stepsToStart: 0, stepsToEnd: 100 };
+    const rateWindow = rateWindowFor(steps.stepsToEnd);
+    const base = { accrued: 0, ...steps, threshold: 625, increments };
+    const latest = fundingFairValue({ ...base, currentRate: increments.at(-1) as number });
+    const averaged = fundingFairValue({
+      ...base,
+      currentRate: forecastRate(increments, rateWindow),
+      rateWindow,
+    });
+    expect(latest.p).toBeLessThan(0.2);
+    expect(averaged.expected).toBeCloseTo(666.7, 1);
+    expect(averaged.p).toBeGreaterThan(0.9);
+    // And the same forecast on a threshold above what the cycle pays is a NO.
+    expect(
+      fundingFairValue({
+        ...base,
+        threshold: 700,
+        currentRate: forecastRate(increments, rateWindow),
+        rateWindow,
+      }).p,
+    ).toBeLessThan(0.1);
   });
 });

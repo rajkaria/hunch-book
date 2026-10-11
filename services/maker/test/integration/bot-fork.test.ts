@@ -188,7 +188,8 @@ describe("the maker loop on a fork of Monad testnet", () => {
     const fair = quote?.fair as number;
     expect(fair).toBeGreaterThan(0);
     expect(fair).toBeLessThan(1);
-    expect(quote?.samples).toBeGreaterThanOrEqual(300);
+    // 300 spare starts of history, less the starts the averaging window needs before its first forecast.
+    expect(quote?.samples).toBeGreaterThanOrEqual(300 - (quote?.rateWindow as number) + 1);
     expect(lines.some((l) => l.event === "tx" && l.action === "mintSets" && l.status === "success")).toBe(
       true,
     );

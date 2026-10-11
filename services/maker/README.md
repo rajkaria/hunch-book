@@ -90,8 +90,10 @@ Monad mainnet (see [Tests](#tests)).
 
 **Perpl funding threshold (template 1).** "Will longs pay more than X in funding on Perpl perp P between
 block A and block B?" The bot reads Perpl's `getFundingSumAtBlock` at the funding grid blocks (one event
-every 8,571 blocks). The forecast is: funding already paid in the window, plus the most recent
-interval's funding times the events left. The uncertainty is measured, not assumed: for every start
+every 8,571 blocks). The forecast is: funding already paid in the window, plus the recent average rate
+times the events left. The average covers as many intervals as are left in the window, at least 24 and
+at most 96: Perpl's funding moves in cycles and steps, and on Monad testnet history the average cut the
+forecast's error by a factor of 1.3 to 5 against the latest interval alone. The uncertainty is measured, not assumed: for every start
 point in the perp's own history, the bot compares the same forecast with what was actually paid over the
 same horizon. The probability of YES is the share of those historical forecast errors that would put the
 total above X (equal is NO). The bot needs at least the window's length plus 300 intervals of history.
@@ -278,7 +280,7 @@ pnpm --filter @hunch-book/maker test
 
 - It polls (every 10 seconds by default). A fill is seen on the next pass, and between passes a resting
   quote can be picked off if the source moves fast.
-- The Perpl model assumes the latest interval's funding carries on, and takes its uncertainty from the
+- The Perpl model assumes the recent average funding rate carries on, and takes its uncertainty from the
   perp's own history. It does not know about Perpl's price administrator's plans or rate clamps.
 - Price markets settled by Pyth (assets with no Chainlink feed on Monad, such as SOL) are not quoted:
   historical Pyth updates need an API key.
