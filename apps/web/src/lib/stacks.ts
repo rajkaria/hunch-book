@@ -81,6 +81,31 @@ export const onHunchVenue = (m: VenueSource): boolean => venueOfMarket(m) === "h
 export const marketVenueLabel = (m: VenueSource): string =>
   venueLabel({ venue: venueOfMarket(m), kuruVersion: m.kuruVersion === 2 ? 2 : 1 });
 
+/**
+ * Where a market's book is (or will be, for a pool that has not graduated): read from the market's
+ * stack in the deployment, never from an address list. A market whose stack the deployment does not
+ * name falls back to the venue fields the read gave it.
+ */
+export function marketVenue(
+  m: Pick<MarketView, "stack"> & VenueSource,
+  deployment: Deployment = appDeployment,
+): { venue: Venue; kuruVersion: 1 | 2 } {
+  const stack = stackNamed(deployment, m.stack ?? "primary");
+  if (stack) return { venue: stack.venue, kuruVersion: stack.venue === "hunch" ? 1 : stack.kuruVersion };
+  const venue = venueOfMarket(m);
+  return { venue, kuruVersion: venue === "kuru" && m.kuruVersion === 2 ? 2 : 1 };
+}
+
+/** The venue chip on a market card and header: "Hunch book", "Kuru v2" or "Kuru". */
+export function venueChipLabel(
+  m: Pick<MarketView, "stack"> & VenueSource,
+  deployment: Deployment = appDeployment,
+): string {
+  const { venue, kuruVersion } = marketVenue(m, deployment);
+  if (venue === "hunch") return "Hunch book";
+  return kuruVersion === 2 ? "Kuru v2" : "Kuru";
+}
+
 /** The book by name, as in "<name> on the explorer": "Hunch order book", "Kuru v2 book" or "Kuru book". */
 export const bookName = (m: VenueSource): string =>
   onHunchVenue(m) ? "Hunch order book" : m.kuruVersion === 2 ? "Kuru v2 book" : "Kuru book";
