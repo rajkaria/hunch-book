@@ -22,7 +22,7 @@ markets go to (the primary stack when absent). Kuru is the venue for every new m
 |---|---|---|
 | `hunchBook` (primary) | Kuru v1, created inside `graduate()` | new markets go here |
 | `stacks.kuruV2` | Kuru v2, once Kuru creates each book | its pools wait for Kuru to create their books |
-| `stacks.hunch` | Hunch Book's own order book, our fallback | no new markets from us: the app, SDK, MCP server and keeper create on Kuru; its earlier markets run to settlement |
+| `stacks.hunch` | Hunch Book's own order book, our fallback | no new markets: creation is [paused](https://testnet.monadscan.com/tx/0x801c5e41764d0b0cd2de7a03abbc1fe889a2cdb000f31ead7b93cd0e01a3d44a); its earlier markets run to settlement |
 
 `monad-mainnet.json` gets the Kuru stack when the mainnet deploy runs (planned). There, Kuru's owner creates
 each YES/USDC book and anyone registers it with the Graduator.

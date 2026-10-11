@@ -127,7 +127,7 @@ If a Kuru market lock passes with no book, the market settles as a pool, as mark
 ## Our fallback book: the `hunch` stack (Monad testnet)
 
 Hunch Book's own onchain order book, built as a fallback behind Kuru v1's interface. It takes no new markets:
-new markets go to Kuru, and the app, SDK, MCP server and keeper create nothing here. Its earlier markets, below, run
+new markets go to Kuru, and the guardian [paused market creation](https://testnet.monadscan.com/tx/0x801c5e41764d0b0cd2de7a03abbc1fe889a2cdb000f31ead7b93cd0e01a3d44a) on this stack's factory on 2026-10-12. Its earlier markets, below, run
 to settlement on their books.
 
 | Fact | Value | Source |
@@ -139,7 +139,7 @@ to settlement on their books.
 | Graduation rule | pool of at least 100 USDC, at least 3 stakers, chance between 3% and 97% | `factory.templateOf(id).rule`; `GRADUATION_MIN_POOL=100 GRADUATION_MIN_STAKERS=3` at deploy |
 | Trading fees on the book | 0 | `HunchOrderBookFactory` accepts fee 0 only |
 | Source verification | all 9 new contracts verified on Sourcify (exact match) | `forge verify-contract --verifier sourcify` |
-| Takes new markets | none from us: new markets go to the primary stack, on Kuru | `defaultStack` in the deployments file |
+| Takes new markets | no: market creation is [paused](https://testnet.monadscan.com/tx/0x801c5e41764d0b0cd2de7a03abbc1fe889a2cdb000f31ead7b93cd0e01a3d44a) (2026-10-12), and new markets go to the primary stack, on Kuru | `factory.creationPaused()`; `defaultStack` in the deployments file |
 
 ### Earlier markets on the `hunch` stack (ours, seeded by us)
 
