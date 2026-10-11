@@ -53,7 +53,7 @@ contract HunchVenueMainnetForkTest is Test {
             DEPLOYER_KEY,
             guardian,
             feeRecipient,
-            Deploy.Options({kuruVersion: 1, stack: "", wireKuru: true, hunchVenue: true})
+            Deploy.Options({kuruVersion: 1, stack: "forkHunchVenue", wireKuru: true, hunchVenue: true})
         );
         usdc = IERC20Like(d.usdc);
         factory = HunchBookFactory(d.factory);

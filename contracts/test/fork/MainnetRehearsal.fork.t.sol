@@ -89,7 +89,7 @@ contract MainnetRehearsalForkTest is Test {
             DEPLOYER_KEY,
             guardian,
             feeRecipient,
-            Deploy.Options({kuruVersion: 1, stack: "", wireKuru: true, hunchVenue: false})
+            Deploy.Options({kuruVersion: 1, stack: "forkRehearsal", wireKuru: true, hunchVenue: false})
         );
 
         usdc = IERC20Like(d.usdc);
@@ -130,7 +130,12 @@ contract MainnetRehearsalForkTest is Test {
     function test_deployRefusesTheDeployerAsMainnetGuardian() public {
         Deploy again = new Deploy();
         vm.expectRevert(bytes("mainnet guardian must be a separate multisig, not the deployer"));
-        again.deploy(DEPLOYER_KEY, deployer, feeRecipient);
+        again.deployWith(
+            DEPLOYER_KEY,
+            deployer,
+            feeRecipient,
+            Deploy.Options({kuruVersion: 1, stack: "forkRehearsal", wireKuru: true, hunchVenue: false})
+        );
     }
 
     // ------------------------------------------------------------------ mainnet first, Kuru v2 later
@@ -151,7 +156,7 @@ contract MainnetRehearsalForkTest is Test {
             DEPLOYER_KEY,
             guardian,
             feeRecipient,
-            Deploy.Options({kuruVersion: 2, stack: "", wireKuru: true, hunchVenue: false})
+            Deploy.Options({kuruVersion: 2, stack: "forkRehearsal", wireKuru: true, hunchVenue: false})
         );
     }
 
@@ -163,7 +168,7 @@ contract MainnetRehearsalForkTest is Test {
             DEPLOYER_KEY,
             guardian,
             feeRecipient,
-            Deploy.Options({kuruVersion: 2, stack: "", wireKuru: false, hunchVenue: false})
+            Deploy.Options({kuruVersion: 2, stack: "forkRehearsal", wireKuru: false, hunchVenue: false})
         );
         HunchBookFactory f = HunchBookFactory(p.factory);
         assertEq(p.graduator, address(0));

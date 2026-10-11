@@ -108,7 +108,7 @@ contract MainnetKuruV1ForkTest is Test {
                 DEPLOYER_KEY,
                 guardian,
                 feeRecipient,
-                Deploy.Options({kuruVersion: 1, stack: "", wireKuru: true, hunchVenue: false})
+                Deploy.Options({kuruVersion: 1, stack: "forkKuruV1", wireKuru: true, hunchVenue: false})
             );
         usdc = IUsdcV1(d.usdc);
         factory = HunchBookFactory(d.factory);
@@ -128,6 +128,72 @@ contract MainnetKuruV1ForkTest is Test {
         assertTrue(ok, "guardian registers template 2");
 
         holder = _pickHolder(20_000e6);
+    }
+
+    // ------------------------------------------------------------------ the live deployment
+
+    /// The contracts deployed on mainnet (deployments/monad-mainnet.json), not a fresh copy: wired to
+    /// Kuru v1 and Circle USDC with a separate guardian, and, once the guardian registers template 2
+    /// (impersonated here if it has not yet), the whole Kuru money path runs on them. Skips until the
+    /// file has a factory.
+    function test_liveDeployment_isKuruV1_andRunsTheMoneyPath() public {
+        if (!vm.keyExistsJson(json, ".hunchBook.factory")) {
+            vm.skip(true, "no mainnet deployment in the deployments file yet");
+            return;
+        }
+        factory = HunchBookFactory(vm.parseJsonAddress(json, ".hunchBook.factory"));
+        vault = CollateralVault(vm.parseJsonAddress(json, ".hunchBook.vault"));
+        graduator = Graduator(vm.parseJsonAddress(json, ".hunchBook.graduator"));
+        router = HunchRouter(vm.parseJsonAddress(json, ".hunchBook.router"));
+        d.usdc = vm.parseJsonAddress(json, ".hunchBook.usdc");
+        d.guardian = vm.parseJsonAddress(json, ".hunchBook.guardian");
+        d.priceAtTime = vm.parseJsonAddress(json, ".hunchBook.resolvers.priceAtTime");
+        usdc = IUsdcV1(d.usdc);
+
+        // Wiring: Circle USDC, the vault, Kuru v1's mainnet router and margin account, no book creation,
+        // a guardian that is not the deployer, and the beta caps.
+        assertEq(d.usdc, vm.parseJsonAddress(json, ".external.usdc"), "Circle USDC");
+        assertEq(factory.usdc(), d.usdc);
+        assertEq(factory.vault(), address(vault));
+        assertEq(factory.graduator(), address(graduator));
+        assertEq(factory.guardian(), d.guardian);
+        assertTrue(d.guardian != 0xD183a7daECF3d539683f37e1111558E3dFC210A8, "guardian is not the deployer");
+        assertEq(address(graduator.kuruRouter()), address(kuru));
+        assertEq(address(graduator.kuruMarginAccount()), address(margin));
+        assertEq(graduator.usdc(), d.usdc);
+        assertFalse(graduator.canCreateBooks(), "Kuru creates mainnet books");
+        IGraduator.BookParams memory bp = graduator.bookParams();
+        assertEq(bp.sizePrecision, 1e6);
+        assertEq(bp.pricePrecision, 1e6);
+        assertEq(bp.tickSize, 1000);
+        assertEq(bp.minSize, 1e6);
+        assertEq(bp.takerFeeBps, 0);
+        assertEq(bp.makerFeeBps, 0);
+        assertEq(bp.kuruAmmSpread, 30);
+        assertEq(factory.caps().poolCap, 5000e6);
+        assertEq(vault.collateralCap(), 50_000e6);
+
+        if (address(factory.resolverOf(2)) == address(0)) {
+            GuardianBatch batch = new GuardianBatch();
+            bytes memory addTemplate2 = batch.calldataFor(2, d.priceAtTime, batch.ruleOf(MIN_POOL_USDC, MIN_STAKERS));
+            vm.prank(d.guardian);
+            (bool ok,) = address(factory).call(addTemplate2);
+            assertTrue(ok, "the live guardian registers template 2");
+        }
+
+        _createMarket();
+        address book = _kuruCreatesBook();
+        vm.prank(outsider);
+        graduator.registerBook(address(m), book);
+        _fillPoolUntilRuleMet();
+        vm.prank(keeper);
+        m.graduate();
+        assertEq(m.book(), book);
+        m.claimTokensFor(_allStakers());
+        _checkSets();
+        _makerQuotes(book);
+        _traderTradesThroughKuru();
+        _settleAndRedeem();
     }
 
     // ------------------------------------------------------------------ (c) owner-only books
@@ -353,6 +419,22 @@ contract MainnetKuruV1ForkTest is Test {
             if (i < 3) yesStakers.push(u);
             else noStakers.push(u);
         }
+    }
+
+    /// `_fillPool`, then more balanced stakers until the market's own rule is met (for a live template
+    /// registered with a larger rule than the recommended one).
+    function _fillPoolUntilRuleMet() internal {
+        _fillPool();
+        for (uint256 i; i < 40 && !m.graduationRuleMet(); ++i) {
+            address u = makeAddr(string.concat("extra staker ", vm.toString(i)));
+            _fund(u, 60e6);
+            vm.prank(u);
+            m.stake(i % 2 == 0 ? Side.Yes : Side.No, 60e6);
+            staked[u] += 60e6;
+            if (i % 2 == 0) yesStakers.push(u);
+            else noStakers.push(u);
+        }
+        assertTrue(m.graduationRuleMet(), "rule met");
     }
 
     function _kuruCreatesBook() internal returns (address) {
