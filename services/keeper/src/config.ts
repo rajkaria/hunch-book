@@ -30,6 +30,11 @@ export interface KeeperConfig {
   settleRetryMaxSeconds: number;
   /** How often the keeper repeats a request to Kuru for one market's book (mainnet). */
   bookRequestSeconds: number;
+  /**
+   * Kuru v1 mainnet: how far toward its graduation rule a pool must be before the keeper asks Kuru for
+   * its book, as a fraction (KEEPER_BOOK_REQUEST_AT, above 0 and at most 1; 1 = once the rule is met).
+   */
+  bookRequestAt: number;
   stateFile: string;
   healthFile: string;
   healthPort: number | undefined;
@@ -85,6 +90,9 @@ export type OptionalJob = (typeof OPTIONAL_JOBS)[number];
 type Env = Record<string, string | undefined>;
 
 const NETWORKS: Network[] = ["monad-testnet", "monad-mainnet"];
+
+/** "" on testnet (the files keep their old names), ".monad-mainnet" on mainnet. */
+export const networkSuffix = (network: Network): string => (network === "monad-testnet" ? "" : `.${network}`);
 
 function num(env: Env, name: string, fallback: number, check: (x: number) => boolean, rule: string): number {
   const raw = env[name];
@@ -195,9 +203,15 @@ export function parseConfig(env: Env): KeeperConfig {
     settleRetrySeconds,
     settleRetryMaxSeconds,
     bookRequestSeconds: num(env, "KEEPER_BOOK_REQUEST_SECONDS", 6 * 3_600, positive, "above zero"),
+    bookRequestAt: num(env, "KEEPER_BOOK_REQUEST_AT", 1, (x) => x > 0 && x <= 1, "above 0 and at most 1"),
+    // Off testnet the default files carry the network's name, so a mainnet keeper run from the same
+    // checkout as the testnet one never shares its state or health file.
     stateFile:
-      env.KEEPER_STATE_FILE?.trim() || fileURLToPath(new URL("../.keeper-state.json", import.meta.url)),
-    healthFile: env.KEEPER_HEALTH_FILE?.trim() || fileURLToPath(new URL("../health.json", import.meta.url)),
+      env.KEEPER_STATE_FILE?.trim() ||
+      fileURLToPath(new URL(`../.keeper-state${networkSuffix(network)}.json`, import.meta.url)),
+    healthFile:
+      env.KEEPER_HEALTH_FILE?.trim() ||
+      fileURLToPath(new URL(`../health${networkSuffix(network)}.json`, import.meta.url)),
     healthPort: healthPortRaw
       ? num(env, "KEEPER_HEALTH_PORT", 0, (x) => Number.isInteger(x) && x > 0 && x < 65536, "a port number")
       : undefined,

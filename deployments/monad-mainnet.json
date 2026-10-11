@@ -2,6 +2,12 @@
   "network": "monad-mainnet",
   "chainId": 143,
   "rpc": "https://rpc.monad.xyz",
+  "rpcFallbacks": [
+    "https://rpc1.monad.xyz",
+    "https://rpc2.monad.xyz",
+    "https://rpc3.monad.xyz",
+    "https://rpc-mainnet.monadinfra.com"
+  ],
   "explorer": "https://monadscan.com",
   "hunchBook": {},
   "wallets": {

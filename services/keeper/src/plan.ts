@@ -54,6 +54,13 @@ export interface PlanInput {
   settler: Pick<Settler, "name" | "waitReason" | "prover" | "snapshot"> | undefined;
   /** Where Kuru would deploy this market's book (v1 mainnet, or any Kuru v2 stack), and its state. */
   predictedBook?: PredictedBook;
+  /**
+   * Kuru v1 where only Kuru creates books (mainnet): how far toward its graduation rule a pool must be
+   * before the keeper asks Kuru for its book, as a fraction (KEEPER_BOOK_REQUEST_AT). 1, the default,
+   * asks only once the rule is met. Kuru creates each book by hand, so asking earlier lets the book be
+   * ready (and registered) by the time the pool fills.
+   */
+  bookRequestAt?: number;
 }
 
 /** A market's book as Kuru would deploy it, and whether it is there and registrable. */
@@ -117,16 +124,38 @@ export function ruleShortfall(m: Pick<PlanMarket, "yesTotal" | "noTotal" | "stak
 const bookName = (g: Pick<Globals, "venue">) => (g.venue === "hunch" ? "Hunch order book" : "Kuru book");
 
 /**
- * True when the graduate job needs to know whether Kuru already created this market's book. Kuru v1
- * mainnet: once the rule is met. Kuru v2: from creation, because Kuru's setup takes days and the book
- * can be registered before the pool fills. Never on a Hunch venue: Kuru has no part in those books.
+ * How far a pool is toward its rule's pool size and staker count, whichever is further behind, from 0
+ * to 1. The chance band is left out: it is about the split, not about how much interest there is.
  */
-export function needsBookLookup(m: PlanMarket, g: Globals): boolean {
+export function ruleProgress(m: Pick<PlanMarket, "yesTotal" | "noTotal" | "stakers" | "rule">): number {
+  const pool = m.rule.minPool === 0n ? 1 : Number(m.yesTotal + m.noTotal) / Number(m.rule.minPool);
+  const stakers = m.rule.minStakers === 0 ? 1 : m.stakers / m.rule.minStakers;
+  return Math.min(1, pool, stakers);
+}
+
+/**
+ * Kuru v1 where only Kuru creates books: the pool is far enough along to ask Kuru for its book. With
+ * `bookRequestAt` 1 (the default) that is exactly when the rule is met.
+ */
+export function bookRequestDue(
+  m: Pick<PlanMarket, "ruleMet" | "yesTotal" | "noTotal" | "stakers" | "rule">,
+  bookRequestAt = 1,
+): boolean {
+  return m.ruleMet || (bookRequestAt < 1 && ruleProgress(m) >= bookRequestAt);
+}
+
+/**
+ * True when the graduate job needs to know whether Kuru already created this market's book. Kuru v1
+ * mainnet: once the pool is far enough along (`bookRequestDue`; by default, once the rule is met). Kuru
+ * v2: from creation, because Kuru's setup takes days and the book can be registered before the pool
+ * fills. Never on a Hunch venue: Kuru has no part in those books.
+ */
+export function needsBookLookup(m: PlanMarket, g: Globals, bookRequestAt = 1): boolean {
   if (g.venue === "hunch") return false;
   if (m.phase !== Phase.Pool || isZero(g.graduator) || !isZero(m.graduatorBook) || g.canCreateBooks)
     return false;
   if (g.kuruVersion === 2) return true;
-  return m.ruleMet && !g.graduationPaused;
+  return bookRequestDue(m, bookRequestAt) && !g.graduationPaused;
 }
 
 function planGraduate(input: PlanInput): Decision {
@@ -135,10 +164,28 @@ function planGraduate(input: PlanInput): Decision {
   const job = "graduate" as const;
   if (!m.ruleMet) {
     const missing = ruleShortfall(m);
-    return {
-      job,
-      reason: `rule not met: ${missing.length ? missing.join("; ") : "see graduationRuleMet()"}`,
-    };
+    const reason = `rule not met: ${missing.length ? missing.join("; ") : "see graduationRuleMet()"}`;
+    // Kuru v1 where only Kuru creates books: register a book Kuru already made (registration does not
+    // need the rule), and ask for one once the pool is far enough along (KEEPER_BOOK_REQUEST_AT).
+    const kuruCreates = g.venue !== "hunch" && !g.canCreateBooks && !isZero(g.graduator);
+    if (kuruCreates && !g.graduationPaused && isZero(m.graduatorBook)) {
+      if (predictedBook?.deployed) {
+        return {
+          job,
+          action: "register-book",
+          reason: `${reason}; Kuru has created the book at ${predictedBook.address}: register it now, graduate once the rule is met`,
+        };
+      }
+      if (bookRequestDue(m, input.bookRequestAt)) {
+        const pct = Math.floor(ruleProgress(m) * 100);
+        return {
+          job,
+          action: "book-request",
+          reason: `${reason}; the pool is ${pct}% of the way there: ask Kuru for the book now so it is ready when the rule is met`,
+        };
+      }
+    }
+    return { job, reason };
   }
   if (g.graduationPaused) return { job, reason: "rule met, but graduation is paused" };
   if (isZero(g.graduator)) return { job, reason: "rule met, but the factory has no graduator" };

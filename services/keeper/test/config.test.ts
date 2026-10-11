@@ -32,6 +32,7 @@ describe("parseConfig", () => {
       settleRetrySeconds: 60,
       settleRetryMaxSeconds: 1_800,
       bookRequestSeconds: 21_600,
+      bookRequestAt: 1,
       healthPort: undefined,
       alertWebhook: undefined,
       indexerUrl: undefined,
@@ -41,6 +42,14 @@ describe("parseConfig", () => {
     });
     expect(config.stateFile).toMatch(/services\/keeper\/\.keeper-state\.json$/);
     expect(config.healthFile).toMatch(/services\/keeper\/health\.json$/);
+  });
+
+  it("names the default state and health files after the network off testnet", () => {
+    const mainnet = parseConfig({ KEEPER_NETWORK: "monad-mainnet" });
+    expect(mainnet.stateFile).toMatch(/services\/keeper\/\.keeper-state\.monad-mainnet\.json$/);
+    expect(mainnet.healthFile).toMatch(/services\/keeper\/health\.monad-mainnet\.json$/);
+    const set = parseConfig({ KEEPER_NETWORK: "monad-mainnet", KEEPER_STATE_FILE: "/tmp/s.json" });
+    expect(set.stateFile).toBe("/tmp/s.json");
   });
 
   it("turns on only with an explicit yes and a key", () => {
@@ -75,6 +84,7 @@ describe("parseConfig", () => {
       KEEPER_SETTLE_RETRY_SECONDS: "10",
       KEEPER_SETTLE_RETRY_MAX_SECONDS: "600",
       KEEPER_BOOK_REQUEST_SECONDS: "3600",
+      KEEPER_BOOK_REQUEST_AT: "0.5",
       KEEPER_STATE_FILE: "/tmp/s.json",
       KEEPER_HEALTH_FILE: "/tmp/h.json",
       KEEPER_HEALTH_PORT: "8080",
@@ -97,6 +107,7 @@ describe("parseConfig", () => {
       settleRetrySeconds: 10,
       settleRetryMaxSeconds: 600,
       bookRequestSeconds: 3_600,
+      bookRequestAt: 0.5,
       stateFile: "/tmp/s.json",
       healthFile: "/tmp/h.json",
       healthPort: 8080,
@@ -118,6 +129,8 @@ describe("parseConfig", () => {
     expect(() => parseConfig({ KEEPER_MIN_MON: "-1" })).toThrow(/KEEPER_MIN_MON/);
     expect(() => parseConfig({ KEEPER_HEALTH_PORT: "70000" })).toThrow(/KEEPER_HEALTH_PORT/);
     expect(() => parseConfig({ KEEPER_MARKETS: "0xnope" })).toThrow(/KEEPER_MARKETS/);
+    expect(() => parseConfig({ KEEPER_BOOK_REQUEST_AT: "0" })).toThrow(/KEEPER_BOOK_REQUEST_AT/);
+    expect(() => parseConfig({ KEEPER_BOOK_REQUEST_AT: "1.5" })).toThrow(/KEEPER_BOOK_REQUEST_AT/);
     expect(() => parseConfig({ KEEPER_ALERT_WEBHOOK: "not a url" })).toThrow(/KEEPER_ALERT_WEBHOOK/);
     expect(() => parseConfig({ INDEXER_URL: "ftp://x.example.com" })).toThrow(/INDEXER_URL/);
     expect(() =>

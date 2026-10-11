@@ -9,7 +9,10 @@
 #   bash scripts/run-local-services.sh logs    [keeper|maker]      (follows the log; Ctrl-C leaves)
 #   bash scripts/run-local-services.sh exec    [keeper|maker]      (foreground, for launchd and hosts)
 #
-# Pid and log files go in .run/ at the repository root (gitignored). Each service loads the repository's
+# Pid and log files go in .run/ at the repository root (gitignored), or in RUN_DIR: a second pair of
+# services (Monad mainnet next to testnet, ops/services.mainnet.env.example) runs with its own RUN_DIR,
+# SERVICES_ENV_FILE and LAUNCHD_PREFIX, so the two never share a pid, log, state or health file.
+# Each service loads the repository's
 # .env itself (or the file in ENV_FILE) and takes only its own variables (KEEPER_* or MAKER_*, plus
 # MONAD_*), so neither process holds the other's key.
 #
@@ -31,7 +34,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUN="$ROOT/.run"
+RUN="${RUN_DIR:-$ROOT/.run}"
 ENV_FILE="${ENV_FILE:-$ROOT/.env}"
 SETTINGS_FILE="${SERVICES_ENV_FILE:-$RUN/services.env}"
 STOP_WAIT="${STOP_WAIT:-90}"
