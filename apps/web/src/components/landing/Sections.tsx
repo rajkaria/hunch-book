@@ -1,4 +1,4 @@
-import { addressUrl, CREATOR_SHARE_BPS, deployments } from "@hunch-book/shared";
+import { addressUrl, CREATOR_SHARE_BPS, type Deployment, deployments, stacksOf } from "@hunch-book/shared";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Address } from "viem";
@@ -305,9 +305,9 @@ export function Safety({ vault }: { vault: VaultBooks | null }) {
             <span className={s.safetyIcon}>{icons.code}</span>
             <h3 className={s.cardHeading}>Tested in the open</h3>
             <p className={s.cardText}>
-              Every contract is public, Hunch Book's own order book included, with unit, fuzz and invariant
-              tests, and fork tests against live Kuru, Perpl and Chainlink contracts. The known limits are
-              written down.
+              Every contract is public, with unit, fuzz and invariant tests, and fork tests against live Kuru,
+              Perpl and Chainlink contracts, including the mainnet flow where Kuru creates each book. The
+              known limits are written down.
             </p>
             <a className={s.stageMore} href={PROTOCOL.limitations} target="_blank" rel="noreferrer">
               Known limitations<span aria-hidden="true"> ↗</span>
@@ -322,15 +322,11 @@ export function Safety({ vault }: { vault: VaultBooks | null }) {
 // ---------- why Monad ----------
 
 export function WhyMonad({ msPerBlock }: { msPerBlock: number | null }) {
-  const stack = defaultStack();
   const points = [
     {
       icon: icons.book,
-      title: "An order book that lives onchain",
-      body:
-        stack && onHunchVenue(stack)
-          ? "A pool graduates into a real YES/USDC book that anyone can quote, not into a matching engine on our server. New markets get theirs from Hunch Book's own order book contracts, and Kuru's books are supported too."
-          : "A pool graduates into a real YES/USDC book on Kuru that anyone can quote, not into a matching engine on our server.",
+      title: "Kuru: an order book that lives onchain",
+      body: "A pool graduates into a real YES/USDC book on Kuru, Monad's onchain order book, that anyone can quote, not into a matching engine on our server.",
     },
     {
       icon: icons.history,
@@ -375,6 +371,26 @@ export interface FaqItem {
   a: ReactNode;
 }
 
+/**
+ * What the venue answer adds for a network, read from its stacks: Kuru v2 pools that wait for Kuru, and
+ * the earlier markets on our fallback book, which takes no new markets.
+ */
+export function kuruFaqNotes(deployment: Deployment = appDeployment): string[] {
+  const stacks = stacksOf(deployment);
+  const notes: string[] = [];
+  if (stacks.some((st) => !onHunchVenue(st) && st.kuruVersion === 2)) {
+    notes.push(
+      "Pools on the Kuru v2 stack wait for Kuru to create their books; a pool whose book never arrives settles as a pool.",
+    );
+  }
+  if (stacks.some((st) => onHunchVenue(st))) {
+    notes.push(
+      "Some earlier markets trade on Hunch Book's own order book, our fallback, which takes no new markets. They run to settlement there.",
+    );
+  }
+  return notes;
+}
+
 export function faqItems(): FaqItem[] {
   const mainnetLive = isDeployed(deployments["monad-mainnet"]);
   const testnetLive = isDeployed(deployments["monad-testnet"]);
@@ -386,9 +402,8 @@ export function faqItems(): FaqItem[] {
         <>
           In a pool, winners pay 2% of their winnings, never more than the losing side put in. After
           graduation, each winning token redeems for 1 USDC less a fee fixed at graduation, at most 1.94
-          cents. Hunch Book's own order book charges no trading fee; on a Kuru book, Kuru's own trading fees
-          go to Kuru. Minting, merging and void refunds are free. {creatorShare} of Hunch Book's fee goes to
-          the market's creator.{" "}
+          cents. On Kuru, Kuru's own trading fees go to Kuru, not to us. Minting, merging and void refunds are
+          free. {creatorShare} of Hunch Book's fee goes to the market's creator.{" "}
           <a href={PROTOCOL.fees} target="_blank" rel="noreferrer">
             Fee table
           </a>
@@ -403,6 +418,16 @@ export function faqItems(): FaqItem[] {
     {
       q: "Can I sell before the answer?",
       a: "Not from a pool: stakes are final until settlement, which is what keeps a pool safe without a market maker. Once a market graduates, you can sell YES or NO on its order book at any time until the window closes.",
+    },
+    {
+      q: "Where do graduated markets trade?",
+      a: (
+        <>
+          On Kuru, Monad's onchain order book. Each graduated market gets its own YES/USDC book there, and NO
+          trades through the same book. {kuruFaqNotes().join(" ")}{" "}
+          <Link href="/kuru">Every market on Kuru</Link>.
+        </>
+      ),
     },
     {
       q: "Who is on the other side of my trade?",
