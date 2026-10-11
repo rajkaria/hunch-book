@@ -128,7 +128,7 @@ export function encodeCreateParams(input: Pick<CreateMarketInput, "templateId" |
  * Creates a market and makes the creator's first stake. Approves the vault for the stake first if
  * needed. Throws with the existing market's address if the same question exists already. The market
  * goes to `options.stack`, or else to the deployment's default stack (`defaultStack`: on testnet the
- * `hunch` stack, whose books are Hunch Book's own order book), or else the primary one.
+ * primary stack, whose books are on Kuru), or else the primary one.
  */
 export async function createMarket(
   ctx: HunchContext,

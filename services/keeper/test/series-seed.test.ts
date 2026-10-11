@@ -19,18 +19,18 @@ const testnet = deployments["monad-testnet"];
 const KEEPER = getAddress("0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569");
 const MAKER = testnet.wallets.maker;
 const GUARDIAN = getAddress("0xD183a7daECF3d539683f37e1111558E3dFC210A8");
-const FACTORY = getAddress("0x846Cd400B832203befe5902ef43DAdc969985AF2");
-const VAULT = getAddress("0x68B530302b012f22e5f00Ce0C6C8cF3A189fee86");
+const FACTORY = getAddress(testnet.hunchBook.factory as Address);
+const VAULT = getAddress(testnet.hunchBook.vault as Address);
 const TEST_USDC = testnet.hunchBook.usdc as Address;
 const MARKET = getAddress("0x00000000000000000000000000000000000000a1");
 const EXAMPLE = new URL("../series.example.json", import.meta.url);
 
-/** The hunch stack's view on testnet, and the same layout claiming to be mainnet. */
-const hunchView: Deployment = {
+/** The series stack's view on testnet (the primary stack, Kuru v1), and the same layout claiming to be mainnet. */
+const seriesView: Deployment = {
   ...testnet,
   hunchBook: { factory: FACTORY, vault: VAULT, usdc: TEST_USDC, guardian: GUARDIAN },
 };
-const mainnetView: Deployment = { ...hunchView, network: "monad-mainnet", chainId: 143 };
+const mainnetView: Deployment = { ...seriesView, network: "monad-mainnet", chainId: 143 };
 
 // A price series with a fixed strike (no Chainlink reads), seeded for the maker and the guardian.
 const base = parseSeriesFile(readFileSync(EXAMPLE, "utf8"))[1] as SeriesSpec;
@@ -221,14 +221,15 @@ describe("the seed in the series file", () => {
     expect(() => parseSeriesFile(file({ stakes: [] }))).toThrow(/list of stakes/);
   });
 
-  it("ships seeded examples for templates 1 and 4 that meet the testnet rule", () => {
+  it("ships seeded examples for templates 1 and 4, on both sides near even", () => {
     const specs = parseSeriesFile(readFileSync(EXAMPLE, "utf8"));
     for (const id of ["btc-funding-weekly", "mon-funding-spike-daily"]) {
       const s = specs.find((x) => x.id === id) as SeriesSpec;
       const stakes = [{ side: s.firstStake.side, amount: s.firstStake.amount }, ...(s.seed?.stakes ?? [])];
       const yes = stakes.filter((x) => x.side === Side.Yes).reduce((t, x) => t + x.amount, 0n);
       const no = stakes.filter((x) => x.side === Side.No).reduce((t, x) => t + x.amount, 0n);
-      // The hunch stack's rule: 100 USDC from 3 stakers, both sides, chance near 50%.
+      // Three of our wallets, both sides, chance near 50%. Series open on a Kuru stack (testnet rule: 500
+      // USDC from 10 stakers), so the pool needs other stakers, or more seed wallets, to graduate.
       expect(stakes.length).toBeGreaterThanOrEqual(3);
       expect(yes + no).toBeGreaterThanOrEqual(100n * USDC);
       expect(yes > 0n && no > 0n).toBe(true);
@@ -241,7 +242,7 @@ describe("the seed in the series file", () => {
 describe("seeding a series market", () => {
   it("on testnet: mints what the keeper lacks, approves once, creates, then stakes for each holder", async () => {
     const job = new SeriesJob([spec], { enabled: true });
-    const result = await job.run(chain.ctx(hunchView), [], now);
+    const result = await job.run(chain.ctx(seriesView), [], now);
     expect(chain.actions()).toEqual([
       "mintTestUsdc",
       "approveFirstStake",
@@ -268,7 +269,7 @@ describe("seeding a series market", () => {
     expect([chain.balance, chain.allowance]).toEqual([0n, 0n]);
     // Done: the next cycle sends nothing.
     chain.sent = [];
-    await job.run(chain.ctx(hunchView), [], now);
+    await job.run(chain.ctx(seriesView), [], now);
     expect(chain.sent).toEqual([]);
   });
 
@@ -278,7 +279,7 @@ describe("seeding a series market", () => {
       firstStake: { side: Side.Yes, amount: 6_000n * USDC },
       seed: { stakes: [{ for: "maker", side: Side.No, amount: 6_000n * USDC }] },
     };
-    await new SeriesJob([big], { enabled: true }).run(chain.ctx(hunchView), [], now);
+    await new SeriesJob([big], { enabled: true }).run(chain.ctx(seriesView), [], now);
     expect(chain.sent.filter((s) => s.action === "mintTestUsdc").map((s) => s.args[1])).toEqual([
       TEST_USDC_FAUCET_LIMIT,
       2_000n * USDC,
@@ -311,9 +312,9 @@ describe("seeding a series market", () => {
       deployment,
       tx: { chain: { id: chainId } },
     });
-    expect(canMintTestUsdc(at(hunchView), TEST_USDC)).toBe(true);
-    expect(canMintTestUsdc(at(hunchView), testnet.external.circleUsdc as Address)).toBe(false);
-    expect(canMintTestUsdc(at(hunchView, 143), TEST_USDC)).toBe(false);
+    expect(canMintTestUsdc(at(seriesView), TEST_USDC)).toBe(true);
+    expect(canMintTestUsdc(at(seriesView), testnet.external.circleUsdc as Address)).toBe(false);
+    expect(canMintTestUsdc(at(seriesView, 143), TEST_USDC)).toBe(false);
     expect(canMintTestUsdc(at(mainnetView), TEST_USDC)).toBe(false);
   });
 
@@ -325,12 +326,12 @@ describe("seeding a series market", () => {
     chain.balance = 100n * USDC;
     chain.allowance = 25n * USDC;
     const job = new SeriesJob([spec], { enabled: true });
-    await job.run(chain.ctx(hunchView, { known: [ours()] }), [], now);
+    await job.run(chain.ctx(seriesView, { known: [ours()] }), [], now);
     expect(chain.actions()).toEqual(["seedStake"]);
     expect(chain.sent[0]?.args).toEqual([GUARDIAN, Side.No, 25n * USDC]);
     // A second restart: everything staked, nothing sent.
     chain.sent = [];
-    await new SeriesJob([spec], { enabled: true }).run(chain.ctx(hunchView, { known: [ours()] }), [], now);
+    await new SeriesJob([spec], { enabled: true }).run(chain.ctx(seriesView, { known: [ours()] }), [], now);
     expect(chain.sent).toEqual([]);
     expect(chain.events("series-seeded").length).toBeGreaterThan(0);
   });
@@ -339,21 +340,21 @@ describe("seeding a series market", () => {
     chain.failing.add("seedStake");
     let clock = 5_000_000;
     const job = new SeriesJob([spec], { enabled: true }, () => clock);
-    await job.run(chain.ctx(hunchView), [], now);
+    await job.run(chain.ctx(seriesView), [], now);
     expect(chain.actions()).toEqual(["mintTestUsdc", "approveFirstStake", "createMarket", "seedStake"]);
     expect(chain.events("series-seed-failed")[0]).toMatchObject({ for: "maker", status: "skipped" });
     chain.sent = [];
-    await job.run(chain.ctx(hunchView, { known: [ours()] }), [], now);
+    await job.run(chain.ctx(seriesView, { known: [ours()] }), [], now);
     expect(chain.sent).toEqual([]);
     chain.failing.clear();
     clock += SEED_RETRY_MS + 1;
-    await job.run(chain.ctx(hunchView, { known: [ours()] }), [], now);
+    await job.run(chain.ctx(seriesView, { known: [ours()] }), [], now);
     expect(chain.actions()).toEqual(["seedStake", "seedStake"]);
   });
 
   it("refuses a seed the market's caps do not allow, and one past the pool", async () => {
     chain.minStake = 50n * USDC;
-    await new SeriesJob([spec], { enabled: true }).run(chain.ctx(hunchView), [], now);
+    await new SeriesJob([spec], { enabled: true }).run(chain.ctx(seriesView), [], now);
     expect(chain.actions()).not.toContain("seedStake");
     expect(chain.events("series-seed-invalid")[0]?.reason).toMatch(/below the market's minimum stake/);
 
@@ -361,12 +362,12 @@ describe("seeding a series market", () => {
     late.created = true;
     late.phase = 2; // graduated already
     late.stakes.set(KEEPER.toLowerCase(), 55n * USDC);
-    await new SeriesJob([spec], { enabled: true }).run(late.ctx(hunchView, { known: [ours()] }), [], now);
+    await new SeriesJob([spec], { enabled: true }).run(late.ctx(seriesView, { known: [ours()] }), [], now);
     expect(late.sent).toEqual([]);
   });
 
   it("in a dry run: says what it would create and seed, sends nothing", async () => {
-    await new SeriesJob([spec], { enabled: false }).run(chain.ctx(hunchView), [], now);
+    await new SeriesJob([spec], { enabled: false }).run(chain.ctx(seriesView), [], now);
     expect(chain.created).toBe(false);
     expect(chain.stakes.size).toBe(0);
     expect(chain.balance).toBe(0n);
@@ -383,8 +384,8 @@ describe("seeding a series market", () => {
       await new SeriesJob([s], { enabled: true }).run(ctx, [], now);
       return errors.map(String);
     };
-    expect(await run(self, hunchView)).toEqual([expect.stringMatching(/keeper's own address/)]);
-    const noGuardian = { ...hunchView, hunchBook: { ...hunchView.hunchBook, guardian: undefined } };
+    expect(await run(self, seriesView)).toEqual([expect.stringMatching(/keeper's own address/)]);
+    const noGuardian = { ...seriesView, hunchBook: { ...seriesView.hunchBook, guardian: undefined } };
     expect(await run(spec, noGuardian)).toEqual([expect.stringMatching(/no guardian/)]);
     expect(chain.sent).toEqual([]);
   });

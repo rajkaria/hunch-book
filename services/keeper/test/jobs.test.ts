@@ -143,8 +143,20 @@ describe("which cycle jobs run", () => {
     const file = new URL("../series.example.json", import.meta.url).pathname;
     const names = buildCycleJobs(parseConfig({ KEEPER_SERIES_FILE: file }), testnet).map((j) => j.name);
     expect(names).toContain("series");
-    // Only on the default stack: a keeper for any other stack leaves it out.
+    // Only on the series stack: a keeper for any other stack leaves it out.
     const other = buildCycleJobs(parseConfig({ KEEPER_SERIES_FILE: file }), testnet, { series: false });
     expect(other.map((j) => j.name)).not.toContain("series");
+  });
+
+  it("never adds the series job on Hunch Book's own order book, even when told to", () => {
+    const file = new URL("../series.example.json", import.meta.url).pathname;
+    const t = deployments["monad-testnet"];
+    const hunch = t.stacks?.hunch;
+    expect(hunch?.venue?.kind).toBe("hunch");
+    // The hunch stack's own view of the deployment, as its keeper sees it.
+    const view = { ...t, hunchBook: hunch ?? {} };
+    const config = parseConfig({ KEEPER_SERIES_FILE: file });
+    expect(buildCycleJobs(config, view, { series: true }).map((j) => j.name)).not.toContain("series");
+    expect(buildCycleJobs(config, view).map((j) => j.name)).not.toContain("series");
   });
 });

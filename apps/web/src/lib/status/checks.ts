@@ -233,12 +233,17 @@ export function checkGuardian(s: StatusSnapshot): StatusCheck {
   if (f.pendingGuardian !== "0x0000000000000000000000000000000000000000") {
     details.unshift(`A guardian transfer to ${f.pendingGuardian} is waiting to be accepted.`);
   }
+  // On a stack new markets no longer go to (testnet's hunch stack, our fallback book), a creation pause
+  // is the plan, not a problem: the markets already there still trade, graduate and settle.
+  const retired = s.stack !== undefined && !s.stack.isDefault && f.creationPaused && !f.graduationPaused;
   if (paused.length > 0) {
     return {
       id: "guardian",
       title: "Pauses",
-      level: "warn",
-      summary: `The guardian has paused ${paused.join(" and ")}.`,
+      level: retired ? "ok" : "warn",
+      summary: retired
+        ? "The guardian has paused creating markets here, as planned: new markets open on another stack. Markets here still trade, graduate and settle."
+        : `The guardian has paused ${paused.join(" and ")}.`,
       details,
     };
   }

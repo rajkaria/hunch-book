@@ -1,7 +1,7 @@
 import { BPS, type Deployment, Phase, USDC_DECIMALS } from "@hunch-book/shared";
 import { appDeployment } from "../config";
 import { formatDuration, formatFixed, formatUsdc } from "../format";
-import { marketVenue, venueChipLabel } from "../stacks";
+import { marketVenue, onFallbackBook, venueChipLabel } from "../stacks";
 import {
   type Milestone,
   marketChance,
@@ -133,6 +133,49 @@ export function explorerHref(selection: ExplorerSelection, preset?: ExplorerPres
 /** How many filters differ from the page's own default (the preset's venue on /kuru, else "all"). */
 export function activeFilterCount(selection: ExplorerSelection, preset?: ExplorerPreset): number {
   return (selection.phase === "all" ? 0 : 1) + (selection.venue === (preset?.venue ?? "all") ? 0 : 1);
+}
+
+// ---------------------------------------------------------------- Kuru first
+
+/**
+ * Every new market opens on Kuru. Markets on Hunch Book's own order book are our fallback book: earlier
+ * markets, still listed because they still trade and run to settlement. The list puts them after Kuru's.
+ */
+export const FALLBACK_HEADING = "Our fallback book: earlier markets";
+
+export const FALLBACK_NOTE =
+  "These opened on Hunch Book's own order book before every new market moved to Kuru. They still trade, and they settle as usual.";
+
+/** One block of the list: its markets, and a heading when it is our fallback book. */
+export interface ListSection<M> {
+  id: "main" | "fallback";
+  /** Set on the fallback book's block only. */
+  heading: string | null;
+  note: string | null;
+  markets: M[];
+}
+
+/**
+ * The list in blocks, Kuru's first: every market on Kuru (or on a network with no fallback book) in one
+ * block with no heading, then our fallback book's under its heading. Each block keeps the order given;
+ * empty blocks are left out.
+ */
+export function listSections<M extends Pick<MarketView, "stack" | "venue" | "kuruVersion">>(
+  markets: readonly M[],
+  deployment: Deployment = appDeployment,
+): ListSection<M>[] {
+  const main: M[] = [];
+  const fallback: M[] = [];
+  for (const m of markets) {
+    if (onFallbackBook(m, deployment)) fallback.push(m);
+    else main.push(m);
+  }
+  const out: ListSection<M>[] = [];
+  if (main.length > 0) out.push({ id: "main", heading: null, note: null, markets: main });
+  if (fallback.length > 0) {
+    out.push({ id: "fallback", heading: FALLBACK_HEADING, note: FALLBACK_NOTE, markets: fallback });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- search

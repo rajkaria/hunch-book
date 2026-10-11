@@ -12,8 +12,9 @@ export type { CycleJob, JobContext, JobRun } from "./context.js";
 
 export interface CycleJobOptions {
   /**
-   * Whether this keeper's stack runs the series job: the stack new markets go to (`defaultStack` in the
-   * deployments file, the primary stack when absent). Default true, for a keeper on a one-stack view.
+   * Whether this keeper's stack runs the series job: the one Kuru stack series create markets on
+   * (seriesStackOf in stacks.ts). Default true, for a keeper on a one-stack view. A stack on Hunch Book's
+   * own order book never runs it, whatever this says.
    */
   series?: boolean;
   /**
@@ -26,7 +27,8 @@ export interface CycleJobOptions {
 /**
  * The cycle-level jobs this keeper runs: each periphery job only when its contract is in the
  * deployments file (`hunchBook.periphery`) and it is not switched off with KEEPER_JOBS_OFF; the series
- * job only when KEEPER_SERIES_FILE is set, on the default stack (`options.series`). On a Kuru v2 stack,
+ * job only when KEEPER_SERIES_FILE is set, on the series stack (`options.series`), and never on a Hunch
+ * venue: series markets open on Kuru only. On a Kuru v2 stack,
  * also the Kuru feeds job, and oracle pokes for pools. A stack on Hunch Book's own order book speaks
  * Kuru v1's interface (`kuruVersion` 1), so it gets the v1 jobs and never the Kuru v2 ones.
  */
@@ -75,8 +77,10 @@ export function buildCycleJobs(
       }),
     );
   }
-  // Series create markets on one stack only, the default one (one series file, one factory).
-  if (config.seriesFile && on("series") && (options.series ?? true)) {
+  // Series create markets on one Kuru stack only (one series file, one factory), never on Hunch Book's
+  // own order book: the `hunch` stack is our fallback book, for earlier markets.
+  const onHunchVenue = deployment.hunchBook.venue?.kind === "hunch";
+  if (config.seriesFile && on("series") && (options.series ?? true) && !onHunchVenue) {
     jobs.push(
       SeriesJob.fromFile(config.seriesFile, {
         enabled: config.seriesEnabled,
