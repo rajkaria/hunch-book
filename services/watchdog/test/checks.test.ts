@@ -250,9 +250,11 @@ describe("reading the chain", () => {
             case "totalObligations":
               return c.address === HUNCH_VAULT ? 8n : 9n;
             case "marketCount":
-              return c.address.toLowerCase() === primaryFactory ? 0n : hunch ? 1n : 0n;
+              return c.address.toLowerCase() === primaryFactory ? 0n : hunch ? 3n : 0n;
             case "marketAt":
-              return HUNCH_MARKET;
+              return c.args?.[0] === 0n
+                ? HUNCH_MARKET
+                : `0x00000000000000000000000000000000000000b${c.args?.[0]}`;
             case "templateId":
               return 2;
             case "phase":
@@ -285,13 +287,19 @@ describe("reading the chain", () => {
         });
       },
     } as unknown as PublicClient;
-    const s = await readSnapshot(client, { network: "monad-testnet", deployment, rpcUrl: "" });
+    const s = await readSnapshot(client, { network: "monad-testnet", deployment });
     expect(s.vaults).toEqual([
       { stack: "primary", address: testnet.hunchBook.vault, balance: 9n, obligations: 9n },
       { stack: "hunch", address: HUNCH_VAULT, balance: 7n, obligations: 8n },
     ]);
-    expect(s.markets.map((m) => [m.stack, m.address])).toEqual([["hunch", HUNCH_MARKET]]);
+    expect(s.markets.map((m) => [m.stack, m.address])).toEqual([
+      ["hunch", HUNCH_MARKET],
+      ["hunch", "0x00000000000000000000000000000000000000b1"],
+      ["hunch", "0x00000000000000000000000000000000000000b2"],
+    ]);
     expect(new Set(blocks)).toEqual(new Set([70_000_000n]));
+    // Batched: one multicall for the empty primary stack, four for hunch however many markets it has.
+    expect(blocks).toHaveLength(5);
     // The hunch vault is short by one unit: the check names it.
     expect(evaluate(s).find((f) => f.level === "fail")?.message).toContain("The hunch stack's vault");
   });

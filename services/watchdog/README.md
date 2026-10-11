@@ -26,12 +26,16 @@ pnpm --filter @hunch-book/watchdog check                        # testnet, print
 pnpm --filter @hunch-book/watchdog check --markdown report.md   # also writes a Markdown table
 ```
 
-Exit code: 0 ok, 1 warn, 2 fail, 3 the check itself could not run (for example the RPC failed).
+Exit code: 0 ok, 1 warn, 2 fail, 3 the check itself could not run (for example the RPC failed), 4 every
+RPC rate-limited the read (a soft warning: the chain was not read, so nothing is known to be wrong).
+
+The run reads each stack with four multicalls however many markets it has. It tries a keyed RPC first
+when one is set, then the deployment's `rpc` and `rpcFallbacks`, each with three retries and backoff.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `WATCHDOG_NETWORK` | `monad-testnet` | `monad-testnet` or `monad-mainnet` |
-| `WATCHDOG_RPC_URL` | `MONAD_TESTNET_RPC` / `MONAD_MAINNET_RPC`, then the public RPC | Where to read |
+| `WATCHDOG_RPC_URL` | `MONAD_TESTNET_RPC` / `MONAD_MAINNET_RPC`, then the public RPCs | A keyed RPC read first (repository secret of the same name in CI) |
 | `KEEPER_HEALTH_URL`, `MAKER_HEALTH_URL` | none | The services' `/health` endpoints |
 | `WATCHDOG_WEBHOOK` | none | Receives `POST {level, text}` whenever the result is not ok |
 
@@ -39,7 +43,8 @@ Exit code: 0 ok, 1 warn, 2 fail, 3 the check itself could not run (for example t
 
 `.github/workflows/liveness.yml` runs the checks every 30 minutes on GitHub Actions. A warning or a
 failure opens one issue labelled `liveness` and keeps its body up to date; the issue closes itself
-when everything is healthy again. GitHub's mobile app notifies watchers of new issues.
+when everything is healthy again. GitHub's mobile app notifies watchers of new issues. A run where every
+RPC rate-limited the read passes with a warning annotation and leaves the issue as it was.
 
 For a push alert outside GitHub, set the `WATCHDOG_WEBHOOK` repository secret to any endpoint that
 accepts a JSON POST (for example an ntfy.sh topic or a Telegram bot relay). To include the services'
