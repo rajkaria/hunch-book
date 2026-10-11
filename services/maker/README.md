@@ -1,8 +1,9 @@
 # Hunch Book maker bot
 
-Status: **building**. On Monad testnet the bot has placed a live two-sided quote on a graduated market
-([batchUpdate](https://testnet.monadscan.com/tx/0xc484a70a81232b5b4e61ad8fe201e308638278bd25c204f008d3be5c4f909757)).
-It is not yet running continuously. On a network where `deployments/<network>.json` does not list
+Status: **live on testnet**. The bot runs continuously from our maker wallet and quotes every graduated book,
+on Hunch Book's own order book and on Kuru (its first live quote:
+[batchUpdate](https://testnet.monadscan.com/tx/0xc484a70a81232b5b4e61ad8fe201e308638278bd25c204f008d3be5c4f909757);
+current markets and their first quotes are in [docs/FACTS.md](../../docs/FACTS.md)). On a network where `deployments/<network>.json` does not list
 `hunchBook.factory`, the bot starts, logs that there is nothing to quote, and waits.
 
 ## What it does

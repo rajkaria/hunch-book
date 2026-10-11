@@ -2,7 +2,7 @@
 
 > Prediction markets on Monad that start as pools, move to an onchain order book once people show up, and pay out by reading the chain. No one decides the answer by hand, and no third party has to say yes before a market can trade.
 
-**Status (2026-10-10): live on Monad testnet, mainnet planned.** The whole lifecycle runs on Monad testnet: create a market from seven templates, stake, graduate into an onchain order book (Hunch Book's own, created in the graduation transaction, or Kuru's), trade YES and NO, settle from Perpl or Chainlink, verify the read from your browser, and redeem. Nothing is on mainnet yet; the launch on Hunch Book's own order book is rehearsed end to end on a fork of Monad mainnet with Circle USDC. Every claim below links to an address or a transaction.
+**Status (2026-10-11): live on Monad testnet, mainnet planned.** The whole lifecycle runs on Monad testnet: create a market from seven templates, stake, graduate into an onchain order book (Hunch Book's own, created in the graduation transaction, or Kuru's), trade YES and NO, settle from Perpl or Chainlink, verify the read from your browser, and redeem. Nothing is on mainnet yet; the launch on Hunch Book's own order book is rehearsed end to end on a fork of Monad mainnet with Circle USDC. Every claim below links to an address or a transaction.
 
 **Try it:** [book.playhunch.xyz](https://book.playhunch.xyz) (testnet: get test USDC from the wallet menu, MON from [faucet.monad.xyz](https://faucet.monad.xyz)).
 
@@ -23,7 +23,7 @@ A trader on Perpl (Monad's perpetuals exchange) who holds a BTC long and pays fu
 
 1. **Start a market from a template.** The question is one the chain can answer, for example: "Will BTC longs pay more than $2 per BTC in funding on Perpl this week?" or "Will MON be at or above $0.035 at 12:00 UTC on Friday?" The app shows the exact rule the contract will apply before you commit. The creator makes the first stake and earns 25% of the fees.
 2. **Pool phase.** People stake USDC on YES or NO. The pool's split is the market's chance. No market maker needed.
-3. **Graduation.** When a pool has proven demand (v0 rule: at least 500 USDC from at least 10 wallets; 100 USDC from 3 on the testnet `hunch` stack), one transaction turns it into fully backed YES and NO tokens (1 YES + 1 NO is always backed by 1 USDC) and splits them between the people who staked, so each staker's payout is exactly what the pool would have paid. The same transaction creates the market's YES/USDC order book, and the YES token opens there at the pool's price. New markets trade on Hunch Book's own fully onchain order book; older testnet markets trade on Kuru's.
+3. **Graduation.** When a pool has proven demand (v0 rule: at least 500 USDC from at least 10 wallets; 100 USDC from 3 on the testnet `hunch` stack), one transaction turns it into fully backed YES and NO tokens (1 YES + 1 NO is always backed by 1 USDC) and splits them between the people who staked, so each staker's payout is exactly what the pool would have paid. The same transaction creates the market's YES/USDC order book. The book opens empty; the pool's split is the starting chance, and makers (today, our own maker bot) quote around it. New markets trade on Hunch Book's own fully onchain order book; older testnet markets trade on Kuru's.
 4. **Trade.** Buy or sell YES or NO at any time on the book, in one transaction each. Buying NO mints a pair and sells the YES; selling NO buys YES and redeems the pair. Take-profit, stop-loss and limit orders are optional.
 5. **Settlement.** When the observation window ends, anyone can settle. The resolver reads the answer from the source contract: Perpl's historical funding, a Chainlink round, a Pyth update, or the outcomes of other markets. The app's verifier re-runs that exact read from your browser, no wallet needed. Winning tokens redeem for 1 USDC minus a fee fixed at graduation (at most 1.94 cents).
 
@@ -60,18 +60,63 @@ All on Monad testnet. Activity by our own wallets (the deployer, the keeper, the
 | Periphery (auto-redeem, orders, referrals, payouts, oracle, price adapter, timelock) | live on testnet | addresses in [docs/PERIPHERY.md](./docs/PERIPHERY.md) |
 | Hunch Book's own order book ([contracts/src/venue](./contracts/src/venue)) | live on testnet | the `hunch` stack, default for new markets: [book factory 0x0DDF…46C5](https://testnet.monadscan.com/address/0x0DDF74540B6720B348483084F749907b2c3F46C5), [margin account 0x6dDa…Ee1c](https://testnet.monadscan.com/address/0x6dDaC7a754A2A4bf2fF688B8F08eaA8ADC42Ee1c), [factory 0x846C…5AF2](https://testnet.monadscan.com/address/0x846Cd400B832203befe5902ef43DAdc969985AF2), source verified on Sourcify. Two markets [graduated](https://testnet.monadscan.com/tx/0x6a358f135309610ec9d38528ae590049cfda586a422c3a185e2bd0f5208693cf) [into](https://testnet.monadscan.com/tx/0x4b535cf1afc73d2cdeb1f5acbfc6307591e4fe8570dd2a89ec8793bbab0e915e) books created in the same transaction; their pools were filled by our own wallets ([docs/FACTS.md](./docs/FACTS.md#the-hunch-stack-hunch-books-own-order-book-monad-testnet)). Fuzz and invariant tested; rehearsed on a mainnet fork with Circle USDC ([PROTOCOL.md §8.1](./docs/PROTOCOL.md#81-order-book-venues)) |
 | Trading on Hunch Book's own order book | live on testnet | ten graduated markets on the `hunch` stack, all seeded by us, on Perpl funding, Perpl mark price and open interest snapshots, and a parlay, each with its own book that our maker bot quotes ([list with links](./docs/FACTS.md#markets-on-the-hunch-stack-ours-seeded-by-us), [first quotes](https://testnet.monadscan.com/tx/0x91dac539ea3d2d72c81a985d1da40841b326232f5d56ce1649949f014f1a1136)); on market [0x2B31…Ffff](https://book.playhunch.xyz/m/0x2B31160548b1211958339BEa9b39561bA3fFFfff): [buy YES](https://testnet.monadscan.com/tx/0x7d2966d4dbd043b23b02754e4cc355a47b852cf05b6403c28707c6df5632d905), [sell YES](https://testnet.monadscan.com/tx/0x88cd250052de49736357572fac3a31eb1a0173790b997569df6fa72c753f679b), [buy NO](https://testnet.monadscan.com/tx/0x86f16a248b1854ae4cdcd3c39ce41629e3816e602084eff4dde264ef712c45b9), [sell NO](https://testnet.monadscan.com/tx/0x7b7be1b5cceaf68076db986479f42995d358828eb0634b072c177e1f005317fe) through the router, all from our own wallet |
-| Graduation into a Kuru book | live on testnet | market #1 [graduated](https://testnet.monadscan.com/tx/0xbc9524391134b6a3cba94f33daba323075ff0db030a8d51563d89ee94fcf8d01) into Kuru book [0xdFd0…104a](https://testnet.monadscan.com/address/0xdFd060ac7d3b129261EaB2E3DDd6F76A877D104a). Its pool was filled by our own wallets to meet the rule. |
+| Graduation into a Kuru book | live on testnet | market #1 [graduated](https://testnet.monadscan.com/tx/0xbc9524391134b6a3cba94f33daba323075ff0db030a8d51563d89ee94fcf8d01) into Kuru book [0xdFd0…104a](https://testnet.monadscan.com/address/0xdFd060ac7d3b129261EaB2E3DDd6F76A877D104a). Its pool was filled by our own wallets to meet the rule. Three more graduated into Kuru books on 2026-10-11, each quoted by our maker bot with four router trades ([Hunch Book on Kuru](#hunch-book-on-kuru)). |
 | Trading YES and NO through the router | live on testnet | on market #1: [buy YES](https://testnet.monadscan.com/tx/0x64e40cdb81d82301412c84b15586791a59fe21dd291503877054ce0977846ced), [sell YES](https://testnet.monadscan.com/tx/0xd812065e5e64bf2faf44d7111219a56cc0cbcb95f2f03fee6a30da83d3b2cb69), [buy NO](https://testnet.monadscan.com/tx/0xa23645f27ee8cc3bf51ccd6f65bbb545824e3555a4bec957b45be2870cb9ecab), [sell NO](https://testnet.monadscan.com/tx/0xafbee312a270e29d2218bf89890f0d8bc55658e1a9df07b4713113e30b14c72d), all from our own wallet |
 | Settlement and redemption | live on testnet | market #1 [settled NO](https://testnet.monadscan.com/tx/0x2d53ad4c3cb322c34447839a8beea8cc3dc208c1c8fa1930fc06cab96b20fc72) by the keeper (late: see the [incident log](./docs/INCIDENTS.md)), then our maker bot [redeemed](https://testnet.monadscan.com/tx/0x40b82c5fa558c48297b3bfc635ab952f11052f30034d62b8df1de751b768e518) its NO tokens; a touch market [settled YES from a Chainlink round](https://testnet.monadscan.com/tx/0xd1ec7102a1660a963dd1fa0442394168cf9b9f488ed73bc763c69adae40707f4) |
-| Maker bot ([services/maker](./services/maker)) | live on testnet | quoting market #1 from [0x0f11…232A](https://testnet.monadscan.com/address/0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A) (ours); open source, with a [maker kit](./docs/MAKER-KIT.md) for outside makers |
+| Maker bot ([services/maker](./services/maker)) | live on testnet | quoting every graduated book on the `hunch` stack and on Kuru from [0x0f11…232A](https://testnet.monadscan.com/address/0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A) (ours); open source, with a [maker kit](./docs/MAKER-KIT.md) for outside makers |
 | Keeper ([services/keeper](./services/keeper)) | live on testnet | running from [0x1f5A…5569](https://testnet.monadscan.com/address/0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569) (ours): graduates, settles, proves touches and spikes, voids, pays out, auto-redeems, executes orders, pokes the oracle, creates recurring markets |
 | App | live on testnet | [book.playhunch.xyz](https://book.playhunch.xyz): markets with a health score, trading, create flow, portfolio with P&L and one-confirmation claim-all, verifier, settlement archive, proof page, trade tape, status, hedge assistant with baskets, funding-cost calculator, feed, ladders, parlays, rewards, passkey accounts |
 | Data API and embed | live on testnet | [/api/v1/stats](https://book.playhunch.xyz/api/v1/stats), [/api/v1/feed](https://book.playhunch.xyz/api/v1/feed), [/api/v1/settlements](https://book.playhunch.xyz/api/v1/settlements), [/embed/funding/MON](https://book.playhunch.xyz/embed/funding/MON), [docs/API.md](./docs/API.md) |
 | Liveness checks | live | the [watchdog](./services/watchdog) runs every 30 minutes on GitHub Actions |
 | Indexer ([indexer](./indexer)) | building | built and tested; hosting waits for an Envio account |
 | SDK and MCP server | building | [docs/SDK.md](./docs/SDK.md), [docs/MCP.md](./docs/MCP.md); packed, installed and imported from their tarballs in CI, not on npm yet ([docs/RELEASE.md](./docs/RELEASE.md)) |
-| Kuru v2 books | building | a second testnet stack on Kuru v2 with templates 1 to 7 and the periphery, source verified on Sourcify ([factory 0xd699…125A](https://testnet.monadscan.com/address/0xd6994DD479d845F1ea039b6322fBE00c12Ea125A)): its market #1 ([0x8565…7343](https://testnet.monadscan.com/address/0x85658Be96Ba2663AF6280834B16c7e340c727343)) waits for Kuru to create its book; tested against Kuru's live v2 contracts on a fork ([PROTOCOL.md §8.1](./docs/PROTOCOL.md#81-order-book-venues)) |
+| Kuru v2 books | building | a second testnet stack on Kuru v2 with templates 1 to 7 and the periphery, source verified on Sourcify ([factory 0xd699…125A](https://testnet.monadscan.com/address/0xd6994DD479d845F1ea039b6322fBE00c12Ea125A)): its market #1 ([0x8565…7343](https://testnet.monadscan.com/address/0x85658Be96Ba2663AF6280834B16c7e340c727343)) got no book from Kuru and [settled as a pool](https://testnet.monadscan.com/tx/0xd7ffd5b3a0e6543545f95a894327df10a2213f20480470d14737a549d93ca13f); three more pools, filled to the rule, wait for Kuru to create their books ([list](./docs/FACTS.md#kuru-v2-the-kuruv2-stack)); tested against Kuru's live v2 contracts on a fork ([PROTOCOL.md §8.1](./docs/PROTOCOL.md#81-order-book-venues)) |
 | Contracts on Monad mainnet (Circle USDC) | planned | on Hunch Book's own order book, so graduation needs nothing from Kuru; rehearsed on a mainnet fork ([docs/DEPLOY.md](./docs/DEPLOY.md)); waits for a guardian multisig and gas |
+
+## Hunch Book on Kuru
+
+Hunch Book brings a new kind of asset to Kuru's spot order book: the YES token of a yes/no question that
+settles by reading the chain. Each graduated market is its own YES/USDC book on Kuru. A question token is only
+tradable if the book opens with a price, with inventory, and with someone quoting it, and if both sides of the
+question can be traded on one book. That is the infrastructure this repo adds:
+
+- **Books open with holders and a reference price.** Graduation turns the pool into fully backed YES and NO
+  tokens, hands them to the stakers, and creates the Kuru book in the same transaction
+  ([Graduator.sol](./contracts/src/core/Graduator.sol) calls Kuru's `deployProxy`). The pool's split is the
+  starting chance that makers quote around.
+- **YES and NO on one book.** The [router](./contracts/src/core/HunchRouter.sol) buys and sells YES on the
+  book; buying NO mints a YES and NO pair from USDC and sells the YES, and selling NO buys YES and redeems the
+  pair. Each is one transaction with a slippage limit.
+- **A maker that can price a question.** The open-source [maker bot](./services/maker) prices every template from
+  onchain data (Perpl funding history, Perpl mark price and open interest, Chainlink rounds, other markets'
+  outcomes) and quotes both sides of each book. The [maker kit](./docs/MAKER-KIT.md) lets anyone run it.
+- **Settlement with no one in charge.** At close, anyone settles from the source contract, and winning tokens
+  redeem for USDC. The maker pulls its quotes 2 minutes before close.
+
+**Kuru v1 (live on testnet).** On 2026-10-11 three markets opened on the primary stack, each graduating into a
+Kuru v1 book created in its graduation transaction, quoted by our maker bot, with four router trades each:
+MON mark price at Oct 13 12:00 UTC ([#10](https://book.playhunch.xyz/m/0xC0Bc38C5140D9289f3CE86d7FdC675485cAD54e1),
+[graduation](https://testnet.monadscan.com/tx/0x8158ed8b27ff3f61a19face0166cc1a4591d6a7b5acc368a94af89bc83034f55)),
+ETH funding to about Oct 20 ([#14](https://book.playhunch.xyz/m/0x6Edc55D3a4282B65ebB7A76190b0fc0E384b1996),
+[graduation](https://testnet.monadscan.com/tx/0x16ea32512a1bb52df91a89aedb65785e910a91bcb7546e38d533ce513dd154ab))
+and BTC funding to about Oct 27 ([#15](https://book.playhunch.xyz/m/0xaAE5C41202e6b85Ef285b01441fA742Ef6988613),
+[graduation](https://testnet.monadscan.com/tx/0x6ab359a8fe1e942e7e770595d36316f26fb782b187fb9411a25c8ec168b8a7ac)).
+Every pool and every trade there is ours. Books, quotes and all twelve trades:
+[docs/FACTS.md](./docs/FACTS.md#markets-on-kuru-monad-testnet). The app lists every market on Kuru at
+[book.playhunch.xyz/kuru](https://book.playhunch.xyz/kuru).
+
+**Kuru v2 (building).** A second testnet stack runs on Kuru v2's account model (deposit, swap and withdraw in one
+router transaction) and was tested against Kuru's live v2 contracts on a fork. v2 books can only be created by
+Kuru's governance, so its markets open as pools, filled to the graduation rule, each with the price feed Kuru's
+withdrawal limiter needs; our keeper publishes the exact setup and `deploySpotMarket` call at
+[/api/v1/kuru/requests](https://book.playhunch.xyz/api/v1/kuru/requests) and graduates each market once its book
+exists. The stack's first market never got a book, so it
+[settled as a pool](https://testnet.monadscan.com/tx/0xd7ffd5b3a0e6543545f95a894327df10a2213f20480470d14737a549d93ca13f)
+and [paid out](https://testnet.monadscan.com/tx/0x4d41b5fd4384654e06b1639b1b7feccaad830466a95f641f963e0748a5b65eeb).
+Three more v2 markets opened on 2026-10-11 as pools already filled to the rule by our own wallets (500 USDC from
+11 stakers each): MON, ETH and BTC mark price snapshots closing Oct 20, 23 and 27
+([list](./docs/FACTS.md#kuru-v2-the-kuruv2-stack)). They graduate as soon as Kuru creates their books, any time
+before their locks (Oct 17, 20 and 24).
 
 ## Known limitations
 

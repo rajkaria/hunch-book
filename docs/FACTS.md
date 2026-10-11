@@ -74,6 +74,77 @@ quotes every book.
 | #10 [0xFb79…6E49](https://testnet.monadscan.com/address/0xFb798e4BF4c0D1e5e9ec46916B2288D8a68f6E49) | Will SOL longs pay shorts on net in funding on Perpl (perp 48) between blocks 70,032,484 and 71,172,427? | [0xec40…6B43](https://testnet.monadscan.com/address/0xec40ee86065E7d83bB8011ffDC67144D96056B43) | [tx](https://testnet.monadscan.com/tx/0x41cb7bb752700269e086c1b5205ef95990d38b3d9488dd6aeaa4b6c29c4a2638) | [tx](https://testnet.monadscan.com/tx/0x8d69b590396cd8864c4fbed7d22e89f5b83bdb9215b37d018cd14ce03ce4c3d2) | block 71,172,427, about 2026-10-15 05:30 UTC |
 | #11 [0x07d3…0348](https://testnet.monadscan.com/address/0x07d3fD19Ac0C283e646758BbC19700ec7D5b0348) | Parlay: will markets #6 and #7 both settle YES? | [0x86fA…613F](https://testnet.monadscan.com/address/0x86fA30181fFFA3a782E4c17c119367C64fd1613F) | [tx](https://testnet.monadscan.com/tx/0x20758355f9541d9ec454c9f7fb8ca24f40b42c4b27a03845edd7cfa9da48f28a) | [tx](https://testnet.monadscan.com/tx/0x33bbba7fa3756b167ef62f7c6694311b674f20142d0222499b1e6f69c5170cc0) | 2026-10-16 12:00 UTC |
 
+## Markets on Kuru (Monad testnet)
+
+### Kuru v1: the primary stack
+
+On 2026-10-11 we opened three more markets on the primary stack, whose books are Kuru v1 spot books. Each was
+created by the deployer with a first stake on YES, and ten addresses derived from the deployer key (label
+"hunch-book testnet seed") staked five on each side, so each pool held 500 USDC from 11 stakers, all ours, split
+close to our maker's fair value at creation (0.52, 0.49, 0.49). That meets the primary stack's rule (at least
+500 USDC from at least 10 stakers). Each graduated in the same run
+([SeedTestnetMarket.s.sol](../contracts/script/SeedTestnetMarket.s.sol)), and the graduation transaction itself
+created the market's YES/USDC book on Kuru through Kuru's `deployProxy`. Our maker bot quotes every book.
+
+| Market | Question | Kuru book | Creation | Graduation | First quotes | Closes |
+|---|---|---|---|---|---|---|
+| #10 [0xC0Bc…54e1](https://testnet.monadscan.com/address/0xC0Bc38C5140D9289f3CE86d7FdC675485cAD54e1) | Will Perpl's MON mark price be at or above $0.025 at Oct 13, 12:00 UTC? | [0xAac9…4fe7](https://testnet.monadscan.com/address/0xAac99728483Ed7707E81B278c6eefD1112894fe7) | [tx](https://testnet.monadscan.com/tx/0x9dee03d3180c176b33072e6e8673258be3cf9af1f53a7baff1488b1afa9cfa5a) | [tx](https://testnet.monadscan.com/tx/0x8158ed8b27ff3f61a19face0166cc1a4591d6a7b5acc368a94af89bc83034f55) | bid 0.498, ask 0.529, [tx](https://testnet.monadscan.com/tx/0xddb43eb3fe7085eca2914e2252753f67bf04cdc66a7ef3602cac219d33503b7d) | 2026-10-13 12:00 UTC (snapshot) |
+| #14 [0x6Edc…1996](https://testnet.monadscan.com/address/0x6Edc55D3a4282B65ebB7A76190b0fc0E384b1996) | Will ETH longs pay more than $18.25 per ETH in funding on Perpl (perp 32) between blocks 70,101,757 and 72,698,770? | [0x9591…D9c2](https://testnet.monadscan.com/address/0x9591287afbe0465636dD1C88f54B6358742bD9c2) | [tx](https://testnet.monadscan.com/tx/0xd35840ee5c96b95e9621217e9f704aeb67f998c49ee4a2cf1d545c5763f84b85) | [tx](https://testnet.monadscan.com/tx/0x16ea32512a1bb52df91a89aedb65785e910a91bcb7546e38d533ce513dd154ab) | bid 0.454, ask 0.485, [tx](https://testnet.monadscan.com/tx/0xde606b7c17b2e5981090613c2bb3da27f0ba590965fcca1106533f0f22ae0e61) | block 72,698,770, about 2026-10-20 14:10 UTC |
+| #15 [0xaAE5…8613](https://testnet.monadscan.com/address/0xaAE5C41202e6b85Ef285b01441fA742Ef6988613) | Will BTC longs pay more than $1,080 per BTC in funding on Perpl (perp 16) between blocks 70,101,889 and 74,695,945? | [0x0A93…565D](https://testnet.monadscan.com/address/0x0A936f92C3C9845Fae2a7da45bEeAA1DAdBd565D) | [tx](https://testnet.monadscan.com/tx/0xfab8721d41695dbda8289fd48c26bf2740146c4be90bf717009ec57c3e7b48e5) | [tx](https://testnet.monadscan.com/tx/0x6ab359a8fe1e942e7e770595d36316f26fb782b187fb9411a25c8ec168b8a7ac) | bid 0.417, ask 0.448, [tx](https://testnet.monadscan.com/tx/0x596e7274d0dfc68385403a8a6f5218011c77388b7713d882a2e223f51e26ccb2) | block 74,695,945, about 2026-10-27 14:15 UTC |
+
+Router trades on each of these Kuru books from the deployer (ours, [TradeTestnet.s.sol](../contracts/script/TradeTestnet.s.sol)),
+5 USDC or 5 tokens each, every one filled against our maker's quotes:
+
+| Market | Buy YES | Sell YES | Buy NO | Sell NO |
+|---|---|---|---|---|
+| #10 MON mark | [9.090909 YES for 5 USDC](https://testnet.monadscan.com/tx/0x082892a5ce4ec0327496beeddb5a98f42905434ca0a173f7ac1cb8b0bb0b55fb) | [4.718181 USDC back](https://testnet.monadscan.com/tx/0xc8918eaa0949c5cb7516d64860706160e4f8eea38a43e0c1110eda247058994f) | [5 NO for 2.405 USDC](https://testnet.monadscan.com/tx/0x06d4d20f42fcf28b8f65b6643e91bea4f1806c7be0b69d043b44e37a20091ea7) | [2.25 USDC back](https://testnet.monadscan.com/tx/0xd8c93f6741be53be077edd19e03dd4c44a6b672894fa582a9d4dc66d4ac80d96) |
+| #14 ETH funding | [10.309278 YES for 5 USDC](https://testnet.monadscan.com/tx/0xafff4d675fc8befccecc0465e34e50d91afadc3bd823e2011a70569b10dfb498) | [4.680412 USDC back](https://testnet.monadscan.com/tx/0x5d11c2e06edbb0fa20a1539becec9d3046ecb10c9183b3c3536b93ded752e787) | [5 NO for 2.73 USDC](https://testnet.monadscan.com/tx/0xb2bf72d1251e7b9e02d47e5e626291a0822f4d6eeebf379122aec23acda1dffe) | [2.575 USDC back](https://testnet.monadscan.com/tx/0xfe3e4800fdf2c622bf045cbbdce32ce5195b4f5e0776485a9e0eafc5d2c53f7f) |
+| #15 BTC funding | [11.160714 YES for 5 USDC](https://testnet.monadscan.com/tx/0x7af9b4508ca423c59e0498549d17065cf1b7cea0962208d0202bf2a09ee478d8) | [4.654017 USDC back](https://testnet.monadscan.com/tx/0xa69ca6b6aec5df48abea31173730bfc3ee15b3e8a957063517ac693e30faaab2) | [5 NO for 2.915 USDC](https://testnet.monadscan.com/tx/0x258957ba23d212c3f17c3d09c96d489dd47f88925a6b1d8f50fc01a66c103a27) | [2.76 USDC back](https://testnet.monadscan.com/tx/0x8b45b694980001b6a65d65b1beaa19aa4d9351a27fb6a3a03c25231d8da84d3d) |
+
+The same run also opened three markets we did not intend, all ours. Two used the script's defaults by mistake (a
+shell variable that did not expand), so they ask the same short question; both graduated into Kuru books that our
+maker quotes, and both close about 17 hours after creation. The third timed out on the public RPC halfway through
+seeding, so it locked before it reached the rule and stays a pool; it settles as a pool.
+
+| Market | Question | Kuru book | Creation | Graduation | Closes |
+|---|---|---|---|---|---|
+| #11 [0x8d3a…6901](https://testnet.monadscan.com/address/0x8d3a79a2FB05644c806CC923c76d81aF5a4F6901) | Will MON longs pay more than $0.000015 per MON in funding on Perpl (perp 64) between blocks 70,078,605 and 70,284,309? | [0x9E9F…6EC7](https://testnet.monadscan.com/address/0x9E9F7686CEa548cbb82dC950b5C406f216aB6EC7) | [tx](https://testnet.monadscan.com/tx/0x9b5a2c5403044f43944790b125cd896c24673ab5ef1d1ca9c4f7ca7108656cb8) | [tx](https://testnet.monadscan.com/tx/0x295045b3b52e2187d13a9a1d2a75d36c41dd3d500e7f53dfc64936f5f8472359) | block 70,284,309, about 2026-10-12 03:00 UTC |
+| #12 [0x2791…2dCA](https://testnet.monadscan.com/address/0x2791906DEFe7d530A5ae93503A5a695091Aa2dCA) | Will MON longs pay more than $0.000015 per MON in funding on Perpl (perp 64) between blocks 70,078,812 and 70,284,516? | [0xC2f7…06d6](https://testnet.monadscan.com/address/0xC2f723215977A60fDC9E2a15091afAC2D7A406d6) | [tx](https://testnet.monadscan.com/tx/0xb0e7a800cd9d02a79b206bea87cccc11c899e54ee84a3c3c194f2a2c75531e33) | [tx](https://testnet.monadscan.com/tx/0x71c887e8a9a5b4f0a49dd3556c7cc3979b666e52c01d92229f6233532cf271bd) | block 70,284,516, about 2026-10-12 03:00 UTC |
+| #13 [0x3244…f10a](https://testnet.monadscan.com/address/0x324478E02735bbA813AeB1657DD363bf2F51f10a) | Will ETH longs pay more than $18.25 per ETH in funding on Perpl (perp 32) between blocks 70,079,933 and 72,676,946? | none (pool: 245 USDC YES, 51 USDC NO from 7 stakers, all ours) | [tx](https://testnet.monadscan.com/tx/0xe1bca75d5bb4c7bb16d777eb4dac0961b153ecdab50483ba9adf4e804b4aff6c) | did not graduate | block 72,676,946, about 2026-10-20 12:20 UTC |
+
+### Kuru v2: the `kuruV2` stack
+
+Kuru v2 books can only be created by Kuru's governance (`SpotRouter.deploySpotMarket`), after Kuru sets up each
+token (a price source on its withdrawal limiter, then `configureSpotToken` and `whitelistSpotToken`). Our keeper
+publishes each market's exact request at [/api/v1/kuru/requests](https://book.playhunch.xyz/api/v1/kuru/requests),
+and registers and graduates the market once the book exists.
+
+The stack's market #1 [0x8565…7343](https://testnet.monadscan.com/address/0x85658Be96Ba2663AF6280834B16c7e340c727343)
+reached its lock with no Kuru book, so it stayed a pool. Our keeper settled it YES from Perpl's funding history
+([settle tx](https://testnet.monadscan.com/tx/0xd7ffd5b3a0e6543545f95a894327df10a2213f20480470d14737a549d93ca13f),
+2026-10-11) and paid the pool out to its stakers
+([payout tx](https://testnet.monadscan.com/tx/0x4d41b5fd4384654e06b1639b1b7feccaad830466a95f641f963e0748a5b65eeb)).
+As of 2026-10-11, Kuru's v2 testnet has not set up our test USDC or any YES token, and no v2 book exists for a
+Hunch Book market (`SpotRouter.whitelistedSpotTokens` and `AccountCore.spotTokenConfigs` return false for both).
+
+On 2026-10-11 we opened three more markets on the `kuruV2` stack. Each was created by the deployer with a first stake
+on YES, and ten addresses derived from the deployer key staked five on each side, so each pool holds 500 USDC from
+11 stakers, all ours, split close to our maker's fair value (0.46, 0.47, 0.48) and already meeting the rule. The same
+run created each market's YES and NO price feeds for Kuru's withdrawal limiter and took the oracle's first
+observation ([SeedTestnetMarket.s.sol](../contracts/script/SeedTestnetMarket.s.sol) with `STACK=kuruV2
+GRADUATE=false`). Each graduates once Kuru deploys its book at the address below, any time before its lock.
+
+| Market | Question | YES token | YES feed | Book Kuru would deploy | Creation | Lock | Closes |
+|---|---|---|---|---|---|---|---|
+| #2 [0xBb17…4400](https://testnet.monadscan.com/address/0xBb17B0254F3DA5CD0b3dF27a56865dCfF4c84400) | Will Perpl's MON mark price be at or above $0.025 at Oct 20, 12:00 UTC? | [0xFd39…07D0](https://testnet.monadscan.com/address/0xFd39Dd93dA6d212f5388Ee8d69aE8296c8dc07D0) | [0x12a7…6d1B](https://testnet.monadscan.com/address/0x12a738F920fc34eC47Cb4Fa2c3C1eE120cFd6d1B) | 0xaE9d…6Fa7 | [tx](https://testnet.monadscan.com/tx/0x1c5def3c34fa4a9cff946346b14e8d53fe212428eb02cbf21a27fc95d2859f23) | 2026-10-17 12:00 UTC | 2026-10-20 12:00 UTC (snapshot) |
+| #3 [0x48fb…a234](https://testnet.monadscan.com/address/0x48fb7050B678271e0ac9eb2565bE7d39096bA234) | Will Perpl's ETH mark price be at or above $2,500 at Oct 23, 12:00 UTC? | [0x4cE8…D8aA](https://testnet.monadscan.com/address/0x4cE8c65b9446a383E7C143281507bB6df302D8aA) | [0x4321…0727](https://testnet.monadscan.com/address/0x432197ed2fd5BBF0c6496378D8584732804a0727) | 0xDec2…69c6 | [tx](https://testnet.monadscan.com/tx/0x3b67503959f74d0933979c09b79e26e8af5245ed7a10196393857f139103396c) | 2026-10-20 12:00 UTC | 2026-10-23 12:00 UTC (snapshot) |
+| #4 [0x0177…55b1](https://testnet.monadscan.com/address/0x0177f158e9Dd657Bc276E83f5ED5F834057F55b1) | Will Perpl's BTC mark price be at or above $83,000 at Oct 27, 12:00 UTC? | [0xb3b0…cB11](https://testnet.monadscan.com/address/0xb3b068110939e87647a4865A57EF9540c1edcB11) | [0xE34f…CF87](https://testnet.monadscan.com/address/0xE34f6F64cF0a0D01e49378614B073a12103BCF87) | 0xA70b…d12E | [tx](https://testnet.monadscan.com/tx/0x86da05037c66146aff468ddb21b8bae8ce0ea792243c5cacb7dfd076534fb924) | 2026-10-24 12:00 UTC | 2026-10-27 12:00 UTC (snapshot) |
+
+The book address is `GraduatorV2.predictedBook(market)`: where `SpotRouter.deploySpotMarket` puts a book with exactly
+the parameters in `GraduatorV2.bookRequest(market)` (size and price precision 1,000,000, tick 1,000, passive spread 10
+ticks, minimum notional 1 USDC, maximum 5,000 USDC, taker fee 7,000 and maker fee 4,000 pps, quote token our test USDC).
+If a Kuru market lock passes with no book, the market settles as a pool, as market #1 did.
+
 ## Market #1 (our own, seeded by us)
 
 | Fact | Value | Source |
@@ -99,7 +170,7 @@ Opened by our own wallets to show each template working. They count as ours wher
 | [0x2D17…BF74](https://testnet.monadscan.com/address/0x2D1768F57a2eE76bFD23140EdFeBE29F6b91BF74) | 4, any single MON funding event spikes in the next day | keeper, recurring series | [tx](https://testnet.monadscan.com/tx/0x8143b82a2ab7a81a2d3b840c91076006057192ed96298ab40403424996771462) | settled YES: the keeper proved the funding event at block 68,190,876 (increment 135 against a threshold of 134, [tx](https://testnet.monadscan.com/tx/0x557c5bda0639e0e366affb129f86fe3433539b30638b1d56841da90612265c3e)) |
 | [0x9c50…4CF5](https://testnet.monadscan.com/address/0x9c509488821B90B09139419C925f681AA2D14CF5) | 1, BTC funding this week above the trailing median | keeper, recurring series | [tx](https://testnet.monadscan.com/tx/0x6f9ce824fbf4a8fac6db415316816cdcf2effd632b69fe4a11a968de918f322d) | open |
 | [0x6FFC…D9e](https://testnet.monadscan.com/address/0x6FFC70F919e9B6e20aD76df870854818C310cD9e) | 1, the golden path market: MON longs pay more than -$0.00000031 per MON between blocks 68,713,707 and 68,730,849 | deployer, `GoldenPath.s.sol` | [tx](https://testnet.monadscan.com/tx/0x001f11a404576309bbe7953f20fd1df942bbdeb2779e6baf34b8255315f6417b) | no outside wallet staked before the lock, so it never graduated; settled NO as a pool by the keeper ([tx](https://testnet.monadscan.com/tx/0x5bb2f79e48250d85621971cbe45af2be2ad7200e48bf5639dd3b0a028920e429)), which then paid the pool out ([tx](https://testnet.monadscan.com/tx/0x0f0507eb95f4b651e60d16d9b9c56b47ada1836ec8bae4e28e124c45894bff0e)) |
-| [0x8565…7343](https://testnet.monadscan.com/address/0x85658Be96Ba2663AF6280834B16c7e340c727343) (Kuru v2 stack, its market 1) | 1, MON longs pay more than -$0.00000114 per MON between blocks 70,033,641 and 70,050,783 (lock about 2026-10-11 06:34 UTC) | deployer, `GoldenPath.s.sol` with `STACK=kuruV2` | [tx](https://testnet.monadscan.com/tx/0x0150994a815a5fcefbd1e56f14b2f04fe9e0012ee1436cdf065614f9edda5666) | pool open: 240 USDC YES and 240 USDC NO from 8 of our wallets; its Kuru v2 book waits for Kuru to create it |
+| [0x8565…7343](https://testnet.monadscan.com/address/0x85658Be96Ba2663AF6280834B16c7e340c727343) (Kuru v2 stack, its market 1) | 1, MON longs pay more than -$0.00000114 per MON between blocks 70,033,641 and 70,050,783 (lock about 2026-10-11 06:34 UTC) | deployer, `GoldenPath.s.sol` with `STACK=kuruV2` | [tx](https://testnet.monadscan.com/tx/0x0150994a815a5fcefbd1e56f14b2f04fe9e0012ee1436cdf065614f9edda5666) | Kuru never created its v2 book, so it locked as a pool (240 USDC YES and 240 USDC NO from 8 of our wallets); settled YES as a pool by the keeper ([tx](https://testnet.monadscan.com/tx/0xd7ffd5b3a0e6543545f95a894327df10a2213f20480470d14737a549d93ca13f)), which then paid the pool out ([tx](https://testnet.monadscan.com/tx/0x4d41b5fd4384654e06b1639b1b7feccaad830466a95f641f963e0748a5b65eeb)) |
 
 ## Protocol parameters (v0)
 
