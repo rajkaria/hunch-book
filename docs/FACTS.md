@@ -19,6 +19,21 @@ change. This page holds the numbers that do not change, and dated snapshots of t
 | Our maker bot | [0x0f11…232A](https://testnet.monadscan.com/address/0x0f1156Eb25DBebee5386EC80F1EB0B85C7dD232A) | `wallets.maker` |
 | Our keeper | [0x1f5A…5569](https://testnet.monadscan.com/address/0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569) | `wallets.keeper` |
 
+## Deployment (Monad mainnet, chain id 143)
+
+| Fact | Value | Source |
+|---|---|---|
+| Deploy block | 112,517,059 (2026-10-11) | `hunchBook.deployBlock` in [deployments/monad-mainnet.json](../deployments/monad-mainnet.json) |
+| Venue | Kuru v1: Graduator [0x5582…8B3C](https://monadscan.com/address/0x5582e5Aeb12e15EAda88402E2903Bc628Cc28B3C) on Kuru's router [0xd651…95CC](https://monadscan.com/address/0xd651346d7c789536ebf06dc72aE3C8502cd695CC). Kuru creates each book; anyone registers it | `hunchBook.graduator`, `external.kuru` |
+| Collateral | Circle USDC [0x7547…b603](https://monadscan.com/address/0x754704Bc059F8C67012fEd69BC8A327a5aafb603) | `hunchBook.usdc` |
+| Core contracts | 6 deployed (market implementation, [factory](https://monadscan.com/tx/0xae4e637ba5c7f1592b0f28fae6e4949f0702bb90e20aa19207f8883fc7d13f8b), [graduator](https://monadscan.com/tx/0xe56f3337961785804259dc9c77a1c3204cdd6e87376bfbebd8d3e6cdc6df3050), [router](https://monadscan.com/tx/0x614439faa00cd0588933a97285aedac2d251d5c3e3c5a5f5d962615673563959), two resolvers) plus the vault the factory deploys | `hunchBook` and `deployTxs` |
+| Periphery contracts | 8 | `hunchBook.periphery` and its `deployTxs` |
+| Source verification | all 15 contracts verified on Sourcify (match) | `forge verify-contract --verifier sourcify` |
+| Templates registered | 0 so far: the guardian registers them next | `factory.templateOf(id)` |
+| Guardian | [0xCaA4…4Bf8](https://monadscan.com/address/0xCaA404541A30c277a05F2A500f3F4430250f4Bf8), a single key separate from the deployer, to be rotated to a multisig | `hunchBook.guardian` |
+| Fee recipient | the deployer, [0xD183…10A8](https://monadscan.com/address/0xD183a7daECF3d539683f37e1111558E3dFC210A8) | `hunchBook.feeRecipient` |
+| Deploy gas | about 3.74 MON for core and periphery | the deployer's balance before and after |
+
 ## Markets on Kuru (Monad testnet)
 
 Kuru is the venue for every new market. New markets go to the primary stack, whose books are Kuru v1 books
