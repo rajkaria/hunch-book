@@ -15,8 +15,9 @@ import type { DecodedParams } from "./types";
 // Most resolvers' `describe()` text is already a good title. Perpl markets are defined in blocks, so
 // their resolver text names raw block numbers ("between block 68058301 and block 68264005"), which
 // nobody can read as a time. Their titles swap the blocks for estimated clock times, from the chain
-// head and the measured block time. The resolver's own sentence stays the rule of record: the market
-// page shows it under "Exact rule".
+// head and the measured block time. Snapshot and parlay resolvers state a rule ("YES if ...; NO
+// otherwise"); their titles ask it as a question. The resolver's own sentence stays the rule of record:
+// the market page shows it under "Exact rule".
 
 /** What the title needs from the chain clock: the head block, its time, and the pace. */
 export interface TitleClock {
@@ -63,11 +64,51 @@ const SPIKE_RULE =
   /^YES if any single funding event on Perpl(?: \([^()]*, perp \d+\)| perp \d+) after block (\d+) and at or before block (\d+) charges (?:(\S+) )?longs more than (.+?)(?: per (\S+?)| raw funding units); NO if/;
 
 /**
- * A Perpl resolver's sentence with its block numbers turned into estimated clock times. Works on the
- * text alone, so it serves rows that only have the question (from the indexer) as well as full market
- * reads. Text with no block window comes back unchanged.
+ * The snapshot resolver (template 7): "YES if Perpl's MON mark price (perp 64) is at or above $0.025 in
+ * the first snapshot taken from 2026-10-12 16:00:00 UTC to 2026-10-12 16:30:00 UTC; NO otherwise. ..."
+ * The title asks it at the time the snapshot window opens.
+ */
+const SNAPSHOT_RULE =
+  /^YES if (.+?) is (above|at or above|below|at or below) (.+?) in the first snapshot taken from (\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}) UTC to /;
+
+/** The parlay resolver (template 6): "YES if all 2 of these Hunch Book markets settle YES: #12 (0x...), #13 (0x...); NO if ..." */
+const PARLAY_RULE = /^YES if all (\d+) of these Hunch Book markets settle YES: (.+?); NO if/;
+
+/** A parlay leg as the resolver labels it, "#12 (0xAbC...)" or a bare address, shortened to "#12" or "0xAbCd...1234". */
+function legName(label: string): string {
+  const id = /^#(\d+) \(/.exec(label);
+  if (id) return `#${id[1]}`;
+  const address = label.trim();
+  return /^0x[0-9a-fA-F]{40}$/.test(address) ? `${address.slice(0, 6)}...${address.slice(-4)}` : address;
+}
+
+/** "#1", "#1 and #2", "#1, #2 and #3". */
+function listWords(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/**
+ * A resolver's sentence as a question people read at a glance: a Perpl window's block numbers turned
+ * into estimated clock times, a snapshot or parlay rule asked as a question. Works on the text alone, so
+ * it serves rows that only have the question (from the indexer) as well as full market reads. Text it
+ * does not recognise comes back unchanged.
  */
 export function friendlyQuestion(description: string, clock: TitleClock | null): string {
+  const snapshot = SNAPSHOT_RULE.exec(description);
+  if (snapshot) {
+    const [, label = "", comparator = "", threshold = "", y, mo, d, h, mi, sec] = snapshot;
+    const at = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(sec)) / 1000;
+    const what = label.replace(/ \(perp \d+\)/, "");
+    return `Will ${what} be ${comparator} ${threshold} at ${formatShortUtc(at)} UTC?`;
+  }
+  const parlay = PARLAY_RULE.exec(description);
+  if (parlay) {
+    const [, count = "0", list = ""] = parlay;
+    const legs = list.split(", ").map(legName);
+    const all = Number(count) === 2 ? "both" : "all";
+    return `Will markets ${listWords(legs)} ${all} settle YES?`;
+  }
   const spike = SPIKE_RULE.exec(description);
   if (spike) {
     const [, start = "0", end = "0", symbol, amount, unit] = spike;
@@ -112,13 +153,13 @@ export interface TitleSource {
 }
 
 /**
- * The market's title. Perpl templates (1 and 4) get estimated clock times in place of block numbers;
- * every other template uses the resolver's own sentence, or one built from the params if the resolver
- * did not answer.
+ * The market's title. Perpl templates (1 and 4) get estimated clock times in place of block numbers,
+ * snapshot and parlay rules are asked as questions, and every other template uses the resolver's own
+ * sentence; without one, a title built from the params.
  */
 export function marketTitle(m: TitleSource, deployment: Deployment, clock: TitleClock | null): string {
   const perpl = m.templateId === TemplateId.PerplFunding || m.templateId === TemplateId.PerplFundingSpike;
-  if (perpl && m.description !== null) return friendlyQuestion(m.description, clock);
+  if (m.description !== null) return friendlyQuestion(m.description, clock);
   if (perpl) {
     try {
       const p =

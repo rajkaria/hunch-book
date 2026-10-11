@@ -100,6 +100,44 @@ describe("friendlyQuestion", () => {
   });
 });
 
+// Template 7 and template 6 sentences, word for word as SnapshotResolver and MarketOutcomeResolver
+// return them on testnet.
+const SNAPSHOT_RULE =
+  "YES if Perpl's MON mark price (perp 64) is at or above $0.025 in the first snapshot taken from 2026-10-12 16:00:00 UTC to 2026-10-12 16:30:00 UTC; NO otherwise. If nobody takes a snapshot in that window, the market voids.";
+const OI_RULE =
+  "YES if Perpl's BTC open interest (perp 16) is below 22.00000 BTC in the first snapshot taken from 2026-10-15 18:00:00 UTC to 2026-10-15 18:30:00 UTC; NO otherwise. If nobody takes a snapshot in that window, the market voids.";
+const PARLAY_RULE =
+  "YES if all 2 of these Hunch Book markets settle YES: #5 (0x6ac842C5240eAC9207e0C66e7AA99448887Abdb1), #6 (0xb9cA87cb725aa34444d3Be1906D5472C63bB00A9); NO if any of them settles NO; if one voids while none has settled NO, this market voids at its deadline.";
+
+describe("friendlyQuestion for snapshot and parlay rules", () => {
+  it("asks a snapshot rule at the time its window opens, without the perp detail", () => {
+    expect(friendlyQuestion(SNAPSHOT_RULE, null)).toBe(
+      "Will Perpl's MON mark price be at or above $0.025 at Oct 12, 16:00 UTC?",
+    );
+    expect(friendlyQuestion(OI_RULE, clock)).toBe(
+      "Will Perpl's BTC open interest be below 22.00000 BTC at Oct 15, 18:00 UTC?",
+    );
+  });
+
+  it("asks a parlay rule by its legs' market numbers", () => {
+    expect(friendlyQuestion(PARLAY_RULE, null)).toBe("Will markets #5 and #6 both settle YES?");
+    const three = PARLAY_RULE.replace("all 2", "all 3").replace(
+      "; NO if",
+      ", 0x37A0dFD460d61E1e60D5AD8770B71C0B47F1920E; NO if",
+    );
+    expect(friendlyQuestion(three, null)).toBe("Will markets #5, #6 and 0x37A0...920E all settle YES?");
+  });
+
+  it("is used as the title of snapshot and parlay markets, and the page then shows the rule too", () => {
+    const snap = makeMarket({ templateId: TemplateId.Snapshot, description: SNAPSHOT_RULE });
+    const title = marketTitle(snap, testnet, null);
+    expect(title).toBe("Will Perpl's MON mark price be at or above $0.025 at Oct 12, 16:00 UTC?");
+    expect(titleDiffersFromRule(snap, title)).toBe(true);
+    const parlay = makeMarket({ templateId: TemplateId.Parlay, description: PARLAY_RULE });
+    expect(marketTitle(parlay, testnet, null)).toBe("Will markets #5 and #6 both settle YES?");
+  });
+});
+
 describe("marketTitle", () => {
   it("uses the resolver's sentence for Perpl markets, with times", () => {
     const m = makeMarket({ templateId: TemplateId.PerplFunding, description: RULE_1 });
