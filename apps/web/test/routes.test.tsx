@@ -161,7 +161,7 @@ describe("with no contracts deployed", () => {
   it("/ is the landing page, and says plainly that nothing is deployed", async () => {
     await renderWithProviders(await Home());
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
-      "Start as a pool. Graduate to a book. Settle from the chain.",
+      "Start as a pool. Graduate to Kuru. Settle from the chain.",
     );
     expect(screen.getByText("Monad testnet: not deployed yet")).toBeTruthy();
     expect(screen.getByText("The contracts are not deployed on Monad testnet yet.")).toBeTruthy();

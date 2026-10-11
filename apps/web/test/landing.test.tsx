@@ -6,6 +6,8 @@ import Home from "../src/app/page";
 import {
   blockTimeWords,
   faqItems,
+  kuruCards,
+  kuruFaqNotes,
   Landing,
   lifecycleSteps,
   PROTOCOL,
@@ -353,8 +355,8 @@ describe("words and stages", () => {
       defaultStack: "hunch",
     };
     const [, book] = lifecycleSteps(RULE, null, own);
-    expect(book?.body).toMatch(/and opens its own YES\/USDC order book, fully onchain, so graduation/);
-    expect(book?.body).toMatch(/waits on no third party/);
+    expect(book?.body).toMatch(/and opens its own YES\/USDC order book, fully onchain\.$/);
+    expect(book?.body).not.toMatch(/third party/);
     expect(book?.body).not.toMatch(/Kuru/);
     // The book stage is live because the default stack has a graduator and a router.
     expect(book?.status).toBe("live");
@@ -363,7 +365,75 @@ describe("words and stages", () => {
       defaultStack: undefined,
       hunchBook: { ...own.hunchBook, graduator: FACTORY, router: FACTORY },
     };
-    expect(lifecycleSteps(RULE, null, kuru)[1]?.body).toMatch(/opens a YES\/USDC book on Kuru\.$/);
+    expect(lifecycleSteps(RULE, null, kuru)[1]?.body).toMatch(
+      /opens its YES\/USDC book on Kuru, Monad's onchain order book\.$/,
+    );
+  });
+
+  it("puts Kuru near the top, with each Kuru path's status read from deployments", () => {
+    render(<Landing live={snapshot()} />);
+    const kuru = within(
+      screen.getByRole("region", { name: "New markets graduate to Kuru's onchain order book" }),
+    );
+    expect(kuru.getByText("Kuru v1")).toBeTruthy();
+    expect(kuru.getByText("Live on Monad testnet")).toBeTruthy();
+    expect(kuru.getByText(/^New markets go here\./)).toBeTruthy();
+    expect(kuru.getByRole("link", { name: /Kuru markets/ }).getAttribute("href")).toBe("/kuru");
+    expect(kuru.getByRole("link", { name: /Visit Kuru/ }).getAttribute("target")).toBe("_blank");
+    expect(kuru.getByRole("link", { name: "rehearsed on a mainnet fork" }).getAttribute("href")).toMatch(
+      /contracts\/test\/fork\/MainnetRehearsal\.fork\.t\.sol$/,
+    );
+  });
+
+  it("gives Kuru v1, Kuru v2 and mainnet the status their contracts support", () => {
+    const testnet = {
+      ...deployments["monad-testnet"],
+      hunchBook: { factory: FACTORY, vault: FACTORY, graduator: FACTORY, router: FACTORY },
+      stacks: {
+        kuruV2: {
+          factory: RESOLVER,
+          vault: RESOLVER,
+          graduator: RESOLVER,
+          router: RESOLVER,
+          kuruVersion: 2 as const,
+        },
+        hunch: {
+          factory: RESOLVER,
+          vault: RESOLVER,
+          graduator: RESOLVER,
+          router: RESOLVER,
+          venue: {
+            kind: "hunch" as const,
+            bookFactory: RESOLVER,
+            marginAccount: RESOLVER,
+            bookImplementation: RESOLVER,
+          },
+        },
+      },
+      defaultStack: "primary",
+    };
+    const notLive = { ...deployments["monad-mainnet"], hunchBook: {} };
+    const [v1, v2, mainnet] = kuruCards(testnet, notLive, "Monad testnet");
+    expect(v1).toMatchObject({ status: "live", badge: "Live on Monad testnet" });
+    expect(v1?.body).toMatch(/^New markets go here\. /);
+    expect(v2).toMatchObject({ status: "building", badge: "Building: waits on Kuru" });
+    expect(v2?.body).toMatch(/A pool whose book never arrives settles as a pool\.$/);
+    expect(mainnet).toMatchObject({ status: "planned", badge: "Planned" });
+    expect(mainnet?.body).toMatch(
+      /Kuru creates each YES\/USDC book and anyone registers it with the Graduator/,
+    );
+    // Only the stack new markets go to says so.
+    const elsewhere = kuruCards({ ...testnet, defaultStack: "kuruV2" }, notLive, "Monad testnet");
+    expect(elsewhere[0]?.body).not.toMatch(/New markets go here/);
+    // Nothing deployed: nothing claims to be live or building.
+    const none = kuruCards({ ...testnet, hunchBook: {}, stacks: undefined }, notLive, "Monad testnet");
+    expect(none.map((c) => c.status)).toEqual(["planned", "planned", "planned"]);
+    // The venue answer names the v2 wait and the fallback book only where those stacks exist.
+    expect(kuruFaqNotes(testnet)).toEqual([
+      "Pools on the Kuru v2 stack wait for Kuru to create their books; a pool whose book never arrives settles as a pool.",
+      "Some earlier markets trade on Hunch Book's own order book, our fallback, which takes no new markets. They run to settlement there.",
+    ]);
+    expect(kuruFaqNotes({ ...testnet, stacks: undefined })).toEqual([]);
   });
 
   it("calls a stage live only when the contracts behind it are deployed", () => {
@@ -426,10 +496,15 @@ describe("landing page", () => {
     render(<Landing live={snapshot()} />);
     const h1 = screen.getAllByRole("heading", { level: 1 });
     expect(h1).toHaveLength(1);
-    expect(h1[0]?.textContent).toBe("Start as a pool. Graduate to a book. Settle from the chain.");
+    expect(h1[0]?.textContent).toBe("Start as a pool. Graduate to Kuru. Settle from the chain.");
     expect(screen.getByText("Prediction markets on Monad")).toBeTruthy();
     expect(screen.getAllByRole("link", { name: "Browse markets" })[0]?.getAttribute("href")).toBe("/markets");
     expect(screen.getAllByRole("link", { name: "Start a market" })[0]?.getAttribute("href")).toBe("/create");
+    expect(screen.getAllByRole("link", { name: "Kuru markets" })[0]?.getAttribute("href")).toBe("/kuru");
+    // New markets go to the primary stack, on Kuru v1, so the hero says where they graduate.
+    const hero = within(screen.getByRole("region", { name: /^Start as a pool\./ }));
+    expect(hero.getByText("Every new market graduates to Kuru")).toBeTruthy();
+    expect(hero.queryByText(/third party/)).toBeNull();
     expect(screen.getAllByText("Live on Monad testnet").length).toBeGreaterThan(0);
     expect(screen.getByText(/Mainnet planned|Live on Monad mainnet/)).toBeTruthy();
   });
@@ -439,6 +514,7 @@ describe("landing page", () => {
     const h2 = screen.getAllByRole("heading", { level: 2 }).map((h) => h.id);
     expect(h2).toEqual([
       "live-title",
+      "kuru-title",
       "how-title",
       "who-title",
       "safety-title",
@@ -530,14 +606,14 @@ describe("landing page", () => {
     render(<Landing live={snapshot()} />);
     // Two drawings of the same lifecycle (wide and tall); CSS shows one of them.
     expect(
-      screen.getAllByRole("img", { name: /Lifecycle: a pool graduates into an onchain order book/ }),
+      screen.getAllByRole("img", { name: /Lifecycle: a pool graduates into a YES\/USDC book on Kuru/ }),
     ).toHaveLength(2);
     expect(
       screen.getByText(/at least 500 USDC from at least 10 wallets, with a chance between 3% and 97%/),
     ).toBeTruthy();
     expect(screen.getAllByText("500 USDC, 10 wallets").length).toBeGreaterThan(0);
-    // Hero badge, hero card, and the three stages.
-    expect(screen.getAllByText("Live on Monad testnet")).toHaveLength(5);
+    // Hero badge, hero card, the Kuru v1 card and the three stages.
+    expect(screen.getAllByText("Live on Monad testnet")).toHaveLength(6);
     expect(screen.getByText("no market has settled yet")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Perpl funding" }).getAttribute("href")).toMatch(/0+e1$/);
   });
@@ -564,6 +640,7 @@ describe("landing page", () => {
       "What are the fees?",
       "What happens if the data source fails?",
       "Can I sell before the answer?",
+      "Where do graduated markets trade?",
       "Who is on the other side of my trade?",
       "Who decides the outcome?",
       "What is live today?",

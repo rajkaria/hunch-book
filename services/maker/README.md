@@ -1,7 +1,7 @@
 # Hunch Book maker bot
 
-Status: **live on testnet**. The bot runs continuously from our maker wallet and quotes every graduated book,
-on Hunch Book's own order book and on Kuru (its first live quote:
+Status: **live on testnet**. The bot runs continuously from our maker wallet and quotes every graduated book
+on Kuru, and the earlier markets on our fallback book (its first live quote:
 [batchUpdate](https://testnet.monadscan.com/tx/0xc484a70a81232b5b4e61ad8fe201e308638278bd25c204f008d3be5c4f909757);
 current markets and their first quotes are in [docs/FACTS.md](../../docs/FACTS.md)). On a network where `deployments/<network>.json` does not list
 `hunchBook.factory`, the bot starts, logs that there is nothing to quote, and waits.
@@ -38,29 +38,10 @@ For each graduated market it:
 It never deposits into the AMM vault Kuru creates next to each book. That vault's curve has no 1 USDC
 cap, which does not fit a token that ends at 0 or 1.
 
-### On Hunch Book's own order book
-
-A stack with a `venue` of kind `hunch` (testnet: `hunch`, where new markets go) trades on Hunch Book's own
-onchain order book ([docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-kuru)). Its books speak Kuru v1's
-interface, so the v1 bot quotes them unchanged, on that stack's view of the deployments file: its margin
-account is the stack's own HunchMarginAccount, not Kuru's. What differs there:
-
-- The book takes orders only while its market is in phase Graduated. `marketState()` reads 1 (cancels
-  only) before graduation and from close on; the bot then cancels and reports `book-cancels-only`.
-  Cancels and margin withdrawals always work.
-- No trading fees and no AMM vault.
-- Every limit order is post-only. The bot never prices a quote through the outside book it read; if the
-  book moves between that read and the batch, the simulation reverts `PostOnlyError`, nothing goes out
-  (the batch's cancels included), the bot logs `quote-crossed`, re-reads its own orders from the book and
-  requotes next cycle. The same holds on Kuru, whose post-only orders refuse a cross the same way.
-
-Health snapshots and, with several stacks, every log line name the `venue` (`hunch` or `kuru`).
-`cancel-all --book` hands each book to the bot whose margin account lists it.
-
 ### On Kuru v2 books
 
 A deployments file can hold several stacks; the bot runs one quoter per stack in the same process, one
-after another, each on its stack's Kuru version ([docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-kuru)).
+after another, each on its stack's Kuru version ([docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-order-book-venues)).
 On a Kuru v2 stack (`kuruVersion: 2`) the same decisions run through [`src/v2.ts`](./src/v2.ts):
 
 - Balances live in Kuru's AccountCore under the bot's account id. The bot's first deposit (to its own
@@ -75,6 +56,26 @@ On a Kuru v2 stack (`kuruVersion: 2`) the same decisions run through [`src/v2.ts
 - Leaving a market is `cancelAllOrders`, then withdrawing the account's YES and USDC. Kuru's soft pause
   at close still allows both.
 - Paper mode simulates Kuru v1 books only; on a v2 stack it skips markets and says why.
+
+### On the fallback book (Hunch Book's own order book)
+
+A stack with a `venue` of kind `hunch` (testnet: `hunch`, our fallback book) trades on Hunch Book's own
+onchain order book ([docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-order-book-venues)). It takes no new
+markets: new markets go to Kuru, and the bot keeps quoting the stack's earlier markets until they close.
+Its books speak Kuru v1's interface, so the v1 bot quotes them unchanged, on that stack's view of the
+deployments file: its margin account is the stack's own HunchMarginAccount, not Kuru's. What differs there:
+
+- The book takes orders only while its market is in phase Graduated. `marketState()` reads 1 (cancels
+  only) before graduation and from close on; the bot then cancels and reports `book-cancels-only`.
+  Cancels and margin withdrawals always work.
+- No trading fees and no AMM vault.
+- Every limit order is post-only. The bot never prices a quote through the outside book it read; if the
+  book moves between that read and the batch, the simulation reverts `PostOnlyError`, nothing goes out
+  (the batch's cancels included), the bot logs `quote-crossed`, re-reads its own orders from the book and
+  requotes next cycle. The same holds on Kuru, whose post-only orders refuse a cross the same way.
+
+Health snapshots and, with several stacks, every log line name the `venue` (`hunch` or `kuru`).
+`cancel-all --book` hands each book to the bot whose margin account lists it.
 
 ### The bot is labelled
 
@@ -269,8 +270,8 @@ pnpm --filter @hunch-book/maker test
   start.
 - **Local chain test** (`test/integration/hunch-venue.test.ts`) starts a fresh anvil chain with Hunch
   Book's real contracts from `contracts/out` (run `forge build` in `contracts/`): the core, the
-  HunchOrderBookFactory with its HunchMarginAccount, and the Graduator wired to it. Laid out as on
-  testnet (`stacks.hunch`, the default stack), `buildMakers` gives that stack a v1 bot on Hunch Book's
+  HunchOrderBookFactory with its HunchMarginAccount, and the Graduator wired to it. Laid out like
+  testnet's fallback stack (`stacks.hunch`), `buildMakers` gives that stack a v1 bot on Hunch Book's
   margin account; it quotes post-only, requotes in one batch, sees a taker's fills, survives a crossing
   quote (`PostOnlyError`, nothing sent, requoted around the outside ask next cycle), cancels when the
   closed market's book takes cancels only, and unwinds. It skips when anvil or `contracts/out` is missing.

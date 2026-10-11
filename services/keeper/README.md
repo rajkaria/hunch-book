@@ -1,8 +1,10 @@
 # Hunch Book keeper
 
-Status: **building**. The keeper's dry run reads every market on Monad testnet and prints what it would
-send. It is not yet running continuously. On a network where `deployments/<network>.json` does not list
-`hunchBook.factory`, it starts, logs that there is nothing to do, and waits.
+Status: **live on testnet**. The keeper runs continuously on every Monad testnet stack from our keeper
+wallet ([0x1f5A…5569](https://testnet.monadscan.com/address/0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569),
+`wallets.keeper`); its dry run reads every market and prints what it would send. On a network where
+`deployments/<network>.json` does not list `hunchBook.factory`, it starts, logs that there is nothing to
+do, and waits.
 
 ## What it does
 
@@ -25,23 +27,18 @@ tokens, settling, voiding. The keeper makes sure someone does, on time, for ever
 Every decision comes from pure functions in [`src/plan.ts`](./src/plan.ts) of one market's state and
 the chain's current block and time, and carries a plain reason. The dry run prints them all.
 
-### Stacks, Kuru v2 and the Hunch order book
+### Stacks: Kuru v1, Kuru v2 and the fallback book
 
 A deployments file can hold several stacks (a factory with its graduator, router and periphery): the
 primary one under `hunchBook`, extra ones under `stacks` (testnet: `kuruV2` and `hunch`). The keeper runs
 one keeper per stack in the same process, one after another (so its transactions never race for a
 nonce), each with its own state and health files (`state.json` becomes `state.kuruV2.json`). Log lines
 carry `stack` and `venue` when there is more than one, and each health snapshot names its `stack`,
-`kuruVersion` and `venue`. `KEEPER_STACKS` limits it to the named stacks.
+`kuruVersion` and `venue`. `KEEPER_STACKS` limits it to the named stacks. New markets go to the primary
+stack, whose books are Kuru v1 books: on testnet the Graduate job above creates each book, and on mainnet
+the Ask and Register jobs get it from Kuru first.
 
-A stack with a `venue` of kind `hunch` trades on Hunch Book's own onchain order book instead of Kuru
-([docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-kuru)). Its books speak Kuru v1's interface, so the
-keeper runs it as a v1 stack on that stack's view of the deployments file, where `external.kuru` is the
-stack's own book factory and margin account. Its graduator creates the book inside `market.graduate()`,
-so graduation is one transaction: the keeper never asks Kuru for a book there, never looks one up and
-never sends `registerBook`. The Kuru v2 jobs (`kuruFeeds`, pool pokes) never run on it.
-
-On a Kuru v2 stack (`kuruVersion: 2`, [docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-kuru)) only Kuru
+On a Kuru v2 stack (`kuruVersion: 2`, [docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-order-book-venues)) only Kuru
 creates books, after a per-token setup that takes days. So the graduate job changes:
 
 | Step | When | What the keeper does |
@@ -58,6 +55,14 @@ tokens out yet and Kuru reads its price only when it sets the tokens up, so pool
 `KEEPER_KURU_POKE_SECONDS` (default 900). `KEEPER_ORACLE_POKE_SECONDS` wins for both when it is lower.
 Anyone can call `poke(market)` on the oracle to refresh a market's feeds at once.
 
+A stack with a `venue` of kind `hunch` (testnet: `hunch`, our fallback book, which takes no new markets)
+trades on Hunch Book's own onchain order book instead of Kuru
+([docs/PROTOCOL.md §8.1](../../docs/PROTOCOL.md#81-order-book-venues)). Its books speak Kuru v1's interface, so the
+keeper runs it as a v1 stack on that stack's view of the deployments file, where `external.kuru` is the
+stack's own book factory and margin account. Its graduator creates the book inside `market.graduate()`,
+so graduation is one transaction: the keeper never asks Kuru for a book there, never looks one up and
+never sends `registerBook`. The Kuru v2 jobs (`kuruFeeds`, pool pokes) never run on it.
+
 After the markets, four jobs look at every market at once ([`src/jobs/`](./src/jobs)). Each runs only when
 its contract is in `hunchBook.periphery` (or, for series, a file is set), and each can be switched off by
 name with `KEEPER_JOBS_OFF`:
@@ -67,7 +72,7 @@ name with `KEEPER_JOBS_OFF`:
 | Auto-redeem (`autoRedeem`) | A graduated market has settled or voided, and holders who opted in on the AutoRedeemer still hold redeemable tokens with an allowance | `autoRedeemer.redeemManyFor(market, holders)`, in batches |
 | Conditional orders (`orders`) | An open ConditionalOrders order's trigger holds against its market's book | `conditionalOrders.execute(orderId)` |
 | Oracle pokes (`oracle`) | A market with a live book was last poked at least `KEEPER_ORACLE_POKE_SECONDS` ago | `oracle.pokeMany(markets)` |
-| Recurring series (`series`) | A series period's creation point has come and no stack has the period's market yet (on the default stack only: `defaultStack` in the deployments file, the primary stack when absent; testnet: `hunch`) | `factory.createMarket(...)` on the default stack's factory, with the keeper's first stake; with a `seed`, then `market.stakeFor(holder, side, amount)` for each of our wallets in it, paid by the keeper (on testnet, minted from the TestUSDC faucet when short) ([docs/SERIES.md](../../docs/SERIES.md)) |
+| Recurring series (`series`) | A series period's creation point has come and no stack has the period's market yet (on the default stack only: `defaultStack` in the deployments file, the primary stack when absent; testnet: the primary stack, on Kuru v1) | `factory.createMarket(...)` on the default stack's factory, with the keeper's first stake; with a `seed`, then `market.stakeFor(holder, side, amount)` for each of our wallets in it, paid by the keeper (on testnet, minted from the TestUSDC faucet when short) ([docs/SERIES.md](../../docs/SERIES.md)) |
 | Kuru feeds (`kuruFeeds`, Kuru v2 stacks) | An open market has no YES or NO feed on the stack's `kuruFeedFactory` | `kuruFeedFactory.createAdapter(market, side)` |
 
 ### Settlement evidence, per template
@@ -339,7 +344,7 @@ pnpm --filter @hunch-book/keeper test
     once with the exact `deployProxy` parameters, finds the book Kuru deploys at the predicted address,
     registers it (the Graduator verifies it) and graduates into it.
   - A stack on Hunch Book's own order book, with the real HunchOrderBookFactory, HunchMarginAccount and
-    Graduator, laid out as on testnet (`stacks.hunch`, the default stack, Kuru's real addresses still in
+    Graduator, laid out like testnet's fallback stack (`stacks.hunch`, Kuru's real addresses still in
     `external.kuru`): one `graduate()` creates the market's book, with no book request, no
     `registerBook` and no call to Kuru.
   - A Kuru v2 stack, with the real GraduatorV2, oracle and feeds factory and the contracts' mock of Kuru's
