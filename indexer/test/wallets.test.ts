@@ -1,5 +1,8 @@
 // Distinct wallets, our-wallet labels, daily rollups and token positions.
+
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { staticRoleOf } from "../src/lib/network.js";
 import { ADDR, ALICE, BOB, CAROL, Protocol, SEED, Side, USDC } from "./helpers.js";
 
 const DAY = 86_400;
@@ -176,5 +179,23 @@ describe("positions from token transfers", () => {
       routerVolume: 5_995_000n,
       traderWallets: 1,
     });
+  });
+});
+
+describe("labelled seed wallets", () => {
+  it("labels every wallet in mainnet's wallets.seeded as ours (Seeded), in any case, and nobody else", () => {
+    const file = JSON.parse(
+      readFileSync(new URL("../../deployments/monad-mainnet.json", import.meta.url), "utf8"),
+    );
+    const seeded: string[] = file.wallets.seeded;
+    expect(seeded).toHaveLength(15);
+    for (const a of seeded) {
+      expect(staticRoleOf(143, a)).toBe("Seeded");
+      expect(staticRoleOf(143, a.toLowerCase())).toBe("Seeded");
+      // Testnet has no such list: the same address is nobody's there.
+      expect(staticRoleOf(10143, a)).toBe("None");
+    }
+    expect(staticRoleOf(143, file.wallets.keeper)).toBe("Keeper");
+    expect(staticRoleOf(143, ALICE)).toBe("None");
   });
 });

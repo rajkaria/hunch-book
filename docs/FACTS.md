@@ -34,6 +34,25 @@ change. This page holds the numbers that do not change, and dated snapshots of t
 | Guardian | [0xCaA4…4Bf8](https://monadscan.com/address/0xCaA404541A30c277a05F2A500f3F4430250f4Bf8), a single key separate from the deployer, to be rotated to a multisig | `hunchBook.guardian` |
 | Fee recipient | the deployer, [0xD183…10A8](https://monadscan.com/address/0xD183a7daECF3d539683f37e1111558E3dFC210A8) | `hunchBook.feeRecipient` |
 | Deploy gas | about 3.74 MON for core and periphery, about 1.77 MON for templates 3 to 7 and the registrations | the deployer's balance before and after |
+| Markets | none yet | `factory.marketCount()` |
+
+### Our seed wallets on mainnet (ours, labelled)
+
+These 15 wallets are ours. We created them to stake in our own mainnet markets, so a market can show
+both sides and meet the graduation rule before outside money arrives. Their stakes are paid by the
+deployer (the fee recipient above) with `stakeFor`, using
+[contracts/script/SeedMainnetMarket.s.sol](../contracts/script/SeedMainnetMarket.s.sol), so each one is
+counted as ours, never as an outside wallet: the indexer and the app read this list from `wallets.seeded`
+in [deployments/monad-mainnet.json](../deployments/monad-mainnet.json) and also label any wallet whose
+stake one of our wallets paid.
+
+| # | Address | # | Address | # | Address |
+|---|---|---|---|---|---|
+| 1 | [0xBFE1…Ea12](https://monadscan.com/address/0xBFE10471aAf8c29b1Cf13D37945bCDB8A0F1Ea12) | 6 | [0xa53B…14b7](https://monadscan.com/address/0xa53BAC403BA5BE39Ee2FB6785c937A82D36E14b7) | 11 | [0xb9Ba…6251](https://monadscan.com/address/0xb9Bad31782C350786166d1CF537e409EEf5a6251) |
+| 2 | [0xaF2e…8Cd4](https://monadscan.com/address/0xaF2e0cAE320e0b4f4551CD66E198e737774D8Cd4) | 7 | [0x417b…ffAa](https://monadscan.com/address/0x417ba60fB1b4FbBD6Ce98A84E2B09171d17effAa) | 12 | [0x5ee7…C5D2](https://monadscan.com/address/0x5ee7B628F5d36cab57359B3c73E99400E87AC5D2) |
+| 3 | [0xcD1E…e6f2](https://monadscan.com/address/0xcD1EcAEa11147756C4822421278c61F6a01Fe6f2) | 8 | [0x426c…65e2](https://monadscan.com/address/0x426cEde991D641a7Ae24575F5e85912d3b9f65e2) | 13 | [0xDae9…8565](https://monadscan.com/address/0xDae9A48A88132c3905671BA1CaA01B50F6258565) |
+| 4 | [0xe1fd…1fEa](https://monadscan.com/address/0xe1fd1d4FB20feA452aF3227E9fC0CbA3D8a81fEa) | 9 | [0x7c03…d730](https://monadscan.com/address/0x7c03fc419fA0b218a40B5Da15D6c3BcE25cCd730) | 14 | [0x5E1E…d38C](https://monadscan.com/address/0x5E1E4A59edC725141F68C1f5f01114068ba8d38C) |
+| 5 | [0x342f…f442](https://monadscan.com/address/0x342f975C18D8D3a93639021b60EFC18D9f5Bf442) | 10 | [0x6798…4f27](https://monadscan.com/address/0x6798151D37A5Bf59B283690C68abB97E13884f27) | 15 | [0x0602…c13f](https://monadscan.com/address/0x0602863Cc4448f5B57C8FC8BDFb053955C80c13f) |
 
 ## Markets on Kuru (Monad testnet)
 

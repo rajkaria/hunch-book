@@ -237,6 +237,18 @@ describe("generated config", () => {
       expect(n.ours.keeper).toBe(d.wallets.keeper.toLowerCase());
       expect(n.chainId).toBe(d.chainId);
     }
+    // Seeded wallets listed in the file are ours from their first event; a file without the list has none.
+    const mainnetFile = deployment("monad-mainnet");
+    expect(networkConstants(mainnetFile).ours.seeded).toEqual(
+      (mainnetFile.wallets.seeded ?? []).map((a: string) => a.toLowerCase()),
+    );
+    expect(mainnetFile.wallets.seeded).toHaveLength(15);
+    expect(
+      networkConstants({
+        ...mainnetFile,
+        wallets: { maker: mainnetFile.wallets.maker, keeper: mainnetFile.wallets.keeper },
+      }).ours.seeded,
+    ).toEqual([]);
     const testnetFile = deployment("monad-testnet");
     const testnet = networkConstants(testnetFile);
     expect(testnet.perps["64"]).toBe("MON");
@@ -261,7 +273,6 @@ describe("generated config", () => {
     expect(empty.periphery.autoRedeemer).toBeNull();
     expect(empty.resolvers).toEqual({});
     // Mainnet reads its own file the same way as testnet.
-    const mainnetFile = deployment("monad-mainnet");
     const mainnet = networkConstants(mainnetFile);
     expect(mainnet.periphery.autoRedeemer).toBe(
       mainnetFile.hunchBook.periphery?.autoRedeemer?.toLowerCase() ?? null,

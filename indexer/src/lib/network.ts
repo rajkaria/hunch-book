@@ -95,6 +95,8 @@ export interface NetworkConstants {
     feeRecipient: string | null;
     distributorFunder: string | null;
     timelockProposer: string | null;
+    /** Wallets we created and fund to stake in our own markets (`wallets.seeded`). */
+    seeded: string[];
   };
   /**
    * The primary stack's book venue, like `contracts` above: Kuru's Router and MarginAccount, or its own
@@ -131,12 +133,17 @@ export function addr(a: string): string {
   return a.toLowerCase();
 }
 
-/** The fixed role of one of our wallets, from the deployments file. Seeded wallets are found while indexing. */
+/**
+ * The fixed role of one of our wallets, from the deployments file. Wallets listed under `wallets.seeded`
+ * are Seeded from their first event; other seeded wallets are found while indexing (a stake one of our
+ * wallets paid for).
+ */
 export function staticRoleOf(chainId: number, address: string): Enum<"OurRole"> {
   const a = addr(address);
   const { ours, stacks } = networkOf(chainId);
   if (a === ours.maker) return "Maker";
   if (a === ours.keeper) return "Keeper";
+  if ((ours.seeded ?? []).includes(a)) return "Seeded";
   // Every stack's guardian, fee recipient, reward funder and timelock proposer is ours.
   for (const s of [ours, ...stacks.map((k) => ({ ...k, ...k.periphery }))]) {
     if (a === s.guardian) return "Guardian";

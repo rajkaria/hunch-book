@@ -96,7 +96,11 @@ export interface Deployment {
    * `stacks`. Absent = the primary stack.
    */
   defaultStack?: string;
-  wallets: { maker: Address; keeper: Address };
+  /**
+   * Our wallets. `seeded`: wallets we created and fund to stake in our own markets; their activity is
+   * ours and is labelled as ours wherever it is counted.
+   */
+  wallets: { maker: Address; keeper: Address; seeded?: Address[] };
   external: {
     usdc?: Address;
     circleUsdc?: Address;

@@ -216,7 +216,28 @@ Commit `deployments/monad-mainnet.json` with the deploy transaction hashes, then
 shows mainnet as soon as the file has a factory address, and the indexer config for mainnet is
 generated from it (`pnpm --filter @hunch-book/indexer gen-config`).
 
-### 6. Books on mainnet
+### 6. The first markets
+
+Anyone can create a market from the app's create page with their own wallet. Our own launch markets
+come from the deployer, which stakes for the 15 labelled seed wallets in `wallets.seeded` (their
+activity is ours and is counted as ours; see [FACTS.md](./FACTS.md)). Send the deployer the USDC the
+script asks for, run it once without `--broadcast` to read the question and every stake, then send:
+
+```bash
+cd contracts
+# 5 USDC from the deployer on YES, 1 USDC for each seed wallet (7 YES, 8 NO): 20 USDC
+PAIR=BTC/USD STRIKE_E8=8350000000000 CLOSE=<unix> forge script script/SeedMainnetMarket.s.sol \
+  --rpc-url "$MONAD_MAINNET_RPC" --broadcast --slow --gas-estimate-multiplier 110 \
+  --with-gas-price 120gwei --priority-gas-price 2gwei
+```
+
+`LOCK` defaults to 30 minutes before `CLOSE`, and the script stops if staking would stop within 10
+minutes. A market for Kuru to book needs a later lock, so Kuru has time to create the book:
+`SEEDED_COUNT=1 SEEDED_YES=0 SEEDED_EACH=5` meets the 10 USDC, two-wallet rule exactly. About 0.5 MON
+of gas for a market with 15 seeded stakes. `test/fork/SeedMainnetMarket.fork.t.sol` runs the script
+against the live contracts on a fork.
+
+### 7. Books on mainnet
 
 On a Kuru v1 stack, Kuru creates each book:
 
@@ -243,7 +264,7 @@ Until a book is registered a market runs as a pool, and if its book never arrive
 Nothing is lost. On a `VENUE=hunch` stack there is nothing to do: `graduate()` creates each book. On
 Kuru v2 the flow is the same with `RegisterBookV2.s.sol`, plus Kuru's per-token setup.
 
-### 7. Start the services
+### 8. Start the services
 
 See [ops/README.md](../ops/README.md) for the keeper and the maker bot: environment variables,
 hosting, gas budgets and health checks. On mainnet both take `KEEPER_NETWORK=monad-mainnet` and

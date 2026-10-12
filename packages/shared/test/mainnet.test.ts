@@ -63,7 +63,16 @@ describe("Monad mainnet", () => {
 
   it("has the fields every reader needs, in testnet's shape", () => {
     for (const key of Object.keys(mainnet)) expect(Object.keys(testnet), key).toContain(key);
-    expect(mainnet.wallets).toEqual(testnet.wallets);
+    // The same maker and keeper sign on both chains.
+    expect({ maker: mainnet.wallets.maker, keeper: mainnet.wallets.keeper }).toEqual(testnet.wallets);
+    // Mainnet's labelled seed wallets: 15 distinct checksummed addresses, none of them a role wallet.
+    const seeded = mainnet.wallets.seeded ?? [];
+    expect(seeded).toHaveLength(15);
+    expect(new Set(seeded.map((a) => a.toLowerCase())).size).toBe(15);
+    for (const a of seeded) {
+      expect(a).toMatch(/^0x[0-9a-fA-F]{40}$/);
+      expect([mainnet.wallets.maker, mainnet.wallets.keeper, mainnet.hunchBook.guardian]).not.toContain(a);
+    }
     expect(mainnet.external.usdc).toBeDefined();
     expect(mainnet.external.kuru.router).toBeDefined();
     expect(mainnet.external.kuru.marginAccount).toBeDefined();

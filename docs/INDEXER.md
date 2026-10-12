@@ -278,7 +278,9 @@ Envio Cloud deploys from git, like Vercel. Steps, by name only (no secrets in th
 1. Log in to the Envio app with GitHub, choose the organization, and install the Envio Deployments
    GitHub app on this repository.
 2. Add an indexer with root directory `indexer` and config file `config.yaml` (testnet). Mainnet gets
-   its own indexer with `config.mainnet.yaml` once that file exists.
+   its own indexer with config file `config.mainnet.yaml`. HyperSync serves both chains (Monad, 143,
+   and Monad Testnet, 10143, on Envio's supported-networks page as of 2026-10-12), so each needs only
+   `ENVIO_API_TOKEN`; the public RPC is the fallback.
 3. Pick a deployment branch, for example `envio-testnet`.
 4. In the indexer's Environment Variables tab, set `ENVIO_API_TOKEN` (from the Envio app's API tokens
    page). Optionally set `ENVIO_MONAD_TESTNET_RPC`.

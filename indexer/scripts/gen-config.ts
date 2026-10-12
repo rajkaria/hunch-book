@@ -85,7 +85,7 @@ interface DeploymentFile {
   hunchBook: StackSection;
   /** Extra stacks by name (testnet: `kuruV2` and `hunch`, next to the Kuru v1 primary stack). */
   stacks?: Record<string, StackSection>;
-  wallets: { maker: string; keeper: string };
+  wallets: { maker: string; keeper: string; seeded?: string[] };
   external: {
     usdc?: string;
     kuru: { router: string; marginAccount: string };
@@ -427,6 +427,7 @@ export function networkConstants(d: DeploymentFile): NetworkConstants {
       feeRecipient: lower(h.feeRecipient),
       distributorFunder: lower(p.distributorFunder),
       timelockProposer: lower(p.timelockProposer),
+      seeded: (d.wallets.seeded ?? []).map((a) => a.toLowerCase()),
     },
     // The primary stack's, like `contracts` above: every other stack has its own in `stacks`.
     kuru: bookVenueOf(d, h).kuru,
