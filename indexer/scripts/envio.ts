@@ -4,25 +4,54 @@
 //
 //   pnpm --filter @hunch-book/indexer dev                     testnet, config.yaml
 //   pnpm --filter @hunch-book/indexer dev --network mainnet   mainnet, config.mainnet.yaml
+//
+// Envio Cloud runs `pnpm start --config <file>` from a copy of indexer/ alone. So this script imports
+// nothing from outside indexer/, takes the network from --config when it is given, and leaves the data
+// source to the config's default there (HyperSync, which the hosted service provides, with the RPC as
+// a fallback): the hosted service gives no way to set ENVIO_API_TOKEN on its free plan.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { INDEXER_DIR } from "./gen-config.js";
+
+const INDEXER_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const CONFIGS: Record<string, string> = { testnet: "config.yaml", mainnet: "config.mainnet.yaml" };
+
+/**
+ * The network and the arguments for the Envio CLI. `--network <name>` is ours and is removed;
+ * `--config <file>` (what Envio Cloud passes) names the network by its file and is kept for Envio.
+ */
+export function parseArgs(argv: string[]): { network: string; args: string[]; hosted: boolean } {
+  const args = [...argv];
+  const at = args.indexOf("--network");
+  let network = at >= 0 ? (args[at + 1] ?? "") : "testnet";
+  if (at >= 0) args.splice(at, 2);
+  const configAt = args.indexOf("--config");
+  const hosted = configAt >= 0;
+  if (hosted) {
+    const file = basename(args[configAt + 1] ?? "");
+    const named = Object.entries(CONFIGS).find(([, config]) => config === file)?.[0];
+    if (!named) throw new Error(`unknown config ${file}: use ${Object.values(CONFIGS).join(" or ")}`);
+    network = named;
+  }
+  return { network, args, hosted };
+}
 
 /** Environment for the Envio process. Pure, so the choice is testable. */
 export function envioEnv(
   env: NodeJS.ProcessEnv,
   network: string,
+  hosted = false,
 ): { env: NodeJS.ProcessEnv; notes: string[] } {
   const out: NodeJS.ProcessEnv = { ...env };
   const notes: string[] = [];
   const config = CONFIGS[network];
   if (!config) throw new Error(`unknown network ${network}: use testnet or mainnet`);
   out.ENVIO_CONFIG = config;
-  if (!out.ENVIO_RPC_MODE) {
+  if (!out.ENVIO_RPC_MODE && hosted) {
+    out.ENVIO_RPC_MODE = "fallback";
+  } else if (!out.ENVIO_RPC_MODE) {
     out.ENVIO_RPC_MODE = out.ENVIO_API_TOKEN ? "fallback" : "sync";
     if (!out.ENVIO_API_TOKEN) {
       notes.push(
@@ -41,16 +70,13 @@ export function envioEnv(
 }
 
 function main(): void {
-  const args = process.argv.slice(2);
-  const at = args.indexOf("--network");
-  const network = at >= 0 ? (args[at + 1] ?? "") : "testnet";
-  if (at >= 0) args.splice(at, 2);
+  const { network, args, hosted } = parseArgs(process.argv.slice(2));
   try {
     process.loadEnvFile(join(INDEXER_DIR, ".env"));
   } catch {
     // No indexer/.env: use the shell's environment.
   }
-  const { env, notes } = envioEnv(process.env, network);
+  const { env, notes } = envioEnv(process.env, network, hosted);
   const config = join(INDEXER_DIR, env.ENVIO_CONFIG as string);
   if (!existsSync(config)) {
     console.error(
