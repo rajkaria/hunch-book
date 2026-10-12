@@ -32,13 +32,7 @@ function withFriendly(
   return label ? { ...label, question: friendly(label.question) } : undefined;
 }
 
-function Row({
-  r,
-  label,
-}: {
-  r: MarketPnl;
-  label: MarketLabel | undefined;
-}) {
+function Row({ r, label }: { r: MarketPnl; label: MarketLabel | undefined }) {
   return (
     <tr>
       <td className={p.market}>

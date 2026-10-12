@@ -188,7 +188,9 @@ export function listSections<M extends Pick<MarketView, "stack" | "venue" | "kur
  * 207 blocks apart, read as the same estimated times. They are separate markets with their own pools and
  * books, so the list says so rather than hiding one.
  */
-export function sameQuestion<M extends Pick<MarketView, "address" | "marketId" | "stack" | "venue" | "kuruVersion">>(
+export function sameQuestion<
+  M extends Pick<MarketView, "address" | "marketId" | "stack" | "venue" | "kuruVersion">,
+>(
   markets: readonly M[],
   titleOf: (m: M) => string,
   deployment: Deployment = appDeployment,

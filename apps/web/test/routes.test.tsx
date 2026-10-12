@@ -640,11 +640,9 @@ describe("with contracts deployed", () => {
     state.markets = ok({ markets: [settledPool, lockedPool, settledBook], total: 3 });
     const list = await renderWithProviders(await MarketsPage(noSearch));
     const items = screen.getAllByRole("listitem") as HTMLElement[];
-    expect(items.map((li) => within(li).queryByText(VENUE_WORDS)?.parentElement?.textContent ?? null)).toEqual([
-      null,
-      null,
-      "Order book on Kuru",
-    ]);
+    expect(
+      items.map((li) => within(li).queryByText(VENUE_WORDS)?.parentElement?.textContent ?? null),
+    ).toEqual([null, null, "Order book on Kuru"]);
     list.unmount();
 
     state.market = ok(settledPool);
