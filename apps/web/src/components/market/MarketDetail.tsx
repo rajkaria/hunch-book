@@ -133,8 +133,11 @@ function useDocumentTitle(title: string) {
 
 export function MarketDetail({ address }: { address: Address }) {
   const query = useMarket(address);
-  // The head drives countdowns for block-clock markets and every action's time gate.
-  const clock = useChainClock(query.data?.status === "ok");
+  // The head drives countdowns for block-clock markets and every action's time gate. It is read from
+  // the start, beside the market, not after it; until it lands, the clock the server read with its
+  // list stands in, so a Perpl title shows times on its first paint.
+  const live = useChainClock(true);
+  const clock = live ?? query.servedClock ?? null;
   const now = useNow();
 
   if (query.isPending) return <LoadingRows rows={3} label="Loading market" />;
