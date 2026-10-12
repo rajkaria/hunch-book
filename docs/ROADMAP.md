@@ -111,7 +111,7 @@ Graduation rules (v0 values, set per template and visible on every market):
 | ID | Deliverable | Status |
 |---|---|---|
 | O-5 | Internal security review: reentrancy, rounding, flash-loan paths, griefing on graduation and settlement, front-running at graduation; Slither clean or each finding explained | done ([SECURITY-REVIEW.md](./SECURITY-REVIEW.md)) |
-| O-6 | Liveness checks: last settlement, last graduation, keeper balance, maker balance, alerts to a phone | live ([watchdog](../services/watchdog), every 30 minutes on GitHub Actions) |
+| O-6 | Liveness checks: last settlement, last graduation, keeper balance, maker balance, alerts to a phone | live ([watchdog](../services/watchdog), on a GitHub Actions schedule) |
 | O-7 | README with live addresses, setup steps a third party can follow, known limitations | done: [README](../README.md) with every live address and transaction, its known limitations, and setup steps run from a fresh clone of GitHub on 2026-10-06 (the full gate passed) |
 
 ---
