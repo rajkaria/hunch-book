@@ -1,9 +1,17 @@
 # Hunch Book indexer
 
-Status: **building**. The indexer in [`indexer/`](../indexer) is an [Envio HyperIndex](https://docs.envio.dev)
-3.x project. Its handlers are tested on simulated logs that match what the contracts emit, and an opt-in
-test indexes real Monad testnet blocks. It is not deployed to a hosted endpoint yet. The app reads it as
-soon as the build names an endpoint (below); until then every page that can use it reads the chain.
+Status: **live** on Envio Cloud for both networks since 2026-10-12. The indexer in [`indexer/`](../indexer)
+is an [Envio HyperIndex](https://docs.envio.dev) 3.x project. Its handlers are tested on simulated logs that
+match what the contracts emit, and an opt-in test indexes real Monad testnet blocks.
+
+| Network | Envio indexer | GraphQL endpoint | First sync (2026-10-12) |
+|---|---|---|---|
+| Monad mainnet (143) | `hunch-book-mainnet`, branch `envio-mainnet`, `config.mainnet.yaml` | [indexer.dev.hyperindex.xyz/f21dfe4/v1/graphql](https://indexer.dev.hyperindex.xyz/f21dfe4/v1/graphql) | from block 112,517,059 to the head in 3 minutes over HyperSync, 58 events |
+| Monad testnet (10143) | `hunch-book-testnet`, branch `envio-testnet`, `config.yaml` | [indexer.dev.hyperindex.xyz/0a7dab8/v1/graphql](https://indexer.dev.hyperindex.xyz/0a7dab8/v1/graphql) | from block 67,856,277 to the head in 3 minutes over HyperSync, 2,823 events |
+
+The app at [book.playhunch.xyz](https://book.playhunch.xyz) reads these endpoints (below) for the proof page,
+the trade tape, the portfolio's profit and loss and the creator pages, and reads the chain whenever an
+indexer is slow, behind or down.
 
 It turns Hunch Book's onchain events into a GraphQL API: markets, stakes, graduations, fills on our
 Kuru books, positions, settlements, redemptions, the totals behind the proof page
@@ -273,21 +281,26 @@ RPC mostly timed out. RPC mode suits short ranges and the chain head. A full syn
 
 ## Deploy on Envio Cloud
 
-Envio Cloud deploys from git, like Vercel. Steps, by name only (no secrets in the repo):
+Envio Cloud deploys from git, like Vercel. What we did, by name only (no secrets in the repo):
 
-1. Log in to the Envio app with GitHub, choose the organization, and install the Envio Deployments
-   GitHub app on this repository.
-2. Add an indexer with root directory `indexer` and config file `config.yaml` (testnet). Mainnet gets
-   its own indexer with config file `config.mainnet.yaml`. HyperSync serves both chains (Monad, 143,
-   and Monad Testnet, 10143, on Envio's supported-networks page as of 2026-10-12), so each needs only
-   `ENVIO_API_TOKEN`; the public RPC is the fallback.
-3. Pick a deployment branch, for example `envio-testnet`.
-4. In the indexer's Environment Variables tab, set `ENVIO_API_TOKEN` (from the Envio app's API tokens
-   page). Optionally set `ENVIO_MONAD_TESTNET_RPC`.
-5. Push the deployment branch. Each push builds a new deployment that re-indexes from the start block;
-   the previous one keeps serving queries until the new one has caught up.
-6. Copy the deployment's GraphQL endpoint from the dashboard (or `envio-cloud deployment endpoint`)
-   into the app's configuration.
+1. Logged in to the Envio app with GitHub and installed the Envio Deployments GitHub app on this repository.
+2. Added one indexer per network, both with root directory `./indexer`: `hunch-book-mainnet` with config
+   file `config.mainnet.yaml` and release branch `envio-mainnet`, and `hunch-book-testnet` with `config.yaml`
+   and `envio-testnet`.
+3. Pushed `main` to each release branch. Each push builds a new deployment that indexes from the start
+   block; the previous one keeps serving queries until it is deleted.
+4. Copied each deployment's GraphQL endpoint into the app's configuration (below).
+
+What Envio Cloud does, learned on the way:
+
+- It runs `pnpm start --config <file>` from a copy of `indexer/` alone. So
+  [`scripts/envio.ts`](../indexer/scripts/envio.ts) imports nothing from outside `indexer/`, takes the network
+  from that `--config` file, and leaves the source on HyperSync with the RPC as a fallback.
+- The hosted service reads Monad and Monad testnet over HyperSync by itself. The free development plan cannot
+  set environment variables, so it needs no `ENVIO_API_TOKEN` and gets none.
+- The free plan has no static production endpoint: every deployment has its own URL. After pushing a release
+  branch, update `NEXT_PUBLIC_INDEXER_URL` or `NEXT_PUBLIC_INDEXER_URL_MAINNET` on Vercel and redeploy the app,
+  then delete the old deployment (the plan keeps at most 3 per indexer).
 
 Envio Cloud needs `envio` pinned in `package.json` (it is: 3.12.1) and pnpm 10.32 (the repo uses it).
 
@@ -298,7 +311,7 @@ The app (`apps/web`) reads the endpoint from its build environment:
 | Variable | For |
 |---|---|
 | `NEXT_PUBLIC_INDEXER_URL` | the Monad testnet indexer (`config.yaml`) |
-| `NEXT_PUBLIC_INDEXER_URL_MAINNET` | the Monad mainnet indexer (`config.mainnet.yaml`), once it exists |
+| `NEXT_PUBLIC_INDEXER_URL_MAINNET` | the Monad mainnet indexer (`config.mainnet.yaml`) |
 
 Its queries live in [`apps/web/src/lib/indexer/queries.ts`](../apps/web/src/lib/indexer/queries.ts), and a
 test checks them against `schema.graphql`. The proof page, the trade tape, the portfolio's profit and
@@ -309,8 +322,10 @@ instead of showing an estimate. After a failure the app leaves the indexer alone
 
 ## Limits
 
-- **Envio Cloud's free development plan** (as its docs state on 2026-10-04): 3 development indexers per
-  organization and 3 deployments per indexer. A deployment is deleted after 30 days or above 20 GB.
+- **Envio Cloud's free development plan** (as its docs state on 2026-10-04, and its dashboard on 2026-10-12): 3
+  development indexers per organization and 3 deployments per indexer, 750 indexing hours, storage for about
+  100,000 events, and 100 queries a minute per deployment; past that limit the app falls back to the chain. A
+  deployment is deleted after 30 days or above 20 GB.
   Passing 100,000 processed events, 5 GB of storage, or 7 days without a query starts a 7-day grace
   period, then 3 days read-only, then deletion. The maker bot's quotes produce order events on every
   requote, so a busy testnet book reaches 100,000 events quickly: production needs a paid plan or a

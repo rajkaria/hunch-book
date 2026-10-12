@@ -252,7 +252,7 @@ on 2026-10-12; its markets, all created and seeded by us, trade and settle there
 | App | live | [book.playhunch.xyz](https://book.playhunch.xyz): markets, every market on Kuru at [/kuru](https://book.playhunch.xyz/kuru), trading, create flow, portfolio with P&L and claim-all, verifier, settlement archive, proof page, trade tape, status, hedge assistant, funding-cost calculator, ladders, parlays, rewards, passkey accounts |
 | Data API and embed | live | [/api/v1/stats](https://book.playhunch.xyz/api/v1/stats), [/api/v1/feed](https://book.playhunch.xyz/api/v1/feed), [/api/v1/settlements](https://book.playhunch.xyz/api/v1/settlements), [/api/v1/kuru/requests](https://book.playhunch.xyz/api/v1/kuru/requests), [/embed/funding/MON](https://book.playhunch.xyz/embed/funding/MON), [docs/API.md](./docs/API.md) |
 | Periphery (auto-redeem, orders, referrals, payouts, oracle, price adapter, timelock) | live on testnet, deployed on mainnet | addresses in [docs/PERIPHERY.md](./docs/PERIPHERY.md) |
-| Indexer ([indexer](./indexer)) | building | an Envio HyperIndex project over every Hunch Book event and every book, for both networks; tested; hosting on Envio in progress. Until it is hosted, the app reads the chain ([docs/INDEXER.md](./docs/INDEXER.md)) |
+| Indexer ([indexer](./indexer)) | live | Envio HyperIndex over every Hunch Book event and every book, hosted on Envio Cloud for [mainnet](https://indexer.dev.hyperindex.xyz/f21dfe4/v1/graphql) and [testnet](https://indexer.dev.hyperindex.xyz/0a7dab8/v1/graphql), synced over HyperSync. It feeds the app's proof page, trade tape, portfolio profit and loss and creator pages, which fall back to reading the chain if it is slow or down ([docs/INDEXER.md](./docs/INDEXER.md)) |
 | SDK and MCP server | building | [docs/SDK.md](./docs/SDK.md), [docs/MCP.md](./docs/MCP.md); packed and installed from their tarballs in CI, not on npm yet |
 | Kuru v2 books | building: waits on Kuru | a second testnet stack ([factory 0xd699…125A](https://testnet.monadscan.com/address/0xd6994DD479d845F1ea039b6322fBE00c12Ea125A)), fork tested against Kuru's live v2 contracts ([list](./docs/FACTS.md#kuru-v2-the-kuruv2-stack)) |
 
@@ -304,7 +304,7 @@ plan is in [docs/ROADMAP.md](./docs/ROADMAP.md).
 | More questions | stocks, other assets and onchain numbers, only where a source contract on Monad can answer them; never by hand | planned |
 | Hunch's agents | agents find, quote, trade and settle through the SDK and the MCP server | building |
 | Kuru v2 | graduation into Kuru v2 books | building: waits on Kuru |
-| Hosted indexer | Envio HyperIndex behind the proof page, trade tape, portfolio P&L and creator pages | building |
+| Hosted indexer | Envio HyperIndex behind the proof page, trade tape, portfolio P&L and creator pages | live (both networks) |
 | Hardening | guardian to a timelock and multisig, external audit, higher caps | planned |
 
 What success looks like: a Perpl trader hedges a week of funding in under a minute; most fills on our books
