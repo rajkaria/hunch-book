@@ -1,6 +1,7 @@
 import { type Deployment, Outcome, Phase } from "@hunch-book/shared";
 import { marketTitle } from "../market/title";
 import type { MarketView } from "../market/types";
+import { marketTag } from "../stacks";
 import { legClose, legEarliestLock, type ParlayLeg } from "./build";
 import { type Head, type Pace, timeAt } from "./clock";
 import { MIN_LEAD_SECONDS } from "./price";
@@ -33,6 +34,7 @@ export function parlayCandidates(
     .map((m) => ({
       address: m.address,
       marketId: m.marketId,
+      tag: marketTag(m, deployment),
       label: marketTitle(m, deployment, {
         blockNumber: ctx.head.number,
         timestamp: ctx.head.timestamp,
@@ -50,7 +52,7 @@ export function parlayCandidates(
     .sort((a, b) => a.earliestLock - b.earliestLock);
 }
 
-/** Candidates whose label or "#id" contains the query, case-insensitive. */
+/** Candidates whose label, "#id" or tag ("#4 · Kuru v1") contains the query, case-insensitive. */
 export function searchCandidates(candidates: readonly ParlayCandidate[], query: string): ParlayCandidate[] {
   const q = query.trim().toLowerCase();
   if (q === "") return [...candidates];
@@ -58,6 +60,7 @@ export function searchCandidates(candidates: readonly ParlayCandidate[], query: 
     (c) =>
       c.label.toLowerCase().includes(q) ||
       `#${c.marketId.toString()}`.includes(q) ||
+      (c.tag?.toLowerCase().includes(q) ?? false) ||
       c.address.toLowerCase().includes(q),
   );
 }

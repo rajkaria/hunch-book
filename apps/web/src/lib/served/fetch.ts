@@ -1,4 +1,5 @@
 import type { Network } from "@hunch-book/shared";
+import type { Address } from "viem";
 import type { MarketsSnapshot } from "../chain/reads";
 import type { ChainClock, MarketView, ReadResult } from "../market/types";
 import { type ServedKind, servedPath } from "./keys";
@@ -44,6 +45,38 @@ export function marketsRead(snapshot: MarketsSnapshot): MarketsRead {
   return snapshot.list.status === "ok"
     ? { status: "ok", data: { ...snapshot.list.data, clock: snapshot.clock } }
     : snapshot.list;
+}
+
+/** One market and the chain clock read with it: what a market page needs for its first paint. */
+export interface MarketSeed {
+  market: MarketView;
+  clock: ChainClock | null;
+}
+
+/** The market at `address` in a markets list, or null when the list does not have it. */
+export function seedFromList(read: MarketsRead | undefined, address: Address): MarketSeed | null {
+  if (read?.status !== "ok") return null;
+  const market = read.data.markets.find((m) => m.address.toLowerCase() === address.toLowerCase());
+  return market ? { market, clock: read.data.clock } : null;
+}
+
+/** Milliseconds a market page waits for the server's list; its own chain read runs alongside anyway. */
+export const SEED_TIMEOUT_MS = 5_000;
+
+/**
+ * One market from the server's cached markets list (/api/read/markets, the read /markets uses): a
+ * single request to our own server, often answered by the CDN, in place of the two RPC round trips a
+ * chain read of the market needs. Null when the list does not have the market (it lists the newest
+ * MARKET_LIST_LIMIT per stack). Throws when the request fails.
+ */
+export async function servedMarket(
+  network: Network,
+  address: Address,
+  fetcher?: typeof fetch,
+  timeoutMs = SEED_TIMEOUT_MS,
+): Promise<MarketSeed | null> {
+  const served = await fetchServed<MarketsSnapshot>("markets", network, fetcher, timeoutMs);
+  return seedFromList(marketsRead(served.data), address);
 }
 
 /**

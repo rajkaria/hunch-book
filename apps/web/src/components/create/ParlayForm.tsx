@@ -17,7 +17,7 @@ import { type ParlayLinked, toExactLocalInput } from "@/lib/create/linked";
 import { parlayCandidates, searchCandidates } from "@/lib/create/parlay";
 import { formatDuration } from "@/lib/format";
 import { useMarkets } from "@/lib/hooks";
-import { onDefaultStack } from "@/lib/stacks";
+import { marketTag, onDefaultStack } from "@/lib/stacks";
 import { Badge, Button, Field, fieldA11y, Input, Notice, Panel, Skeleton } from "../ui";
 import s from "./create.module.css";
 import { When } from "./When";
@@ -86,7 +86,7 @@ export function ParlayForm({
   }, [dropped, ready, candidates, draft.legs]);
   const droppedLabels = (dropped ?? []).map((a) => {
     const m = list?.find((x) => x.address.toLowerCase() === a.toLowerCase());
-    return m ? `#${m.marketId.toString()}` : a;
+    return m ? marketTag(m) : a;
   });
 
   // Until the creator edits the times, lock just before the first leg can and close with the last leg.
@@ -194,7 +194,7 @@ export function ParlayForm({
                       />
                       <span className={s.legText}>
                         <span className={s.legMeta}>
-                          <span className={s.mono}>#{c.marketId.toString()}</span>
+                          <span className={s.mono}>{c.tag ?? `#${c.marketId.toString()}`}</span>
                           <Badge tone={c.phase === Phase.Pool ? "cyan" : "accent"}>
                             {PHASE_LABEL[c.phase]}
                           </Badge>
@@ -238,7 +238,8 @@ export function ParlayForm({
                 <>
                   {lock !== null ? <When unix={lock} /> : null}
                   <span className={s.estimate}>
-                    Must be at or before market #{build.firstLock.leg.marketId.toString()} can lock.
+                    Must be at or before market{" "}
+                    {build.firstLock.leg.tag ?? `#${build.firstLock.leg.marketId.toString()}`} can lock.
                   </span>
                 </>
               ) : (

@@ -1,7 +1,10 @@
+import type { Network } from "@hunch-book/shared";
+
 // The keeper's and the maker's health snapshots (services/keeper/src/health.ts,
 // services/maker/src/health.ts), reduced to the fields the status page shows. The app fetches them
-// through its own route (/api/health/<service>) because the services' /health endpoints send no CORS
-// headers; the route passes on only these fields, each checked for type and length.
+// through its own route (/api/health/<service>?network=<network>) because the services' /health
+// endpoints send no CORS headers; the route passes on only these fields, each checked for type and
+// length. Each network runs its own keeper and maker, so each has its own pair of URLs.
 
 export type ServiceName = "keeper" | "maker";
 
@@ -127,13 +130,25 @@ export function sanitizeHealth(service: ServiceName, raw: unknown): ServiceHealt
   return view;
 }
 
-/** The health URL for a service, from the build-time public variables (or the server-only names). */
-export function healthUrl(service: ServiceName, env: Record<string, string | undefined>): string | undefined {
-  const raw =
-    service === "keeper"
-      ? (env.NEXT_PUBLIC_KEEPER_HEALTH_URL ?? env.KEEPER_HEALTH_URL)
-      : (env.NEXT_PUBLIC_MAKER_HEALTH_URL ?? env.MAKER_HEALTH_URL);
-  const value = raw?.trim();
+/**
+ * The variables that hold a service's health URL on a network, in the order they are read: the public
+ * build-time name, then the server-only one. Monad testnet uses KEEPER_HEALTH_URL and MAKER_HEALTH_URL;
+ * Monad mainnet adds _MAINNET (KEEPER_HEALTH_URL_MAINNET, MAKER_HEALTH_URL_MAINNET).
+ */
+export function healthEnvNames(service: ServiceName, network: Network = "monad-testnet"): [string, string] {
+  const base = service === "keeper" ? "KEEPER_HEALTH_URL" : "MAKER_HEALTH_URL";
+  const name = network === "monad-mainnet" ? `${base}_MAINNET` : base;
+  return [`NEXT_PUBLIC_${name}`, name];
+}
+
+/** The health URL for a service on a network, from the variables healthEnvNames lists. */
+export function healthUrl(
+  service: ServiceName,
+  env: Record<string, string | undefined>,
+  network: Network = "monad-testnet",
+): string | undefined {
+  const [publicName, serverName] = healthEnvNames(service, network);
+  const value = (env[publicName]?.trim() || env[serverName]?.trim()) ?? "";
   if (!value) return undefined;
   try {
     const u = new URL(value);

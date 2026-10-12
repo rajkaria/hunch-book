@@ -161,10 +161,34 @@ export function venueSentences(deployment: Deployment): string[] {
   return out;
 }
 
+/** A market (or a row about one) that marketTag can name: its number and, off the primary stack, its stack. */
+export type TaggedMarket = Pick<MarketView, "marketId"> & VenueSource & { stack?: string };
+
 /**
- * "#3" for a market on Hunch Book's own order book, "#3 · Kuru" on a Kuru v1 stack and "#3 · Kuru v2"
- * on a Kuru v2 stack. Each stack's factory numbers its markets from 1, so the venue keeps two markets
- * with the same number apart.
+ * Whose numbering a market's number is in: "Kuru v1", "Kuru v2" or "Hunch book" on Monad testnet, where
+ * three stacks each number their markets from 1, and "Mainnet" on Monad mainnet (another stack there
+ * would add its venue: "Mainnet Kuru v2"). Read from the market's stack in the deployment.
  */
-export const marketTag = (m: Pick<MarketView, "marketId"> & VenueSource): string =>
-  `#${m.marketId.toString()}${onHunchVenue(m) ? "" : ` · ${marketVenueLabel(m)}`}`;
+export function numberingLabel(m: TaggedMarket, deployment: Deployment = appDeployment): string {
+  // With a stack name, the deployment says where its books are. Without one, the venue fields do: absent
+  // on the primary Kuru v1 stack, set on every other stack (stackTag, the status page's reads).
+  const { venue, kuruVersion } =
+    m.stack !== undefined
+      ? marketVenue(m, deployment)
+      : { venue: venueOfMarket(m), kuruVersion: m.kuruVersion === 2 ? 2 : 1 };
+  const name = venue === "hunch" ? "Hunch book" : kuruVersion === 2 ? "Kuru v2" : "Kuru v1";
+  if (deployment.network !== "monad-mainnet") return name;
+  // A market read without a stack name carries venue fields only off the primary stack (stackTag).
+  const primary =
+    m.stack === undefined ? m.venue === undefined && m.kuruVersion === undefined : m.stack === "primary";
+  return primary ? "Mainnet" : `Mainnet ${name}`;
+}
+
+/**
+ * A market's number with whose numbering it is in: "#4 · Kuru v1", "#4 · Kuru v2" and "#4 · Hunch book"
+ * are three different markets on Monad testnet, and "#1 · Mainnet" is market 1 on Monad mainnet. Each
+ * stack's factory numbers its markets from 1, so a bare "#4" is never shown on its own. Links keep using
+ * the market's address.
+ */
+export const marketTag = (m: TaggedMarket, deployment: Deployment = appDeployment): string =>
+  `#${m.marketId.toString()} · ${numberingLabel(m, deployment)}`;

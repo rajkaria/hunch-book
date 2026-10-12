@@ -1,8 +1,8 @@
 "use client";
 
 import { testUsdcAbi } from "@hunch-book/shared";
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import type { Address } from "viem";
 import { getPublicClient, makePublicClient } from "./chain/client";
 import { readBookSnapshot } from "./chain/kuru";
@@ -20,9 +20,16 @@ import {
 } from "./chain/reads";
 import { appChain, appDeployment, appNetwork, isDeployed, usdcOf } from "./config";
 import { planSettlement } from "./market/settle";
-import type { ChainClock, MarketView } from "./market/types";
-import { type MarketsRead, marketsRead, marketsServedFirst } from "./served/fetch";
-import { defaultStack, deployBlockOf, routerOf } from "./stacks";
+import type { ChainClock, MarketView, ReadResult } from "./market/types";
+import {
+  type MarketSeed,
+  type MarketsRead,
+  marketsRead,
+  marketsServedFirst,
+  seedFromList,
+  servedMarket,
+} from "./served/fetch";
+import { defaultStack, deployBlockOf, marketTag, routerOf } from "./stacks";
 import { findSettlementTx, runVerification } from "./verify/read";
 
 // React Query hooks over the read layer. Query keys never hold bigints.
@@ -88,13 +95,79 @@ export function useMarkets() {
   });
 }
 
-export function useMarket(address: Address) {
-  return useQuery({
+/**
+ * Each listed market's tag ("#4 · Kuru v1", lib/stacks.ts marketTag) by lower-case address, from the
+ * shared markets read: for rows that carry only a factory's number (the indexer's), which alone could be
+ * any stack's market.
+ */
+export function useMarketTags(): ReadonlyMap<string, string> {
+  const markets = useMarkets();
+  return useMemo(() => {
+    const list = markets.data?.status === "ok" ? markets.data.data.markets : [];
+    return new Map(list.map((m) => [m.address.toLowerCase(), marketTag(m)]));
+  }, [markets.data]);
+}
+
+interface MarketQueryBase {
+  refetch: () => Promise<unknown>;
+  /**
+   * "server" for the first paint, from the server's cached markets list (a few seconds old), until this
+   * browser's own chain read lands; "chain" from then on; null while neither has answered.
+   */
+  source: "chain" | "server" | null;
+  /** The chain clock the server read with its list, for titles and countdowns until the browser's own. */
+  servedClock: ChainClock | null;
+}
+
+/** useMarket's answer: shaped like a React Query result, so pages handle pending and errors as before. */
+export type MarketQuery = MarketQueryBase &
+  (
+    | { isPending: true; isError: false; data: undefined }
+    | { isPending: false; isError: true; data: ReadResult<MarketView> | undefined }
+    | { isPending: false; isError: false; data: ReadResult<MarketView> }
+  );
+
+/**
+ * One market, read live from the chain every 6 seconds. That read takes two RPC round trips from the
+ * browser (the market's fields, then its rule sentence and book quote), so the first paint does not
+ * wait for it: it uses the markets list this browser already holds, or else the server's cached list
+ * (one request to our own server), and the chain read replaces it as soon as it lands. A market the
+ * list does not have waits for the chain read, as before.
+ */
+export function useMarket(address: Address): MarketQuery {
+  const queryClient = useQueryClient();
+  const live = useQuery({
     queryKey: queryKeys.market(address),
     queryFn: () => readMarket(getPublicClient(), appDeployment, address),
     enabled: deployed(),
     refetchInterval: 6_000,
   });
+  const network = appNetwork;
+  const seed = useQuery({
+    queryKey: [...queryKeys.market(address), "served"],
+    queryFn: (): Promise<MarketSeed | null> => servedMarket(network, address).catch(() => null),
+    // Straight from the list in memory when this browser came from /markets or the landing page.
+    initialData: () =>
+      seedFromList(queryClient.getQueryData<MarketsRead>(queryKeys.markets()), address) ?? undefined,
+    enabled: deployed() && live.data === undefined,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+  const base = { refetch: live.refetch, servedClock: seed.data?.clock ?? null };
+  if (live.data === undefined && seed.data) {
+    return {
+      ...base,
+      source: "server",
+      isPending: false,
+      isError: false,
+      data: { status: "ok", data: seed.data.market },
+    };
+  }
+  if (live.isPending) return { ...base, source: null, isPending: true, isError: false, data: undefined };
+  if (live.isError) {
+    return { ...base, source: live.data ? "chain" : null, isPending: false, isError: true, data: live.data };
+  }
+  return { ...base, source: "chain", isPending: false, isError: false, data: live.data };
 }
 
 export function usePortfolio(user: Address | undefined) {

@@ -7,6 +7,7 @@ import { appDeployment, appNetworkLabel } from "@/lib/config";
 import { creatorKeys, useCreator, useCreatorFees } from "@/lib/creator/hooks";
 import type { CreatorData, StackFees } from "@/lib/creator/read";
 import { formatBpsPercent, formatInt, formatUsdc, formatUtc, shortAddress } from "@/lib/format";
+import { useMarketTags } from "@/lib/hooks";
 import { useFriendlyQuestions } from "@/lib/market/useQuestion";
 import { useAppChain } from "@/lib/wallet/useAppChain";
 import { stageText, useTxRunner } from "@/lib/wallet/useTxRunner";
@@ -199,6 +200,8 @@ function Withdrawals({ data }: { data: CreatorData }) {
 function Markets({ data }: { data: CreatorData }) {
   const indexed = data.scanned === null;
   const friendly = useFriendlyQuestions(data.markets.map((m) => m.question));
+  // The indexer's rows carry only each factory's number; the markets read names their stacks.
+  const tags = useMarketTags();
   return (
     <Panel
       title="Markets created"
@@ -242,7 +245,9 @@ function Markets({ data }: { data: CreatorData }) {
                 <tr key={m.market}>
                   <td className={s.market}>
                     <Link href={`/m/${m.market}`} title={friendly(m.question) ?? m.market}>
-                      {m.tag ?? (m.number !== null ? `#${m.number}` : shortAddress(m.market))}
+                      {m.tag ??
+                        tags.get(m.market.toLowerCase()) ??
+                        (m.number !== null ? `#${m.number}` : shortAddress(m.market))}
                       {m.question ? <span className={s.question}> {friendly(m.question)}</span> : null}
                     </Link>
                   </td>

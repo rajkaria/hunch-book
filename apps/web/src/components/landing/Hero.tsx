@@ -1,13 +1,21 @@
-import { addressUrl, deployments, Phase } from "@hunch-book/shared";
+import { addressUrl, Phase } from "@hunch-book/shared";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { isSeededByUs, type LandingRead, landingClock } from "@/lib/chain/landing";
-import { appDeployment, appNetwork, appNetworkLabel, isDeployed, REPO_URL } from "@/lib/config";
+import {
+  appDeployment,
+  appNetwork,
+  appNetworkLabel,
+  isDeployed,
+  mainnetLiveHref,
+  REPO_URL,
+} from "@/lib/config";
 import { formatInt, formatUsdc, shortAddress } from "@/lib/format";
 import { chanceDisplay, lifecycleStages, marketChance, type StageState } from "@/lib/market/logic";
 import { marketTitle, type TitleClock } from "@/lib/market/title";
 import type { MarketView } from "@/lib/market/types";
 import { bookName, defaultStack, marketTag, onHunchVenue } from "@/lib/stacks";
+import { noBookWords } from "../markets/VenueChip";
 import { AddressLink, Badge, ButtonLink, ChanceBar, LiveDot, PhasePill } from "../ui";
 import s from "./landing.module.css";
 import { priceWords, usdcWords } from "./words";
@@ -173,7 +181,7 @@ function LiveMarketCard({ m, clock }: { m: MarketView; clock: TitleClock | null 
             {bookName(m)} <AddressLink address={m.book} />
           </span>
         ) : (
-          <span className="subtle">No book yet</span>
+          <span className="subtle">{noBookWords(m)}</span>
         )}
         <Link href={href} className={s.cardOpen}>
           Open market <span aria-hidden="true">→</span>
@@ -217,7 +225,8 @@ export function HeroCard({ live }: { live: LandingRead }) {
 
 export function Hero({ live }: { live: LandingRead }) {
   const deployed = isDeployed(appDeployment);
-  const mainnetLive = isDeployed(deployments["monad-mainnet"]);
+  // Links to mainnet's first market on the explorer, its evidence (CLAUDE.md Rule 4).
+  const mainnetHref = mainnetLiveHref();
   // Kuru is the venue for every new market; the line follows the stack new markets go to.
   const stack = defaultStack();
   const newBooksOnKuru = deployed && stack !== undefined && !onHunchVenue(stack);
@@ -263,9 +272,13 @@ export function Hero({ live }: { live: LandingRead }) {
               {deployed ? `Live on ${appNetworkLabel}` : `${appNetworkLabel}: not deployed yet`}
             </Badge>
             {appNetwork === "monad-testnet" ? (
-              <Badge tone="muted">
-                {mainnetLive ? "Contracts live on Monad mainnet" : "Mainnet planned"}
-              </Badge>
+              mainnetHref ? (
+                <Badge tone="muted" href={mainnetHref}>
+                  Live on Monad mainnet
+                </Badge>
+              ) : (
+                <Badge tone="muted">Mainnet planned</Badge>
+              )
             ) : null}
           </div>
         </div>

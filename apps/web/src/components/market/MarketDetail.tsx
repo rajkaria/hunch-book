@@ -12,6 +12,7 @@ import { phaseLabel, phaseTone } from "@/lib/market/logic";
 import { templateLabel } from "@/lib/market/params";
 import { titleDiffersFromRule } from "@/lib/market/title";
 import type { ChainClock, MarketView } from "@/lib/market/types";
+import { marketTag } from "@/lib/stacks";
 import { HealthPanel } from "../health/Health";
 import { Countdown, marketHeadline } from "../markets/MarketCard";
 import { VenueBadge } from "../markets/VenueChip";
@@ -66,8 +67,8 @@ export function MarketBody({
           </Badge>
           <VenueBadge m={m} />
           <span>{templateLabel(m.templateId)}</span>
-          {/* The venue badge tells same-numbered markets on different stacks apart. */}
-          <span className="mono">Market #{m.marketId.toString()}</span>
+          {/* Each stack numbers its markets from 1: the tag says whose numbering this is. */}
+          <span className="mono">Market {marketTag(m)}</span>
           <span className="mono">
             <Countdown m={m} clock={clock} now={now} />
           </span>
@@ -132,8 +133,11 @@ function useDocumentTitle(title: string) {
 
 export function MarketDetail({ address }: { address: Address }) {
   const query = useMarket(address);
-  // The head drives countdowns for block-clock markets and every action's time gate.
-  const clock = useChainClock(query.data?.status === "ok");
+  // The head drives countdowns for block-clock markets and every action's time gate. It is read from
+  // the start, beside the market, not after it; until it lands, the clock the server read with its
+  // list stands in, so a Perpl title shows times on its first paint.
+  const live = useChainClock(true);
+  const clock = live ?? query.servedClock ?? null;
   const now = useNow();
 
   if (query.isPending) return <LoadingRows rows={3} label="Loading market" />;

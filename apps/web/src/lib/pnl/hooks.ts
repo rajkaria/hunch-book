@@ -8,6 +8,7 @@ import { appDeployment, appNetwork, isDeployed } from "../config";
 import { getIndexerClient } from "../indexer/client";
 import { type Sourced, withIndexer } from "../indexer/source";
 import type { PortfolioEntry } from "../market/types";
+import { marketTag } from "../stacks";
 import { readEntries } from "./chain";
 import type { MarketLabel } from "./csv";
 import { eventsFromChain, eventsFromHistory, fetchHistory, markOf, missingMarkets } from "./history";
@@ -76,7 +77,7 @@ export function usePortfolioPnl(user: Address | undefined, entries: readonly Por
     const labels = new Map<string, MarketLabel>(
       all.map((e) => [
         e.market.address.toLowerCase(),
-        { number: Number(e.market.marketId), question: e.market.description },
+        { number: Number(e.market.marketId), tag: marketTag(e.market), question: e.market.description },
       ]),
     );
     return {

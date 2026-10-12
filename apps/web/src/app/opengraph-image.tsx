@@ -1,8 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { deployments } from "@hunch-book/shared";
 import { ImageResponse } from "next/og";
-import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
+import { appDeployment, appNetworkLabel, isDeployed, mainnetLiveHref } from "@/lib/config";
 
 // The share card, in the main Hunch look: ink with a lime and a violet glow, the lime tile, and the
 // three-stage headline in Archivo (read from public/fonts at build time, no network). Built once.
@@ -25,7 +24,8 @@ export default async function OpengraphImage() {
     fontFile("archivo-latin-500-normal.woff"),
   ]);
   const live = isDeployed(appDeployment);
-  const mainnetLive = isDeployed(deployments["monad-mainnet"]);
+  // Mainnet has a market (lib/config.ts MAINNET_FIRST_MARKET), so it is live, not just deployed.
+  const mainnetLive = mainnetLiveHref() !== null;
   const pill = (text: string, color: string, border: string, background: string) => (
     <div
       style={{
@@ -139,7 +139,7 @@ export default async function OpengraphImage() {
             : pill(`${appNetworkLabel}: building`, WARN, "rgba(246,189,79,0.4)", "rgba(246,189,79,0.1)")}
           {appNetworkLabel === "Monad testnet"
             ? pill(
-                mainnetLive ? "Contracts live on Monad mainnet" : "Mainnet planned",
+                mainnetLive ? "Live on Monad mainnet" : "Mainnet planned",
                 MUTED,
                 "rgba(250,250,247,0.16)",
                 "rgba(250,250,247,0.05)",

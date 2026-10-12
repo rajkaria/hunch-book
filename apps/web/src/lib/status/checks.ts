@@ -284,7 +284,7 @@ export function checkService(
       id,
       title,
       level: "unknown",
-      summary: `No health URL is set for the ${name} on this site, so only its balance on chain is shown.`,
+      summary: `Health endpoint not published; reading the chain instead. The ${name}'s MON balance and its work on the markets above are read from the contracts.`,
     };
   }
   if (!h.reachable || !h.lastCycleAt) {

@@ -1,4 +1,5 @@
 import { formatBps, formatUsdc, type MarketInfo } from "@hunch-book/sdk";
+import { marketTag } from "../../../../lib/stacks";
 import type { ApiDeps } from "./deps";
 import { type FundingView, wholePercent } from "./funding";
 import {
@@ -148,8 +149,14 @@ export function renderMarketCard(
   const url = marketUrl(deps, m.address);
   const title = marketTitleText(m, clock);
   const cta = m.phaseName === "pool" ? "Stake" : m.phaseName === "trading" ? "Trade" : "View";
+  // Each stack numbers its markets from 1: "#4 · Kuru v1", never a bare "#4".
+  const venue = stackVenue(m, deps);
+  const tag = marketTag(
+    { marketId: BigInt(m.id), stack: venue.stack, venue: venue.venue, kuruVersion: m.kuruVersion ?? 1 },
+    deps.deployment,
+  );
   const body = `<main class="card">
-<div class="meta">${BRAND}<span class="badge ${TONE[m.phaseName] ?? ""}">${escapeHtml(m.phaseLabel)}</span><span>${escapeHtml(m.template)}</span><span class="right">#${m.id}</span></div>
+<div class="meta">${BRAND}<span class="badge ${TONE[m.phaseName] ?? ""}">${escapeHtml(m.phaseLabel)}</span><span>${escapeHtml(m.template)}</span><span class="right">${escapeHtml(tag)}</span></div>
 <h1>${escapeHtml(title)}</h1>
 <div class="figures"><div class="chance"><span class="value">${escapeHtml(chance.value)}</span><span class="label">${escapeHtml(chance.label)}</span></div><div>${bar}<div class="line">${escapeHtml(line)}</div></div></div>
 <div class="foot">${when ? `<span>${escapeHtml(when)}</span>` : ""}<span>${networkName(deps)}</span><a class="cta" href="${escapeHtml(url)}" target="_blank" rel="noopener">${cta} on Hunch Book</a></div>

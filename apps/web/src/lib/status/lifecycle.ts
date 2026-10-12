@@ -1,8 +1,9 @@
 import type { ServiceHealthView } from "./health";
 
-// When the last settlement and the last graduation happened. From the indexer when
-// NEXT_PUBLIC_INDEXER_URL is set (exact chain times); otherwise from the keeper's health (its own last
-// actions); otherwise unknown. The page says which source it used.
+// When the last settlement and the last graduation happened. From the network's indexer when its URL is
+// set (NEXT_PUBLIC_INDEXER_URL, or NEXT_PUBLIC_INDEXER_URL_MAINNET on mainnet: exact chain times);
+// otherwise from the keeper's health (its own last actions); otherwise the page points to the chain's
+// own record. The page says which source it used.
 
 export interface LastEvent {
   /** Unix seconds. */
@@ -62,6 +63,17 @@ export async function readLifecycleFromIndexer(
   } catch {
     return null;
   }
+}
+
+/**
+ * What the page says when neither source gave a time: calm and accurate. Nothing is broken when no
+ * endpoint is published; the chain still answers, on the settlements page.
+ */
+export function lifecycleNote(sources: { indexer: boolean; keeper: boolean; network: string }): string {
+  if (!sources.indexer && !sources.keeper) {
+    return `No indexer or keeper health endpoint is published for ${sources.network}, so this panel has no times. Reading the chain instead:`;
+  }
+  return "The indexer and the keeper's health did not answer just now. Reading the chain instead:";
 }
 
 /** The keeper's last successful settle and graduate actions, from its health snapshot. */

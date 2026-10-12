@@ -82,7 +82,7 @@ become the guardian so new templates are public before they go live.
 | Maker bot | [`services/maker`](../services/maker) | Quotes both sides of each graduated book from a pricing model per template; paper mode for testing | Only its own capital; every fill against it is labelled ours |
 | Indexer | [`indexer`](../indexer) | Envio HyperIndex over every Hunch Book event and our Kuru books; serves GraphQL | No: read only |
 | Notifier | [`services/notifier`](../services/notifier) | Telegram alerts for graduation, settlement, big moves and winnings ready | No: read only |
-| Watchdog | [`services/watchdog`](../services/watchdog) | Checks solvency, supply, settlement lag, missed graduations and gas every 30 minutes; opens an issue on problems | No: read only |
+| Watchdog | [`services/watchdog`](../services/watchdog) | Checks solvency, supply, settlement lag, missed graduations and gas on a GitHub Actions schedule; opens an issue on problems | No: read only |
 | Rewards scorer | [`services/rewards`](../services/rewards) | Scores makers and referrers and writes Merkle epochs for the distributor | No: dry run; a funder publishes epochs |
 | App | [`apps/web`](../apps/web) | Markets, trading, create flow, portfolio, verifier, proof, tape, status, hedge assistant, feed, ladders, parlays, rewards | No: every action is a transaction the user signs |
 | Relayer routes | `apps/web/src/app/api/` | Small MON drip for new passkey accounts; relays signed USDC stakes | Spends only its own MON; a stake can only go to the market and side the user signed |

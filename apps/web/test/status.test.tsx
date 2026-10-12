@@ -19,10 +19,10 @@ import {
   overall,
   PHASE,
 } from "../src/lib/status/checks";
-import { fetchServiceHealth, healthUrl, sanitizeHealth } from "../src/lib/status/health";
+import { fetchServiceHealth, healthEnvNames, healthUrl, sanitizeHealth } from "../src/lib/status/health";
 import { readIncidentLog } from "../src/lib/status/incidentLog";
 import { hasIncidents, parseIncidents, parseInline } from "../src/lib/status/incidents";
-import { lifecycleFromKeeper, readLifecycleFromIndexer } from "../src/lib/status/lifecycle";
+import { lifecycleFromKeeper, lifecycleNote, readLifecycleFromIndexer } from "../src/lib/status/lifecycle";
 import {
   readStatusSnapshot,
   readStatusSnapshots,
@@ -280,6 +280,41 @@ describe("service health", () => {
     );
     expect(healthUrl("maker", { MAKER_HEALTH_URL: "ftp://m" })).toBeUndefined();
     expect(healthUrl("keeper", {})).toBeUndefined();
+    // An empty public variable does not hide the server-only one.
+    expect(
+      healthUrl("keeper", { NEXT_PUBLIC_KEEPER_HEALTH_URL: " ", KEEPER_HEALTH_URL: "https://k.example/h" }),
+    ).toBe("https://k.example/h");
+  });
+
+  it("reads each network's own URL: _MAINNET on Monad mainnet, never testnet's", () => {
+    const env = {
+      KEEPER_HEALTH_URL: "https://keeper-testnet.example/health",
+      MAKER_HEALTH_URL: "https://maker-testnet.example/health",
+      KEEPER_HEALTH_URL_MAINNET: "https://keeper-mainnet.example/health",
+      NEXT_PUBLIC_MAKER_HEALTH_URL_MAINNET: "https://maker-mainnet.example/health",
+    };
+    expect(healthUrl("keeper", env, "monad-testnet")).toBe("https://keeper-testnet.example/health");
+    expect(healthUrl("keeper", env, "monad-mainnet")).toBe("https://keeper-mainnet.example/health");
+    expect(healthUrl("maker", env, "monad-mainnet")).toBe("https://maker-mainnet.example/health");
+    expect(healthUrl("maker", { MAKER_HEALTH_URL: env.MAKER_HEALTH_URL }, "monad-mainnet")).toBeUndefined();
+    expect(healthEnvNames("keeper", "monad-mainnet")).toEqual([
+      "NEXT_PUBLIC_KEEPER_HEALTH_URL_MAINNET",
+      "KEEPER_HEALTH_URL_MAINNET",
+    ]);
+    expect(healthEnvNames("maker")).toEqual(["NEXT_PUBLIC_MAKER_HEALTH_URL", "MAKER_HEALTH_URL"]);
+  });
+
+  it("says calmly when no health endpoint is published, and that the chain is read instead", () => {
+    const check = checkService("keeper", { service: "keeper", configured: false, reachable: false }, NOW);
+    expect(check.level).toBe("unknown");
+    expect(check.summary).toMatch(/^Health endpoint not published; reading the chain instead\./);
+    expect(check.summary).not.toMatch(/not set up|broken|down/);
+    expect(lifecycleNote({ indexer: false, keeper: false, network: "Monad mainnet" })).toBe(
+      "No indexer or keeper health endpoint is published for Monad mainnet, so this panel has no times. Reading the chain instead:",
+    );
+    expect(lifecycleNote({ indexer: true, keeper: false, network: "Monad testnet" })).toMatch(
+      /did not answer just now\. Reading the chain instead:$/,
+    );
   });
 
   it("fetches without throwing", async () => {
@@ -545,7 +580,17 @@ describe("status page", () => {
     ).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Every contract" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Keeper (ours)" })).toBeTruthy();
-    expect(screen.getAllByText(/No health URL is set for the keeper/).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Health endpoint not published; reading the chain instead/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/not set up/)).toBeNull();
+    // With no indexer or keeper health, the lifecycle panel points to the chain's own record.
+    expect(
+      screen.getByText(/No indexer or keeper health endpoint is published for Monad testnet/),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "every settlement, with its transaction" }).getAttribute("href"),
+    ).toBe("/settlements");
   });
 
   it("checks every stack on its own, and names each one", async () => {
@@ -579,9 +624,10 @@ describe("status page", () => {
     expect(
       screen.getByRole("heading", { name: "Markets: Stack hunch (Hunch order book, new markets)" }),
     ).toBeTruthy();
-    // Market #1 on each stack, told apart by venue.
-    expect(screen.getByRole("link", { name: "#1 · Kuru" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "#1" })).toBeTruthy();
+    // Market #1 on each stack, told apart by venue: never a bare "#1".
+    expect(screen.getByRole("link", { name: "#1 · Kuru v1" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "#1 · Hunch book" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "#1" })).toBeNull();
   });
 
   it("turns red when the vault is short", async () => {

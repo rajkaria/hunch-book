@@ -3,9 +3,10 @@
 import { addressUrl, PHASE_LABEL, type Phase, txUrl } from "@hunch-book/shared";
 import Link from "next/link";
 import type { Address, Hex } from "viem";
-import { appDeployment, appNetworkLabel, isDeployed } from "@/lib/config";
+import { appDeployment, appNetwork, appNetworkLabel, isDeployed } from "@/lib/config";
 import { formatUsdc, formatUtc, shortAddress } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
+import { indexerUrl } from "@/lib/indexer/client";
 import { marketTag } from "@/lib/stacks";
 import {
   checkService,
@@ -22,7 +23,7 @@ import {
 import type { ServiceHealthView } from "@/lib/status/health";
 import { useIndexerLifecycle, useServiceHealth, useStatusSnapshots } from "@/lib/status/hooks";
 import type { Block } from "@/lib/status/incidents";
-import { type LastEvent, lifecycleFromKeeper } from "@/lib/status/lifecycle";
+import { type LastEvent, lifecycleFromKeeper, lifecycleNote } from "@/lib/status/lifecycle";
 import type { StatusSnapshot } from "@/lib/status/reads";
 import ps from "../page.module.css";
 import { ErrorState, LoadingRows, NotDeployed } from "../states";
@@ -306,6 +307,7 @@ export function StatusView({ incidents }: { incidents: Block[] }) {
   const checks = data ? [...chainChecks, ...serviceChecks] : [];
   const level: Level = data ? overall(checks) : snapshots.isError ? "fail" : "unknown";
   const lifecycle = indexer.data ?? lifecycleFromKeeper(keeper.data);
+  const indexerConfigured = indexerUrl(appNetwork) !== null;
 
   return (
     <div className={ps.stack}>
@@ -384,8 +386,12 @@ export function StatusView({ incidents }: { incidents: Block[] }) {
         />
         {!lifecycle ? (
           <p className={s.note} style={{ marginTop: 8 }}>
-            These come from the indexer (NEXT_PUBLIC_INDEXER_URL) or the keeper's health; neither is set up
-            for this site yet.
+            {lifecycleNote({
+              indexer: indexerConfigured,
+              keeper: keeper.data?.configured ?? false,
+              network: appNetworkLabel,
+            })}{" "}
+            <Link href="/settlements">every settlement, with its transaction</Link>.
           </p>
         ) : null}
       </Panel>

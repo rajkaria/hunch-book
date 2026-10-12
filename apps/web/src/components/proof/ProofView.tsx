@@ -17,7 +17,7 @@ import {
 import type { DataSource } from "@/lib/indexer/source";
 import { latestFinal } from "@/lib/proof/chain";
 import { type ProofView as ProofModel, useChainTimings, useProof } from "@/lib/proof/hooks";
-import type { MarketSolvency, SettlementTiming, VaultBalance } from "@/lib/proof/metrics";
+import { type MarketSolvency, rowLabel, type SettlementTiming, type VaultBalance } from "@/lib/proof/metrics";
 import { marketVenueLabel } from "@/lib/stacks";
 import { tapeStats } from "@/lib/tape/fills";
 import { booksOf, useTape } from "@/lib/tape/hooks";
@@ -313,7 +313,7 @@ function TimingTable({ rows, caption }: { rows: SettlementTiming[]; caption: str
             <tr key={t.market}>
               <td>
                 <Link href={`/m/${t.market}`} title={t.question ?? undefined}>
-                  {t.number !== null ? `#${t.number}` : shortAddress(t.market)}
+                  {rowLabel(t) ?? shortAddress(t.market)}
                 </Link>
               </td>
               <td>{t.voided ? "Voided" : t.outcome ? `Settled ${t.outcome.toUpperCase()}` : "Settled"}</td>
@@ -506,7 +506,7 @@ function SolvencyTable({ rows, source }: { rows: MarketSolvency[]; source: DataS
             <tr key={r.market}>
               <td>
                 <Link href={`/m/${r.market}`} title={r.question ?? undefined}>
-                  {r.number !== null ? `#${r.number}` : shortAddress(r.market)}
+                  {rowLabel(r) ?? shortAddress(r.market)}
                 </Link>{" "}
                 <AddressLink address={r.market} />
               </td>
@@ -557,7 +557,7 @@ function SolvencyPanel({ data, source }: { data: ProofModel; source: DataSource 
       {data.negative.length > 0 ? (
         <Notice tone="danger" title="A market shows a negative margin" role="alert">
           <p>
-            {data.negative.map((m) => `#${m.number ?? "?"}`).join(", ")}. This should never happen; the
+            {data.negative.map((m) => rowLabel(m) ?? m.market).join(", ")}. This should never happen; the
             indexer may be missing an event. The vault margin above is read live from the chain.
           </p>
         </Notice>

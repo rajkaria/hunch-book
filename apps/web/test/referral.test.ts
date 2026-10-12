@@ -281,14 +281,14 @@ describe("share card content", () => {
       "Trading on the order book",
     );
     const own = shareCard(makeMarket({ stack: "hunch", venue: "hunch", kuruVersion: 1 }), "Q?");
-    expect(own.meta[1]).toBe("Market #7");
+    expect(own.meta[1]).toBe("Market #7 · Hunch book");
   });
 
   it("shows a pool market's chance, bar and pool, and a settled one's winner", () => {
     const pool = shareCard(makeMarket(), "Will BTC/USD be at or above $120,000?");
     expect(pool.chance).toEqual({ value: "75.0%", caption: "chance of YES, pool split" });
     expect(pool.yesPct).toBe(75);
-    expect(pool.meta).toEqual(["Price at a time", "Market #7 · Kuru", "Pool 400.00 USDC, 4 stakers"]);
+    expect(pool.meta).toEqual(["Price at a time", "Market #7 · Kuru v1", "Pool 400.00 USDC, 4 stakers"]);
     const settled = shareCard(makeMarket({ phase: Phase.Settled, outcome: Outcome.No }), "Q?");
     expect(settled.chance).toEqual({ value: "NO", caption: "won" });
     expect(settled.yesPct).toBe(0);

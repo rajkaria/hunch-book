@@ -458,6 +458,8 @@ export function buildTouchParams(
 export interface ParlayLeg {
   address: Address;
   marketId: bigint;
+  /** "#4 · Kuru v1" (lib/stacks.ts marketTag); without it, the plain number. */
+  tag?: string;
   label: string;
   window: Window;
 }
@@ -538,7 +540,7 @@ export function buildParlayParams(draft: ParlayDraft, ctx: ParlayContext): Parla
     issues.push(
       issue(
         "lock",
-        `A parlay must lock at or before every leg. Market #${out.firstLock.leg.marketId.toString()} can lock as early as ${formatUtc(out.firstLock.unix)}, so pick a lock at or before that.`,
+        `A parlay must lock at or before every leg. Market ${out.firstLock.leg.tag ?? `#${out.firstLock.leg.marketId.toString()}`} can lock as early as ${formatUtc(out.firstLock.unix)}, so pick a lock at or before that.`,
       ),
     );
   }

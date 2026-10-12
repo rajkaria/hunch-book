@@ -1,4 +1,4 @@
-import { deployments, Outcome, Phase } from "@hunch-book/shared";
+import { addressUrl, deployments, Outcome, Phase } from "@hunch-book/shared";
 import { render, screen, within } from "@testing-library/react";
 import type { Address } from "viem";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,12 +10,15 @@ import {
   kuruFaqNotes,
   Landing,
   lifecycleSteps,
+  networkRuleFacts,
   PROTOCOL,
   priceWords,
+  rulesDiffer,
   ruleWords,
   StageTrack,
 } from "../src/components/landing/Landing";
 import { graduatedHint, vaultHint } from "../src/components/landing/LiveNumbers";
+import { Footer } from "../src/components/layout/Footer";
 import {
   isSeededByUs,
   type LandingRead,
@@ -23,8 +26,11 @@ import {
   type LandingStats,
   ourAddresses,
   pickFeatured,
+  readGraduationRule,
   summarize,
+  withNetworkRules,
 } from "../src/lib/chain/landing";
+import { MAINNET_FIRST_MARKET, mainnetLiveHref } from "../src/lib/config";
 import { BOOK, deployed, marketAddr, marketHandlers, notDeployed, stubClient } from "./chain";
 import { FACTORY, makeMarket, RESOLVER, USDC } from "./fixtures";
 
@@ -149,6 +155,8 @@ describe("readLandingSnapshot", () => {
     });
     expect(data.vault).toEqual({ balance: USDC(710), obligations: USDC(700) });
     expect(data.rule).toEqual(RULE);
+    // The read names its own network's rule; the server adds the other networks' (withNetworkRules).
+    expect(data.rules).toEqual([{ network: deployed.network, rule: RULE }]);
     expect(data.msPerBlock).toBe(300);
     expect(data.block).toBe(2_000_000n);
     expect(data.blockTime).toBe(1_000_003_000);
@@ -229,6 +237,109 @@ describe("readLandingSnapshot", () => {
     const slow = withTemplate();
     slow.readContract = vi.fn(() => new Promise(() => {})) as never;
     expect(await readLandingSnapshot(slow, deployed, 20)).toEqual({ status: "error" });
+  });
+});
+
+// Monad mainnet's rule, as its factory answers templateOf(1): 10 USDC from 2 wallets.
+const MAINNET_RULE = { minPool: USDC(10), minStakers: 2, minChanceBps: 300, maxChanceBps: 9_700 };
+
+describe("graduation rules per network", () => {
+  it("reads a network's rule from its default stack's factory, and none where nothing is deployed", async () => {
+    const client = stubClient({ templateOf: () => ({ resolver: RESOLVER, rule: MAINNET_RULE }) });
+    expect(await readGraduationRule(client, deployed)).toEqual(MAINNET_RULE);
+    expect(vi.mocked(client.readContract).mock.calls[0]?.[0]).toMatchObject({
+      functionName: "templateOf",
+      args: [1],
+    });
+    expect(await readGraduationRule(stubClient({}), notDeployed)).toBeNull();
+    const empty = stubClient({
+      templateOf: () => ({
+        resolver: RESOLVER,
+        rule: { minPool: 0n, minStakers: 0, minChanceBps: 0, maxChanceBps: 0 },
+      }),
+    });
+    expect(await readGraduationRule(empty, deployed)).toBeNull();
+  });
+
+  it("adds each other network's rule after the page's own, and leaves out one it cannot read", async () => {
+    const withMainnet = await withNetworkRules(
+      snapshot(),
+      "monad-testnet",
+      ["monad-mainnet"],
+      async () => MAINNET_RULE,
+    );
+    if (withMainnet.status !== "ok") throw new Error("expected ok");
+    expect(withMainnet.data.rules).toEqual([
+      { network: "monad-testnet", rule: RULE },
+      { network: "monad-mainnet", rule: MAINNET_RULE },
+    ]);
+    const failed = await withNetworkRules(snapshot(), "monad-testnet", ["monad-mainnet"], async () => {
+      throw new Error("rpc down");
+    });
+    if (failed.status !== "ok") throw new Error("expected ok");
+    expect(failed.data.rules).toEqual([{ network: "monad-testnet", rule: RULE }]);
+    expect(await withNetworkRules({ status: "error" }, "monad-testnet", [], async () => null)).toEqual({
+      status: "error",
+    });
+  });
+
+  it("states each network's rule by name when they differ, and never one rule for all", () => {
+    const rules = [
+      { network: "monad-testnet" as const, rule: RULE },
+      { network: "monad-mainnet" as const, rule: MAINNET_RULE },
+    ];
+    expect(rulesDiffer(rules)).toBe(true);
+    expect(
+      rulesDiffer([
+        rules[0] as (typeof rules)[0],
+        { ...(rules[0] as (typeof rules)[0]), network: "monad-mainnet" },
+      ]),
+    ).toBe(false);
+    const [, book] = lifecycleSteps(RULE, null, deployed, rules);
+    expect(book?.body).toMatch(
+      /^When the pool meets its network's graduation rule, listed below, anyone can graduate it\./,
+    );
+    expect(book?.body).not.toMatch(/500 USDC/);
+    expect(book?.facts).toEqual([
+      "Monad testnet: pool ≥ 500 USDC, stakers ≥ 10",
+      "Monad mainnet: pool ≥ 10 USDC, stakers ≥ 2",
+      "chance 3% to 97%",
+      "sell YES or NO any time",
+    ]);
+    // Different chance ranges go on each network's line.
+    expect(
+      networkRuleFacts([
+        rules[0] as (typeof rules)[0],
+        { network: "monad-mainnet", rule: { ...MAINNET_RULE, minChanceBps: 500 } },
+      ]),
+    ).toEqual([
+      "Monad testnet: pool ≥ 500 USDC, stakers ≥ 10, chance 3% to 97%",
+      "Monad mainnet: pool ≥ 10 USDC, stakers ≥ 2, chance 5% to 97%",
+    ]);
+    // One rule read: it is named as the page's own network's.
+    expect(lifecycleSteps(RULE, null, deployed, [rules[0] as (typeof rules)[0]])[1]?.body).toMatch(
+      /^When a pool on Monad testnet holds at least 500 USDC from at least 10 wallets/,
+    );
+  });
+
+  it("shows both networks' rules on the page, and no single rule in the drawing", () => {
+    render(
+      <Landing
+        live={snapshot({
+          rules: [
+            { network: "monad-testnet", rule: RULE },
+            { network: "monad-mainnet", rule: MAINNET_RULE },
+          ],
+        })}
+      />,
+    );
+    const how = within(
+      screen.getByRole("region", { name: "A market starts as a pool and grows into a book" }),
+    );
+    expect(how.getByText("Monad testnet: pool ≥ 500 USDC, stakers ≥ 10")).toBeTruthy();
+    expect(how.getByText("Monad mainnet: pool ≥ 10 USDC, stakers ≥ 2")).toBeTruthy();
+    expect(how.queryByText("500 USDC, 10 wallets")).toBeNull();
+    expect(how.getAllByText("its network's rule met")).toHaveLength(2);
   });
 });
 
@@ -479,6 +590,33 @@ describe("words and stages", () => {
     expect(kuruFaqNotes({ ...testnet, stacks: undefined })).toEqual([]);
   });
 
+  it("calls mainnet live once it has a market, and links the badge to that market", () => {
+    const [, , mainnet] = kuruCards(deployments["monad-testnet"], deployments["monad-mainnet"]);
+    expect(mainnet).toMatchObject({
+      status: "live",
+      badge: "Live",
+      href: "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
+    });
+    render(<Landing live={snapshot()} />);
+    const kuru = within(
+      screen.getByRole("region", { name: "New markets graduate to Kuru's onchain order book" }),
+    );
+    expect(kuru.getByRole("link", { name: "Live" }).getAttribute("href")).toBe(
+      "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
+    );
+    expect(kuru.getByRole("link", { name: "market #1, created by us" }).getAttribute("href")).toBe(
+      "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
+    );
+    // The footer on every page says the same, with the same link.
+    const footer = render(<Footer />);
+    expect(
+      within(footer.container).getByRole("link", { name: "Monad mainnet: live" }).getAttribute("href"),
+    ).toBe("https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511");
+    expect(within(footer.container).queryByText(/contracts live/)).toBeNull();
+    expect(mainnetLiveHref()).toBe(addressUrl(deployments["monad-mainnet"], MAINNET_FIRST_MARKET));
+    expect(mainnetLiveHref({ ...deployments["monad-mainnet"], hunchBook: {} })).toBeNull();
+  });
+
   it("calls a stage live only when the contracts behind it are deployed", () => {
     const none = { ...deployments["monad-testnet"], hunchBook: {}, stacks: undefined };
     expect(lifecycleSteps(RULE, null, none).map((x) => x.status)).toEqual([
@@ -549,7 +687,11 @@ describe("landing page", () => {
     expect(hero.getByText("Every new market graduates to Kuru")).toBeTruthy();
     expect(hero.queryByText(/third party/)).toBeNull();
     expect(screen.getAllByText("Live on Monad testnet").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Mainnet planned|Contracts live on Monad mainnet/)).toBeTruthy();
+    // Mainnet has its first market, so the badge says live and links to it on the explorer.
+    expect(hero.getByRole("link", { name: "Live on Monad mainnet" }).getAttribute("href")).toBe(
+      "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
+    );
+    expect(screen.queryByText(/Contracts live/)).toBeNull();
   });
 
   it("has every section, in order, under one h1", () => {
@@ -597,7 +739,7 @@ describe("landing page", () => {
     expect(card.getByText("Pool split")).toBeTruthy();
     expect(card.getByText("No book yet")).toBeTruthy();
     // A primary-stack market carries its venue in its tag.
-    expect(card.getByText("Market #3 · Kuru")).toBeTruthy();
+    expect(card.getByText("Market #3 · Kuru v1")).toBeTruthy();
   });
 
   it("names a market on Hunch Book's own order book by its venue", () => {
@@ -613,7 +755,7 @@ describe("landing page", () => {
     });
     render(<Landing live={snapshot({ featured: own })} />);
     const card = within(screen.getByRole("complementary", { name: "Most active market, live" }));
-    expect(card.getByText("Market #3")).toBeTruthy();
+    expect(card.getByText("Market #3 · Hunch book")).toBeTruthy();
     expect(card.getByText("Mid price on the order book")).toBeTruthy();
     expect(card.getByText(/Hunch order book/)).toBeTruthy();
     expect(card.queryByText(/Kuru/)).toBeNull();
@@ -694,7 +836,10 @@ describe("landing page", () => {
     expect(Array.from(items).every((d) => !d.open)).toBe(true);
     expect(screen.getByText(/at most 1.94 cents/)).toBeTruthy();
     expect(screen.getByText(/redeems for 0.50 USDC, so someone who bought YES at 0.80/)).toBeTruthy();
-    expect(screen.getByText(/The contracts are live on Monad mainnet with Circle USDC/)).toBeTruthy();
+    expect(screen.getByText(/Monad mainnet is live with Circle USDC/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "first market" }).getAttribute("href")).toBe(
+      "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
+    );
   });
 
   it("labels a market our wallets created as seeded by Hunch Book", () => {
@@ -763,6 +908,14 @@ describe("landing page", () => {
     expect(card.getAllByText("YES").length).toBeGreaterThan(0);
     expect(card.getByText("Settled YES")).toBeTruthy();
     expect(card.getByRole("list", { name: "Where this market is" }).textContent).toContain("Settle (done)");
+  });
+
+  it("says a pool that settled without graduating never had a book, not that one is coming", () => {
+    const settledPool = makeMarket({ phase: Phase.Settled, outcome: Outcome.No, graduated: false });
+    render(<Landing live={snapshot({ featured: settledPool })} />);
+    const card = within(screen.getByRole("complementary", { name: "Most active market, live" }));
+    expect(card.getByText("No book: it never graduated")).toBeTruthy();
+    expect(card.queryByText("No book yet")).toBeNull();
   });
 
   it("opens every outside link in a new tab without a referrer, and uses no em dashes", () => {

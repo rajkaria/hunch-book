@@ -150,6 +150,8 @@ vi.mock("@/lib/creator/hooks", async (importOriginal) => {
 });
 
 const ok = <T,>(data: T) => ({ data: { status: "ok", data } });
+/** The venue chip's words for screen readers: a book's venue, or where a pool's book would open. */
+const VENUE_WORDS = /^(Order book on|Graduates to)$/;
 const params = (address: string) => ({ params: Promise.resolve({ address }) });
 const noSearch = { searchParams: Promise.resolve({}) };
 
@@ -367,10 +369,11 @@ describe("with contracts deployed", () => {
     state.markets = ok({ markets: [pool, trading, ownBook], total: 3 });
     const all = await renderWithProviders(await MarketsPage(noSearch));
     const items = screen.getAllByRole("listitem") as HTMLElement[];
-    expect(items.map((li) => within(li).getByText(/^Order book on/).parentElement?.textContent)).toEqual([
+    // A market with a book names it; a pool still taking stakes names where its book would open.
+    expect(items.map((li) => within(li).getByText(VENUE_WORDS).parentElement?.textContent)).toEqual([
+      "Graduates to Kuru",
       "Order book on Kuru",
-      "Order book on Kuru",
-      "Order book on Hunch book",
+      "Graduates to Hunch book",
     ]);
     const venues = screen.getByRole("navigation", { name: "Filter markets by book venue" });
     expect(within(venues).getByRole("link", { name: "Kuru, 2 markets" }).getAttribute("href")).toBe(
@@ -405,14 +408,64 @@ describe("with contracts deployed", () => {
     expect(screen.getByRole("button", { name: /Filters/ }).textContent).toContain("2");
   });
 
+  it("/markets numbers each market with whose numbering it is in, never a bare number", async () => {
+    // Testnet's three stacks each number from 1: three different markets are all market 4.
+    const four = [
+      makeMarket({ address: "0x00000000000000000000000000000000000000b1", marketId: 4n }),
+      makeMarket({
+        address: "0x00000000000000000000000000000000000000b2",
+        marketId: 4n,
+        stack: "kuruV2",
+        kuruVersion: 2,
+      }),
+      { ...ownBook, address: "0x00000000000000000000000000000000000000b3" as const, marketId: 4n },
+    ];
+    state.markets = ok({ markets: four, total: 3 });
+    await renderWithProviders(await MarketsPage(noSearch));
+    const items = screen.getAllByRole("listitem") as HTMLElement[];
+    expect(items.map((li) => within(li).getByText(/^#4/).textContent)).toEqual([
+      "#4 · Kuru v1",
+      "#4 · Kuru v2",
+      "#4 · Hunch book",
+    ]);
+    expect(screen.queryByText("#4")).toBeNull();
+  });
+
+  it("/markets lists two markets with the same question as separate markets, each naming the other", async () => {
+    // Testnet's Kuru v1 #11 and #12: the same question, created about a minute apart. Both are real.
+    const sameRule = "Will MON longs pay more than $0.000015 per MON in funding on Perpl this week?";
+    const eleven = makeMarket({
+      address: "0x00000000000000000000000000000000000000d1",
+      marketId: 11n,
+      description: sameRule,
+    });
+    const twelve = makeMarket({
+      address: "0x00000000000000000000000000000000000000d2",
+      marketId: 12n,
+      description: sameRule,
+    });
+    state.markets = ok({ markets: [twelve, eleven, trading], total: 3 });
+    await renderWithProviders(await MarketsPage(noSearch));
+    const items = screen.getAllByRole("listitem") as HTMLElement[];
+    expect(items).toHaveLength(3);
+    expect(within(items[0] as HTMLElement).getByText(/^A separate market/).textContent).toBe(
+      "A separate market with the same question as #11 · Kuru v1.",
+    );
+    expect(within(items[1] as HTMLElement).getByText(/^A separate market/).textContent).toBe(
+      "A separate market with the same question as #12 · Kuru v1.",
+    );
+    expect(within(items[2] as HTMLElement).queryByText(/^A separate market/)).toBeNull();
+  });
+
   it("/markets lists Kuru's markets first and our fallback book's after, under a heading", async () => {
     state.markets = ok({ markets: [ownBook, pool, trading], total: 3 });
     const all = await renderWithProviders(await MarketsPage(noSearch));
     const items = screen.getAllByRole("listitem") as HTMLElement[];
-    expect(items.map((li) => within(li).getByText(/^Order book on/).parentElement?.textContent)).toEqual([
+    // A market with a book names it; a pool still taking stakes names where its book would open.
+    expect(items.map((li) => within(li).getByText(VENUE_WORDS).parentElement?.textContent)).toEqual([
+      "Graduates to Kuru",
       "Order book on Kuru",
-      "Order book on Kuru",
-      "Order book on Hunch book",
+      "Graduates to Hunch book",
     ]);
     expect(
       screen.getByRole("heading", { level: 2, name: "Our fallback book: earlier markets" }),
@@ -492,7 +545,10 @@ describe("with contracts deployed", () => {
     expect(kuru.getAttribute("rel")).toBe("noreferrer");
     const items = screen.getAllByRole("listitem");
     expect(items).toHaveLength(2);
-    for (const li of items) expect(li.textContent).toContain("Order book on Kuru");
+    expect(items.map((li) => within(li).getByText(VENUE_WORDS).parentElement?.textContent)).toEqual([
+      "Graduates to Kuru",
+      "Order book on Kuru",
+    ]);
     expect(screen.queryByRole("heading", { name: /fallback book/ })).toBeNull();
     expect(screen.getByText("Showing", { exact: false }).textContent).toBe("Showing 2 of 2 markets");
     const phases = screen.getByRole("navigation", { name: "Filter markets by phase" });
@@ -530,8 +586,9 @@ describe("with contracts deployed", () => {
     await renderWithProviders(await MarketPage(params(MARKET)));
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(pool.description);
     // The header names the venue the pool's book will open on, beside its phase.
-    expect(screen.getByText(/^Order book on/).parentElement?.textContent).toBe("Order book on Kuru");
-    expect(screen.getByText("Market #7")).toBeTruthy();
+    expect(screen.getByText(VENUE_WORDS).parentElement?.textContent).toBe("Graduates to Kuru");
+    // Each stack numbers from 1, so the number always says whose numbering it is.
+    expect(screen.getByText("Market #7 · Kuru v1")).toBeTruthy();
     for (const title of [
       "Implied chance",
       "Graduation rule",
@@ -563,6 +620,36 @@ describe("with contracts deployed", () => {
     expect(screen.getByRole("tab", { name: "Trade" }).getAttribute("aria-selected")).toBe("true");
     expect((screen.getByRole("button", { name: "Buy YES" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("Connect a browser wallet to trade.")).toBeTruthy();
+  });
+
+  it("shows no book venue for a pool that settled, locked or voided without graduating", async () => {
+    // Testnet #7, #8 and #9 on Kuru v1: pools that never met their rule, so no book was ever opened.
+    const settledPool = makeMarket({
+      address: "0x00000000000000000000000000000000000000c1",
+      phase: Phase.Settled,
+      outcome: Outcome.No,
+    });
+    const lockedPool = makeMarket({ address: "0x00000000000000000000000000000000000000c2", phase: 1 });
+    const settledBook = makeMarket({
+      address: "0x00000000000000000000000000000000000000c3",
+      phase: Phase.Settled,
+      outcome: Outcome.Yes,
+      graduated: true,
+      book: "0x00000000000000000000000000000000000000bb",
+    });
+    state.markets = ok({ markets: [settledPool, lockedPool, settledBook], total: 3 });
+    const list = await renderWithProviders(await MarketsPage(noSearch));
+    const items = screen.getAllByRole("listitem") as HTMLElement[];
+    expect(
+      items.map((li) => within(li).queryByText(VENUE_WORDS)?.parentElement?.textContent ?? null),
+    ).toEqual([null, null, "Order book on Kuru"]);
+    list.unmount();
+
+    state.market = ok(settledPool);
+    await renderWithProviders(await MarketPage(params(settledPool.address)));
+    expect(screen.queryByText(VENUE_WORDS)).toBeNull();
+    expect(screen.queryByText(/Kuru book|Order book on/)).toBeNull();
+    expect(screen.getByText("none: it never graduated")).toBeTruthy();
   });
 
   it("/m/[address] says when an address is not a market", async () => {

@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getPublicClient } from "../chain/client";
 import { appDeployment, appNetwork, isDeployed } from "../config";
+import { indexerUrl } from "../indexer/client";
 import type { ServiceHealthView, ServiceName } from "./health";
 import { readLifecycleFromIndexer } from "./lifecycle";
 import { readStatusSnapshots } from "./reads";
@@ -23,13 +24,15 @@ export function useStatusSnapshots() {
   });
 }
 
-/** A service's health through /api/health/<service>. */
+/** A service's health on the active network, through /api/health/<service>?network=<network>. */
 export function useServiceHealth(service: ServiceName) {
   return useQuery({
     queryKey: statusKeys.health(service),
     queryFn: async (): Promise<ServiceHealthView> => {
       try {
-        const res = await fetch(`/api/health/${service}`, { cache: "no-store" });
+        const res = await fetch(`/api/health/${service}?network=${encodeURIComponent(appNetwork)}`, {
+          cache: "no-store",
+        });
         if (!res.ok)
           return { service, configured: true, reachable: false, error: `The app answered ${res.status}.` };
         return (await res.json()) as ServiceHealthView;
@@ -46,14 +49,16 @@ export function useServiceHealth(service: ServiceName) {
   });
 }
 
-const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL?.trim() || undefined;
-
-/** Last settlement and graduation from the indexer, when one is configured. */
+/**
+ * Last settlement and graduation from the active network's indexer (NEXT_PUBLIC_INDEXER_URL on testnet,
+ * NEXT_PUBLIC_INDEXER_URL_MAINNET on mainnet), when one is configured.
+ */
 export function useIndexerLifecycle() {
+  const url = indexerUrl(appNetwork) ?? undefined;
   return useQuery({
     queryKey: statusKeys.lifecycle(),
-    queryFn: () => readLifecycleFromIndexer(INDEXER_URL),
-    enabled: Boolean(INDEXER_URL),
+    queryFn: () => readLifecycleFromIndexer(url),
+    enabled: Boolean(url),
     refetchInterval: 60_000,
   });
 }

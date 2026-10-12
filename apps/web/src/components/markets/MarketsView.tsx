@@ -16,6 +16,7 @@ import {
   listSections,
   matchesSearch,
   type PhaseFilter,
+  sameQuestion,
   searchTerms,
   searchText,
   VENUE_FILTER_LABEL,
@@ -170,6 +171,8 @@ export function MarketsList({
   const stats = explorerStats(scope);
   const active = activeFilterCount(selection, preset);
   const clearHref = explorerHref({ phase: "all", venue: preset?.venue ?? "all" }, preset);
+  // Markets that ask the same question as another listed one say so, with the other's number.
+  const twins = sameQuestion(listed, (m) => marketHeadline(m, clock));
   const templates = new Set(scope.map((m) => m.templateId)).size;
   const venues = new Set(scope.map((m) => venueChipLabel(m))).size;
 
@@ -342,7 +345,13 @@ export function MarketsList({
                   ) : null}
                   <ul className={s.grid} aria-labelledby={section.heading ? headingId : undefined}>
                     {section.markets.map((m) => (
-                      <MarketCard key={m.address} m={m} clock={clock} now={now} />
+                      <MarketCard
+                        key={m.address}
+                        m={m}
+                        clock={clock}
+                        now={now}
+                        sameAs={twins.get(m.address.toLowerCase())}
+                      />
                     ))}
                   </ul>
                 </div>

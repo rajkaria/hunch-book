@@ -97,8 +97,8 @@ describe("markets on Hunch Book's own order book", () => {
     expect(trading?.bookReady).toBeUndefined();
     expect(primary?.venue).toBeUndefined();
     // The same number on two stacks reads apart.
-    expect(trading && marketTag(trading)).toBe("#1");
-    expect(primary && marketTag(primary)).toBe("#1 · Kuru");
+    expect(trading && marketTag(trading)).toBe("#1 · Hunch book");
+    expect(primary && marketTag(primary)).toBe("#1 · Kuru v1");
   });
 
   it("finds a hunch-stack market through its own factory", async () => {
@@ -225,7 +225,7 @@ describe("trading a hunch-stack market", () => {
       venue: "hunch",
     });
     const [info] = booksOf([m, makeMarket({ graduated: true, book: BOOK })]);
-    expect(info).toMatchObject({ book: OWN_BOOK, kuruVersion: 1, tag: "#1" });
+    expect(info).toMatchObject({ book: OWN_BOOK, kuruVersion: 1, tag: "#1 · Hunch book" });
     const fill = fillFromLog(
       {
         address: OWN_BOOK,
@@ -249,7 +249,7 @@ describe("trading a hunch-stack market", () => {
     // The hunch stack's router counts as Hunch Book's router: the trader is the transaction's sender.
     expect(fill).toMatchObject({
       market: marketAddr(8),
-      marketTag: "#1",
+      marketTag: "#1 · Hunch book",
       priceE6: 420_000n,
       viaRouter: true,
       trader: "0x0000000000000000000000000000000000000666",

@@ -5,7 +5,8 @@ import { formatFixed, formatInt, formatUsdc, formatUtc } from "@/lib/format";
 import { chanceDisplay, graduationProgress, marketChance, voidTerms, windowMoment } from "@/lib/market/logic";
 import { describeSource, templateLabel } from "@/lib/market/params";
 import type { ChainClock, MarketView } from "@/lib/market/types";
-import { bookName, marketVenueLabel, onHunchVenue, stackOf, venueWords } from "@/lib/stacks";
+import { bookName, marketTag, marketVenueLabel, onHunchVenue, stackOf, venueWords } from "@/lib/stacks";
+import { noBookWords, venueState } from "../markets/VenueChip";
 import { AddressLink, ChanceBar, KeyValues, Panel, Progress, Stat } from "../ui";
 import s from "./market.module.css";
 
@@ -238,8 +239,13 @@ export function ContractsPanel({ m }: { m: MarketView }) {
           { label: "YES token", value: <AddressLink address={m.tokens.yes} full /> },
           { label: "NO token", value: <AddressLink address={m.tokens.no} full /> },
           {
-            label: bookName(m),
-            value: m.book ? <AddressLink address={m.book} full /> : <span className="subtle">none yet</span>,
+            // A pool that never graduated never had a book on any venue.
+            label: m.book || venueState(m) === "pool" ? bookName(m) : "Book",
+            value: m.book ? (
+              <AddressLink address={m.book} full />
+            ) : (
+              <span className="subtle">{noBookWords(m, "none")}</span>
+            ),
           },
           ...(stack
             ? [
@@ -254,7 +260,7 @@ export function ContractsPanel({ m }: { m: MarketView }) {
             : []),
           { label: "Creator", value: <AddressLink address={m.creator} full /> },
           { label: "Template", value: `${templateLabel(m.templateId)} (id ${m.templateId})` },
-          { label: "Market id", value: <span className="mono">{m.marketId.toString()}</span> },
+          { label: "Market number", value: <span className="mono">{marketTag(m)}</span> },
           { label: "Wallet cap", value: <span className="mono">{formatUsdc(m.caps.walletCap)} USDC</span> },
         ]}
       />

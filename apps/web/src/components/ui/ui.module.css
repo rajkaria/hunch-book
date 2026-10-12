@@ -230,6 +230,16 @@
   background: transparent;
 }
 
+/* A badge that links to its evidence: the badge's own colour, underlined on hover. */
+.badgeLink {
+  text-decoration: none;
+}
+
+.badgeLink:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+
 .dot {
   width: 6px;
   height: 6px;
