@@ -62,7 +62,7 @@ graduation rule yet (it needs at least 10 USDC from 2 wallets with both sides st
 |---|---|---|
 | Market | [Market #2](https://monadscan.com/address/0x253BD48a07AEF48A0eb9281ACdfd331F31ED69E7) | `factory.marketAt(1)` |
 | Created | by the deployer with 5 USDC on YES, block 112,671,579 ([tx](https://monadscan.com/tx/0x21e32936d4cdc0ff4e0f64dd97d2f72a1d8f84e844b588722c403e83c71b72d7); [approval](https://monadscan.com/tx/0x467908d3f4d0bca2512b5f5c98637f864c9ae34c69cbfecc66d89ad99670d0dd)) | `MarketCreated` |
-| YES token | HB2-YES [0x1064…9D66](https://monadscan.com/address/0x1064f0bb79443f398512c97c97E8E3E9dFD59D66) | `market.yes()` |
+| YES token | HB2-YES [0x1064…9D66](https://monadscan.com/address/0x1064f0bb79443f398512c97c97E8E3E9dFD59D66) | `market.tokens()` |
 | Kuru book | none yet. Kuru's router computes [0x35B0…15C0](https://monadscan.com/address/0x35B011c0045c95e5Abae1f6B8754f5D1e96315C0) for our parameters; our keeper posted the `deployProxy` request | `Router.computeAddress`, keeper `book-request` |
 | Gas | 0.132 MON for the approval and the market, at 102 gwei | the receipts |
 
