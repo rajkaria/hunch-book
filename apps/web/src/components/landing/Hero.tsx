@@ -263,7 +263,9 @@ export function Hero({ live }: { live: LandingRead }) {
               {deployed ? `Live on ${appNetworkLabel}` : `${appNetworkLabel}: not deployed yet`}
             </Badge>
             {appNetwork === "monad-testnet" ? (
-              <Badge tone="muted">{mainnetLive ? "Live on Monad mainnet" : "Mainnet planned"}</Badge>
+              <Badge tone="muted">
+                {mainnetLive ? "Contracts live on Monad mainnet" : "Mainnet planned"}
+              </Badge>
             ) : null}
           </div>
         </div>

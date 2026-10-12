@@ -549,7 +549,7 @@ describe("landing page", () => {
     expect(hero.getByText("Every new market graduates to Kuru")).toBeTruthy();
     expect(hero.queryByText(/third party/)).toBeNull();
     expect(screen.getAllByText("Live on Monad testnet").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Mainnet planned|Live on Monad mainnet/)).toBeTruthy();
+    expect(screen.getByText(/Mainnet planned|Contracts live on Monad mainnet/)).toBeTruthy();
   });
 
   it("has every section, in order, under one h1", () => {
@@ -637,8 +637,11 @@ describe("landing page", () => {
     expect(strip.getByRole("link", { name: /see the books/ }).getAttribute("href")).toBe(
       "/markets?phase=trading",
     );
-    expect(strip.getByText("Planned")).toBeTruthy();
-    expect(strip.getByRole("link", { name: /how we will count/ }).getAttribute("href")).toBe("/proof");
+    // Settled markets, read from the chain (the fixture has none yet), never a "planned" placeholder.
+    expect(strip.getByText("Settled")).toBeTruthy();
+    expect(strip.getByText("answered by reading the chain, no one by hand")).toBeTruthy();
+    expect(strip.getByRole("link", { name: /every settlement/ }).getAttribute("href")).toBe("/settlements");
+    expect(strip.queryByText("Planned")).toBeNull();
     expect(strip.getByText("0.30s")).toBeTruthy();
     expect(strip.getByRole("link", { name: /block 67,862,094/ }).getAttribute("href")).toMatch(/67862094$/);
     expect(strip.getByText("Read at block 67,862,094. Refreshes about every 30 seconds.")).toBeTruthy();

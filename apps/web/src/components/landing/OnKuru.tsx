@@ -77,7 +77,7 @@ export function kuruCards(
       key: "mainnet",
       title: "Monad mainnet",
       status: mainnetLive ? "live" : "planned",
-      badge: mainnetLive ? "Live" : "Planned",
+      badge: mainnetLive ? "Contracts live" : "Planned",
       body: "The Kuru stack, with Circle USDC. Only Kuru's owner can create books there, so Kuru creates each YES/USDC book and anyone registers it with the Graduator, which checks it first. Until then a market stays a pool.",
       facts: [
         "Kuru creates each book",

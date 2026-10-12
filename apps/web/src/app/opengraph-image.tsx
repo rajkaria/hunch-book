@@ -139,7 +139,7 @@ export default async function OpengraphImage() {
             : pill(`${appNetworkLabel}: building`, WARN, "rgba(246,189,79,0.4)", "rgba(246,189,79,0.1)")}
           {appNetworkLabel === "Monad testnet"
             ? pill(
-                mainnetLive ? "Live on Monad mainnet" : "Mainnet planned",
+                mainnetLive ? "Contracts live on Monad mainnet" : "Mainnet planned",
                 MUTED,
                 "rgba(250,250,247,0.16)",
                 "rgba(250,250,247,0.05)",

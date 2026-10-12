@@ -28,7 +28,7 @@ export function Footer() {
                 Monad testnet: {testnetLive ? "live" : "building"}
               </Badge>
               <Badge tone="muted" dot>
-                Monad mainnet: {mainnetLive ? "live" : "planned"}
+                Monad mainnet: {mainnetLive ? "contracts live" : "planned"}
               </Badge>
             </div>
           </div>

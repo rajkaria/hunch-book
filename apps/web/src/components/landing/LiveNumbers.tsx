@@ -80,11 +80,13 @@ function Tiles({ data }: { data: LandingSnapshot }) {
       <div className={s.tile}>
         <Stat
           size="lg"
-          label="Trades"
-          value="Planned"
-          tone="muted"
-          hint="counted by the indexer, with our maker's fills apart"
-          source={{ href: "/proof", label: "how we will count" }}
+          label="Settled"
+          value={stats ? formatInt(stats.settled) : "n/a"}
+          tone={stats ? undefined : "muted"}
+          hint={
+            stats ? "answered by reading the chain, no one by hand" : "could not read the markets just now"
+          }
+          source={{ href: "/settlements", label: "every settlement" }}
         />
       </div>
       <div className={s.tile}>
