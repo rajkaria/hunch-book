@@ -94,10 +94,17 @@ export function ratePercentText(value: number): string {
 }
 
 /**
+ * The hedge on a funding rate in a title. It differs from the window's "about" (blockWindowWords), so a
+ * title that has both reads "roughly X% ... between about A and B", never "about ... about".
+ */
+export const RATE_HEDGE = "roughly";
+
+/**
  * The title of a Perpl funding market with a non-zero threshold, as a rate: "Will MON's funding rate on
- * Perpl average above about -0.00062% per interval (-7.6% a year) between about Oct 4, 06:10 and Oct 4,
- * 06:20 UTC?". Null when the market has no funding scale, its params do not decode, or the threshold is
- * zero (a net-funding question reads well as it is).
+ * Perpl average above roughly -0.00062% per interval (-7.6% a year) between about Oct 4, 06:10 and Oct 4,
+ * 06:20 UTC?". The rate says "roughly" because the window's times already say "about" (RATE_HEDGE): one
+ * title never hedges with the same word twice. Null when the market has no funding scale, its params do
+ * not decode, or the threshold is zero (a net-funding question reads well as it is).
  */
 function perplRateTitle(m: TitleSource, deployment: Deployment, clock: TitleClock | null): string | null {
   const scale = m.funding;
@@ -124,9 +131,9 @@ function perplRateTitle(m: TitleSource, deployment: Deployment, clock: TitleCloc
   const yearly = rate.perYear === null ? "" : ` (${ratePercentText(rate.perYear)} a year)`;
   const pct = ratePercentText(rate.perInterval);
   if (spike) {
-    return `Will any single ${symbol} funding event on Perpl charge longs more than about ${pct} of the price${yearly} ${window}?`;
+    return `Will any single ${symbol} funding event on Perpl charge longs more than ${RATE_HEDGE} ${pct} of the price${yearly} ${window}?`;
   }
-  return `Will ${symbol}'s funding rate on Perpl average above about ${pct} per interval${yearly} ${window}?`;
+  return `Will ${symbol}'s funding rate on Perpl average above ${RATE_HEDGE} ${pct} per interval${yearly} ${window}?`;
 }
 
 /** " (MON Perp, perp 64)": the venue detail Perpl resolvers add after "on Perpl". */

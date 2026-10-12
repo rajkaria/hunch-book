@@ -295,7 +295,7 @@ describe("Perpl funding titles state a rate", () => {
     });
     const title = marketTitle(m, testnet, clock);
     expect(title).toBe(
-      "Will MON's funding rate on Perpl average above about -0.00062% per interval (-5.7% a year) between about Oct 4, 06:10 and Oct 4, 08:05 UTC?",
+      "Will MON's funding rate on Perpl average above roughly -0.00062% per interval (-5.7% a year) between about Oct 4, 06:10 and Oct 4, 08:05 UTC?",
     );
     // The resolver's sentence stays the rule of record, shown next to the title.
     expect(titleDiffersFromRule(m, title)).toBe(true);
@@ -311,7 +311,7 @@ describe("Perpl funding titles state a rate", () => {
       funding: BTC_SCALE,
     });
     expect(marketTitle(m, testnet, clock)).toMatch(
-      /^Will BTC's funding rate on Perpl average above about 0\.0024% per interval \(22% a year\) between about Oct 4, 06:10 and Oct \d+, \d\d:\d\d UTC\?$/,
+      /^Will BTC's funding rate on Perpl average above roughly 0\.0024% per interval \(22% a year\) between about Oct 4, 06:10 and Oct \d+, \d\d:\d\d UTC\?$/,
     );
   });
 
@@ -331,14 +331,14 @@ describe("Perpl funding titles state a rate", () => {
       funding: MON_SCALE,
     });
     expect(marketTitle(m, testnet, clock)).toBe(
-      "Will any single MON funding event on Perpl charge longs more than about 0.0054% of the price (50% a year) between about Oct 4, 06:10 and Oct 5, 01:00 UTC?",
+      "Will any single MON funding event on Perpl charge longs more than roughly 0.0054% of the price (50% a year) between about Oct 4, 06:10 and Oct 5, 01:00 UTC?",
     );
   });
 
   it("drops the yearly figure without a clock, and names blocks", () => {
     const m = perplMarket({ perpId: 64n, threshold: -31n, scalingExp: 2, intervals: 2, funding: MON_SCALE });
     expect(marketTitle(m, testnet, null)).toBe(
-      `Will MON's funding rate on Perpl average above about -0.00062% per interval between block ${formatInt(START)} and block ${formatInt(START + 17_142n)}?`,
+      `Will MON's funding rate on Perpl average above roughly -0.00062% per interval between block ${formatInt(START)} and block ${formatInt(START + 17_142n)}?`,
     );
   });
 
@@ -380,5 +380,90 @@ describe("price rules asked as questions", () => {
         null,
       ),
     ).toBe("Will SOL/USD be at or above $100 and below $120 at Jan 16, 08:00 UTC, per Pyth?");
+  });
+});
+
+// ---------- no title says a word twice ----------
+
+/** Hedge words: a title that needs two of them uses two different ones. */
+const HEDGES = ["about", "roughly", "around", "approximately"];
+
+/** The words a title doubles: the same word back to back ("the the"), or a hedge used twice ("about ... about"). */
+function doubledWords(title: string): string[] {
+  const words = title.toLowerCase().match(/[a-z']+/g) ?? [];
+  const doubled = new Set<string>();
+  words.forEach((w, i) => {
+    if (i > 0 && words[i - 1] === w) doubled.add(w);
+  });
+  for (const hedge of HEDGES) {
+    if (words.filter((w) => w === hedge).length > 1) doubled.add(hedge);
+  }
+  return [...doubled];
+}
+
+describe("no title doubles a word", () => {
+  it("finds the doubles it is meant to find", () => {
+    expect(doubledWords("Will the the market settle?")).toEqual(["the"]);
+    expect(doubledWords("above about 1% between about Oct 4 and Oct 5")).toEqual(["about"]);
+    expect(doubledWords("above roughly 1% between about Oct 4 and Oct 5")).toEqual([]);
+  });
+
+  // Every template, with and without a chain clock, and the Perpl ones with and without a funding rate.
+  const spikeParams = encodePerplFundingSpikeParams({
+    perpId: 64n,
+    startBlock: START,
+    endBlock: END,
+    threshold: 135n,
+    expectedScalingExp: 2,
+  });
+  const spike = (over: Parameters<typeof makeMarket>[0] = {}) =>
+    makeMarket({
+      templateId: TemplateId.PerplFundingSpike,
+      params: spikeParams,
+      decoded: decodeMarketParams(TemplateId.PerplFundingSpike, spikeParams),
+      description: null,
+      ...over,
+    });
+  const spikeRule = `YES if any single funding event on Perpl (MON Perp, perp 64) after block ${START} and at or before block ${END} charges MON longs more than $0.00000135 per MON; NO if nobody proves one by block ${END + 216_000n}, about 24 hours after the window.`;
+  const touchRule =
+    "YES if Chainlink's BTC/USD feed reports a price at or above $86,000 in any round updated from 2026-10-04 13:36:39 UTC to 2026-10-07 13:06:39 UTC; NO if nobody proves that by 2026-10-08 13:06:39 UTC, the end of a 24-hour challenge period.";
+  const atTimeRule =
+    "Will BTC/USD be at or above $83,500 at 2026-10-12 07:00:00 UTC (unix time 1791788400), per Chainlink's BTC/USD feed?";
+  const rangeRule =
+    "YES if Chainlink's BTC/USD feed puts BTC/USD at or above $80,000 and below $90,000 at 2027-01-16 08:00:00 UTC (unix time 1800086400); NO otherwise.";
+  const cases: [string, Parameters<typeof marketTitle>[0]][] = [
+    ["1, the resolver's sentence", makeMarket({ templateId: TemplateId.PerplFunding, description: RULE_1 })],
+    [
+      "1, as a rate",
+      perplMarket({ perpId: 64n, threshold: -31n, scalingExp: 2, intervals: 2, funding: MON_SCALE }),
+    ],
+    [
+      "1, a long window as a rate",
+      perplMarket({ perpId: 16n, threshold: 10_800n, scalingExp: 0, intervals: 536, funding: BTC_SCALE }),
+    ],
+    ["1, from the params", makeMarket({ templateId: TemplateId.PerplFunding, description: null })],
+    ["2, price at a time", makeMarket({ templateId: TemplateId.PriceAtTime, description: atTimeRule })],
+    ["2, from the params", makeMarket({ templateId: TemplateId.PriceAtTime, description: null })],
+    ["3, touch", makeMarket({ templateId: TemplateId.ChainlinkTouch, description: touchRule })],
+    ["4, the resolver's sentence", spike({ description: spikeRule })],
+    ["4, as a rate", spike({ funding: MON_SCALE })],
+    ["4, from the params", spike()],
+    ["5, price range", makeMarket({ templateId: TemplateId.PriceRange, description: rangeRule })],
+    ["6, parlay", makeMarket({ templateId: TemplateId.Parlay, description: PARLAY_RULE })],
+    ["7, snapshot", makeMarket({ templateId: TemplateId.Snapshot, description: SNAPSHOT_RULE })],
+    ["7, open interest", makeMarket({ templateId: TemplateId.Snapshot, description: OI_RULE })],
+  ];
+
+  it.each(cases)("template %s", (_name, m) => {
+    for (const at of [clock, null]) {
+      const title = marketTitle(m, testnet, at);
+      expect(title.length).toBeGreaterThan(0);
+      expect({ title, doubled: doubledWords(title) }).toEqual({ title, doubled: [] });
+    }
+  });
+
+  it("covers every template the protocol has", () => {
+    const covered = new Set(cases.map(([, m]) => m.templateId));
+    expect([...covered].sort()).toEqual(Object.values(TemplateId).sort());
   });
 });
