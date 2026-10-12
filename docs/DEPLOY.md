@@ -4,11 +4,12 @@ This is the runbook for putting Hunch Book on a Monad network. Testnet is live (
 [`deployments/monad-testnet.json`](../deployments/monad-testnet.json)). Mainnet is **live**, on Kuru v1:
 the core and the periphery were deployed on 2026-10-11, and all seven templates are registered, with a
 graduation rule of 10 USDC from 2 wallets (addresses and transactions in
-[`deployments/monad-mainnet.json`](../deployments/monad-mainnet.json)). The first market is open:
+[`deployments/monad-mainnet.json`](../deployments/monad-mainnet.json)). The first market has settled:
 [Market #1](https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511), created on
 2026-10-12 ([tx](https://monadscan.com/tx/0x72caf4b41b17563b7668d06a1418a78849107319d070619fcbe3b8c7e6de8ea6))
 and seeded by us from our labelled wallets (step 6). It has no Kuru book, because Kuru creates mainnet
-books by hand, so it settles as a pool. Every step below has been rehearsed on a fork of Monad mainnet.
+books by hand, so it settled as a pool: [YES from Chainlink](https://monadscan.com/tx/0xbcccfeeb17568f7d53235dbcf7f8e79756d7c707dd87c80a4993d469c9896ae5) 66 seconds after close, with
+[payouts](https://monadscan.com/tx/0x275a46611dfe8436a1663221e4008d13ca13488cb96f0c9e37a0b9101500b678) pushed by our keeper. Every step below has been rehearsed on a fork of Monad mainnet.
 
 `deployments/<network>.json` is the only source of contract addresses. The deploy script writes it,
 and the app, keeper, maker, indexer and docs all read it.

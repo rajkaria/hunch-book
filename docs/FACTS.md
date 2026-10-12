@@ -34,13 +34,14 @@ change. This page holds the numbers that do not change, and dated snapshots of t
 | Guardian | [0xCaA4…4Bf8](https://monadscan.com/address/0xCaA404541A30c277a05F2A500f3F4430250f4Bf8), a single key separate from the deployer, to be rotated to a multisig | `hunchBook.guardian` |
 | Fee recipient | the deployer, [0xD183…10A8](https://monadscan.com/address/0xD183a7daECF3d539683f37e1111558E3dFC210A8) | `hunchBook.feeRecipient` |
 | Deploy gas | about 3.74 MON for core and periphery, about 1.77 MON for templates 3 to 7 and the registrations | the deployer's balance before and after |
-| Markets | 2, both opened 2026-10-12 by us ([Market #1](https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511) and [Market #2](https://monadscan.com/address/0x253BD48a07AEF48A0eb9281ACdfd331F31ED69E7), below) | `factory.marketCount()` |
+| Markets | 2, both opened 2026-10-12 by us; #1 settled YES the same day ([Market #1](https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511) and [Market #2](https://monadscan.com/address/0x253BD48a07AEF48A0eb9281ACdfd331F31ED69E7), below) | `factory.marketCount()` |
 
 ### Market #1 on mainnet (ours, seeded by us)
 
 "Will BTC/USD be at or above $83,500 at 2026-10-12 07:00:00 UTC, per Chainlink's BTC/USD feed?" (template 2,
 Chainlink BTC/USD [0xc1d4…0546](https://monadscan.com/address/0xc1d4C3331635184fA4C3c22fb92211B2Ac9E0546)). Staking stops at
-06:30 UTC. We created it and filled its pool: this activity is ours, not outside demand.
+06:30 UTC. We created it and filled its pool: this activity is ours, not outside demand. It settled YES as a pool
+66 seconds after close, and every stake, payout and fee in it is ours.
 
 | Fact | Value | Source |
 |---|---|---|
@@ -48,8 +49,12 @@ Chainlink BTC/USD [0xc1d4…0546](https://monadscan.com/address/0xc1d4C333163518
 | Created | by the deployer with 5 USDC on YES, block 112,637,798 ([tx](https://monadscan.com/tx/0x72caf4b41b17563b7668d06a1418a78849107319d070619fcbe3b8c7e6de8ea6)) | `MarketCreated` |
 | Seeded stakes | 15 x 1 USDC, paid by the deployer for the 15 seed wallets below (7 YES, 8 NO): [1](https://monadscan.com/tx/0xdff0439fb6821280c9fd2d86ad03d1cbcb6c18c08ca90d033930c92464b1b492), [2](https://monadscan.com/tx/0x5bae8794705f3b8a40c595d38d01d1f46ab50d5fa3f108863379bfc4c149b7e5), [3](https://monadscan.com/tx/0x2dd190584334541a569bc3be9f09805915805e2a370ddb50d2db994a62d9af8c), [4](https://monadscan.com/tx/0x219eea577b5dd4c0766b3621924292390b596194ea090e7ed2f1ae7ed41cde3f), [5](https://monadscan.com/tx/0x3e9170e33663556d24610726dc6abca05bc618ead7db1fa8684fc0f21a607d3f), [6](https://monadscan.com/tx/0x2babd6f39cde371f4670b06c4598081df1692103d9afbe19fbdeb0d839dd8b57), [7](https://monadscan.com/tx/0x881554a6d8b6184b595b1f9d8dcd3204ef828d5e6d06efd7698c1090bd044558), [8](https://monadscan.com/tx/0x54061440e50078d53a73f716f15cc1f4103e34c5d53e66d4bd0454cddc1c579c), [9](https://monadscan.com/tx/0x3c55a7bb44a2b4116f2162deb255a08c93c51f0c51319fb76613c3d88e8a8210), [10](https://monadscan.com/tx/0xcb2213acc4cca2d4982a78bae3e6556c206b96c72bcd4d106dc778d96cf74ad1), [11](https://monadscan.com/tx/0xc61e8671081876c8ef566f0cea9398a9a3abbaedd5dd7b1f1b6e91a4ae7e9138), [12](https://monadscan.com/tx/0xb50b15ebf34562f09d0deb7a80d8493e349f88bf0b74d421e8a535b351790406), [13](https://monadscan.com/tx/0x98f0f04caf1c9198315ef4775c40a73be4a1c5c3be6d85f5ea3d8544dc486faf), [14](https://monadscan.com/tx/0x4b6b114fe1fea8dcac953004938fc11b818a4258f80f9be6ecb1b662010cc4c3), [15](https://monadscan.com/tx/0x8dd0b04c990b3767c1d9d7ec23de7ad83d6e378941513ca6aafcdb7377b69ea5) | `Staked`, `PoolDeposited` |
 | Pool when seeded | 12 USDC YES, 8 USDC NO, 16 stakers; graduation rule met (10 USDC from 2 wallets) | `market.poolTotals()` |
-| Book | none: Kuru creates mainnet books by hand, so this market settles as a pool | `market.book()` |
-| Gas | 0.487 MON for the approval, the market and the 15 stakes, at 102 gwei | the receipts |
+| Book | none: Kuru creates mainnet books by hand, so this market settled as a pool | `market.book()` |
+| Settled | YES, at 07:01:06 UTC, block 112,689,741, 66 seconds after close, sent by our keeper [0x1f5A…5569](https://monadscan.com/address/0x1f5AC9bB0DF7d0E0DD133cBd71388e1078475569) ([tx](https://monadscan.com/tx/0xbcccfeeb17568f7d53235dbcf7f8e79756d7c707dd87c80a4993d469c9896ae5)); anyone could have sent it | `Settled`, `market.outcome()` = 1 (YES), `market.phase()` = 4 |
+| Evidence | Chainlink BTC/USD round 18446744073710234338 (phase 1, round 682,722): $84,134.62768072, updated 06:58:56 UTC. The next round ($84,117.29740704, updated 07:00:36 UTC) proves it is the last round at or before 07:00:00, as the resolver requires. Evidence hash 0x584f…81da | `feed.getRoundData(roundId)`, `PriceAtTimeReader` |
+| Payouts | 19.83999 USDC to the 8 YES stakers: 8.266666 to the deployer and 1.653332 to each of the 7 YES seed wallets, pushed by our keeper at 07:08 UTC, block 112,691,186 ([tx](https://monadscan.com/tx/0x275a46611dfe8436a1663221e4008d13ca13488cb96f0c9e37a0b9101500b678)). The 8 NO stakers lose their 8 USDC | `PoolClaimed` |
+| Fee | 0.160005 USDC, 2% of winnings, to the deployer as fee recipient and as creator: ours | `PoolClaimed.fee` |
+| Gas | 0.487 MON for the approval, the market and the 15 stakes; 0.026 MON to settle and 0.089 MON to push the 8 payouts; all at 102 gwei | the receipts |
 
 ### Market #2 on mainnet (ours)
 
