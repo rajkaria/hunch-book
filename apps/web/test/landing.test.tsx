@@ -765,6 +765,14 @@ describe("landing page", () => {
     expect(card.getByRole("list", { name: "Where this market is" }).textContent).toContain("Settle (done)");
   });
 
+  it("says a pool that settled without graduating never had a book, not that one is coming", () => {
+    const settledPool = makeMarket({ phase: Phase.Settled, outcome: Outcome.No, graduated: false });
+    render(<Landing live={snapshot({ featured: settledPool })} />);
+    const card = within(screen.getByRole("complementary", { name: "Most active market, live" }));
+    expect(card.getByText("No book: it never graduated")).toBeTruthy();
+    expect(card.queryByText("No book yet")).toBeNull();
+  });
+
   it("opens every outside link in a new tab without a referrer, and uses no em dashes", () => {
     const { container } = render(<Landing live={snapshot()} />);
     const external = Array.from(container.querySelectorAll<HTMLAnchorElement>("a[target=_blank]"));

@@ -8,6 +8,7 @@ import { chanceDisplay, lifecycleStages, marketChance, type StageState } from "@
 import { marketTitle, type TitleClock } from "@/lib/market/title";
 import type { MarketView } from "@/lib/market/types";
 import { bookName, defaultStack, marketTag, onHunchVenue } from "@/lib/stacks";
+import { noBookWords } from "../markets/VenueChip";
 import { AddressLink, Badge, ButtonLink, ChanceBar, LiveDot, PhasePill } from "../ui";
 import s from "./landing.module.css";
 import { priceWords, usdcWords } from "./words";
@@ -173,7 +174,7 @@ function LiveMarketCard({ m, clock }: { m: MarketView; clock: TitleClock | null 
             {bookName(m)} <AddressLink address={m.book} />
           </span>
         ) : (
-          <span className="subtle">No book yet</span>
+          <span className="subtle">{noBookWords(m)}</span>
         )}
         <Link href={href} className={s.cardOpen}>
           Open market <span aria-hidden="true">→</span>
