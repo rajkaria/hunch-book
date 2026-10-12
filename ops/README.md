@@ -73,7 +73,7 @@ Settlement, graduation and payouts must not wait on a laptop. Since 2026-10-12 t
 |---|---|---|---|
 | `keeper-mainnet` | the keeper on Monad mainnet | `KEEPER_NETWORK=monad-mainnet`, `KEEPER_BOOK_REQUEST_AT=0.5`, `KEEPER_JOBS_OFF=oracle,kuruFeeds,series`, `KEEPER_MIN_MON=1` | [/health](https://keeper-mainnet-production-3f1c.up.railway.app/health) |
 | `keeper-testnet` | the keeper on Monad testnet | `KEEPER_NETWORK=monad-testnet`, `KEEPER_ORACLE_POKE_SECONDS=7200`, `KEEPER_SERIES_ENABLED=0` | [/health](https://keeper-testnet-production-df84.up.railway.app/health) |
-| `maker-testnet` | the maker on Monad testnet | `MAKER_NETWORK=monad-testnet`, `MAKER_HEARTBEAT_SECONDS=3600`, `MAKER_REQUOTE_THRESHOLD=0.01`, `MAKER_POLL_SECONDS=20` | [/health](https://maker-testnet-production.up.railway.app/health) |
+| `maker-testnet` | the maker on Monad testnet | `MAKER_NETWORK=monad-testnet`, `MAKER_HEARTBEAT_SECONDS=21600`, `MAKER_REQUOTE_THRESHOLD=0.02`, `MAKER_POLL_SECONDS=20` (a requote every hour on every book cost about 17 MON a day, so it refreshes every 6 hours and on a 2-cent move) | [/health](https://maker-testnet-production.up.railway.app/health) |
 | `watchdog-mainnet`, `watchdog-testnet` | the [watchdog](../services/watchdog), as a cron every 10 minutes | `WATCHDOG_NETWORK`, `WATCHDOG_WEBHOOK`, `KEEPER_HEALTH_URL`, `MAKER_HEALTH_URL` | its log |
 
 The mainnet maker is not deployed: it stays a dry run until a Kuru book exists on mainnet and it holds USDC.
