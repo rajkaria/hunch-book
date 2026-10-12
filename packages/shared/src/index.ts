@@ -3,6 +3,7 @@ export * from "./chains.js";
 export * from "./deployments.js";
 export * from "./kuru/index.js";
 export * from "./math.js";
+export * from "./notify.js";
 export * from "./proofs.js";
 export * from "./settlement.js";
 export * from "./templates.js";

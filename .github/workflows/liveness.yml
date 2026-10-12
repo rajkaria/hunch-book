@@ -1,10 +1,14 @@
 name: liveness
-# Every 30 minutes: read the chain and check solvency, supply, settlement lag, graduation, the
-# keeper's and maker's gas, and (when their URLs are set as repository variables) their health.
-# A problem opens one issue labelled "liveness" (GitHub notifies the repo's watchers, phones
-# included) and keeps its body current; the issue closes itself when everything is healthy again.
-# Optional: repository variables KEEPER_HEALTH_URL and MAKER_HEALTH_URL, a WATCHDOG_WEBHOOK secret that
-# receives a JSON POST on every non-ok run, and a WATCHDOG_RPC_URL secret: a keyed RPC read first. Without
+# On a schedule, for Monad testnet and Monad mainnet: read the chain and check solvency, supply,
+# settlement lag, graduation, the keeper's and maker's gas, and (when their URLs are set as repository
+# variables) their health. GitHub asks for every 30 minutes but runs scheduled workflows late, often
+# hours apart, so this is the independent backstop: the same check runs every 10 minutes on Railway
+# (services/watchdog/railway.json, ops/README.md "Always on"). A problem opens one issue labelled
+# "liveness" per network (GitHub notifies the repo's watchers) and keeps its body current; the issue
+# closes itself when that network is healthy again.
+# Optional: repository variables KEEPER_HEALTH_URL, MAKER_HEALTH_URL (testnet) and
+# KEEPER_HEALTH_URL_MAINNET, MAKER_HEALTH_URL_MAINNET, a WATCHDOG_WEBHOOK secret that receives every
+# non-ok run (an ntfy topic URL pushes it to a phone), and a WATCHDOG_RPC_URL secret: a keyed RPC read first. Without
 # it the deployment's public RPCs are tried in turn, each with retries and backoff. If every one of them
 # still rate-limits the read (exit code 4), the run passes with a warning: nothing is known to be wrong,
 # so no issue is opened or closed.
@@ -25,8 +29,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        network: [monad-testnet, monad-mainnet]
     env:
-      NETWORK: monad-testnet
+      NETWORK: ${{ matrix.network }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -41,10 +49,10 @@ jobs:
         id: run
         env:
           WATCHDOG_NETWORK: ${{ env.NETWORK }}
-          KEEPER_HEALTH_URL: ${{ vars.KEEPER_HEALTH_URL }}
-          MAKER_HEALTH_URL: ${{ vars.MAKER_HEALTH_URL }}
+          KEEPER_HEALTH_URL: ${{ matrix.network == 'monad-mainnet' && vars.KEEPER_HEALTH_URL_MAINNET || vars.KEEPER_HEALTH_URL }}
+          MAKER_HEALTH_URL: ${{ matrix.network == 'monad-mainnet' && vars.MAKER_HEALTH_URL_MAINNET || vars.MAKER_HEALTH_URL }}
           WATCHDOG_WEBHOOK: ${{ secrets.WATCHDOG_WEBHOOK }}
-          WATCHDOG_RPC_URL: ${{ secrets.WATCHDOG_RPC_URL }}
+          WATCHDOG_RPC_URL: ${{ matrix.network == 'monad-mainnet' && secrets.WATCHDOG_RPC_URL_MAINNET || secrets.WATCHDOG_RPC_URL }}
         run: |
           set +e
           pnpm --filter @hunch-book/watchdog check --markdown "$RUNNER_TEMP/report.md"
@@ -57,7 +65,8 @@ jobs:
         run: |
           gh label create liveness --color B60205 --description "Opened by the scheduled liveness check" --force
           title="Liveness: ${NETWORK} needs attention"
-          number=$(gh issue list --label liveness --state open --json number --jq '.[0].number')
+          number=$(gh issue list --label liveness --state open --json number,title \
+            --jq "map(select(.title == \"$title\")) | .[0].number // empty")
           if [ -z "$number" ]; then
             gh issue create --title "$title" --label liveness --body-file "$RUNNER_TEMP/report.md"
           else
@@ -69,13 +78,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for number in $(gh issue list --label liveness --state open --json number --jq '.[].number'); do
-            gh issue close "$number" --comment "Healthy again: every check passed in run ${GITHUB_RUN_ID}."
+          title="Liveness: ${NETWORK} needs attention"
+          for number in $(gh issue list --label liveness --state open --json number,title \
+            --jq "map(select(.title == \"$title\")) | .[].number"); do
+            gh issue close "$number" --comment "Healthy again: every ${NETWORK} check passed in run ${GITHUB_RUN_ID}."
           done
 
       - name: Warn when every RPC rate-limited the read
         if: steps.run.outputs.code == '4'
-        run: echo "::warning title=liveness::Every RPC rate-limited the read, so the chain was not checked this run. Set the WATCHDOG_RPC_URL secret to a keyed RPC to avoid this."
+        run: echo "::warning title=liveness ${NETWORK}::Every RPC rate-limited the read, so the chain was not checked this run. Set the WATCHDOG_RPC_URL secret to a keyed RPC to avoid this."
 
       - name: Fail the run on a failed check or a check that could not run
         if: steps.run.outputs.code == '2' || steps.run.outputs.code == '3'

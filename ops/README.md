@@ -64,6 +64,88 @@ On macOS, `start` also keeps the Mac awake while a service runs (`caffeinate -is
 service's pid; `KEEP_AWAKE=0` skips it). A closed laptop lid still sleeps, and a sleeping Mac stops
 both services. For a machine that should keep them running, use launchd (below) or a host.
 
+## Always on: where the services run today
+
+Settlement, graduation and payouts must not wait on a laptop. Since 2026-10-12 the services run on Railway
+(project `hunch-book`), each from this repository's Dockerfiles, with a phone alert when anything stops.
+
+| Railway service | Runs | Settings that differ from the defaults | Health |
+|---|---|---|---|
+| `keeper-mainnet` | the keeper on Monad mainnet | `KEEPER_NETWORK=monad-mainnet`, `KEEPER_BOOK_REQUEST_AT=0.5`, `KEEPER_JOBS_OFF=oracle,kuruFeeds,series`, `KEEPER_MIN_MON=1` | [/health](https://keeper-mainnet-production-3f1c.up.railway.app/health) |
+| `keeper-testnet` | the keeper on Monad testnet | `KEEPER_NETWORK=monad-testnet`, `KEEPER_ORACLE_POKE_SECONDS=7200`, `KEEPER_SERIES_ENABLED=0` | [/health](https://keeper-testnet-production-df84.up.railway.app/health) |
+| `maker-testnet` | the maker on Monad testnet | `MAKER_NETWORK=monad-testnet`, `MAKER_HEARTBEAT_SECONDS=3600`, `MAKER_REQUOTE_THRESHOLD=0.01`, `MAKER_POLL_SECONDS=20` | [/health](https://maker-testnet-production.up.railway.app/health) |
+| `watchdog-mainnet`, `watchdog-testnet` | the [watchdog](../services/watchdog), as a cron every 10 minutes | `WATCHDOG_NETWORK`, `WATCHDOG_WEBHOOK`, `KEEPER_HEALTH_URL`, `MAKER_HEALTH_URL` | its log |
+
+The mainnet maker is not deployed: it stays a dry run until a Kuru book exists on mainnet and it holds USDC.
+Every service runs from the same published wallets as before (`wallets` in the deployments files), so all of
+its activity stays labelled as ours.
+
+### Who rings when something stops
+
+Four layers, each independent of the one before it:
+
+1. **The service restarts itself.** Railway restarts a keeper or maker that crashes (up to 10 times in a
+   row) and checks `/health` before it routes to a new deploy. Two copies never run at once (no overlap).
+2. **The keeper reports what it sees.** `KEEPER_ALERT_WEBHOOK` gets every job error, a low MON balance, a
+   market that cannot settle, a mainnet book request, and each settlement it sends. One alert per market and
+   event at most every `KEEPER_ALERT_REPEAT_SECONDS` (6 hours on Railway).
+3. **The watchdog checks from the outside every 10 minutes.** It reads the chain, not the keeper: vault
+   solvency, YES and NO supply, settlement lag on every market, graduations about to be missed, both wallets'
+   MON, and the keeper's and maker's `/health` (a last cycle older than the limit fails; a service left in dry
+   run warns). Anything not ok goes to `WATCHDOG_WEBHOOK`.
+4. **GitHub checks Railway.** The [liveness workflow](../.github/workflows/liveness.yml) runs the same check
+   for both networks on GitHub's servers, so it still fires if Railway itself is down. GitHub runs scheduled
+   workflows late (often hours apart), so it is the backstop, not the first alarm. It opens one issue per
+   network and posts to the same webhook (the `WATCHDOG_WEBHOOK` repository secret).
+
+**On a phone.** Both webhooks point at an [ntfy](https://ntfy.sh) topic. Install the ntfy app and subscribe
+to the topic (its name is kept private: it is the value of `WATCHDOG_WEBHOOK` in Railway). The keeper and
+the watchdog recognise an ntfy URL and send a short titled message: errors and failed checks ring as
+urgent, warnings as high, a settlement as a normal notification. Any other URL (Slack, Discord, a JSON
+endpoint) still gets the JSON payload.
+
+**If every layer fails, nothing is lost.** `settle`, `graduate`, `claimTokensFor`, `claimPoolFor` and
+`voidIfExpired` are permissionless. Anyone can run one keeper cycle from any machine with a funded key:
+
+```sh
+KEEPER_NETWORK=monad-mainnet KEEPER_ENABLED=1 pnpm --filter @hunch-book/keeper exec tsx src/main.ts once
+```
+
+A market that is not settled waits; its money stays in the vault until someone settles it, and a market
+nobody settles voids at its settlement deadline and refunds every stake.
+
+### Moving the keys to Railway
+
+The services start keyless, as a dry run. To turn them on, from the repository root of a checkout that has
+the keys in `.env` and is linked to the project (`railway link`, project `hunch-book`):
+
+```sh
+bash ops/railway-set-keys.sh          # copies KEEPER_PRIVATE_KEY and MAKER_PRIVATE_KEY through stdin; prints names only
+```
+
+Then, one service at a time: stop the local copy that signs with the same key (one copy per key, always),
+check the dry run reads right (`/health` shows the published address and the expected markets), and turn it
+on. Setting a variable redeploys the service:
+
+```sh
+RUN_DIR=$PWD/.run/mainnet LAUNCHD_PREFIX=xyz.playhunch.book.mainnet bash scripts/run-local-services.sh stop keeper
+railway variable set --service keeper-mainnet KEEPER_ENABLED=1
+launchctl bootout "gui/$(id -u)/xyz.playhunch.book.keeper"     # the local testnet keeper
+railway variable set --service keeper-testnet KEEPER_ENABLED=1
+launchctl bootout "gui/$(id -u)/xyz.playhunch.book.maker"      # the local testnet maker; it cancels its orders first
+railway variable set --service maker-testnet MAKER_ENABLED=1
+```
+
+Do not switch a keeper over in the half hour around a market's close: let the running copy settle it first.
+
+### Gas for the judging window and after
+
+The keeper's wallet pays for every settlement, graduation and payout. On 2026-10-12 it held 15 MON on
+mainnet and about 20 MON on testnet; the maker about 19 MON on testnet. The watchdog warns when the keeper
+holds less than 1 MON and fails below 0.3 MON (the maker: 2 and 0.5), and the keeper alerts below
+`KEEPER_MIN_MON`. A market still unsettled 2 hours after it can be settled is a warning, 24 hours a failure.
+Top up the published address from any wallet; no restart is needed.
+
 ## macOS launchd
 
 Two agent templates: [`launchd/xyz.playhunch.book.keeper.plist`](./launchd/xyz.playhunch.book.keeper.plist)
@@ -133,12 +215,21 @@ railway variable set --service maker MAKER_NETWORK=monad-testnet PORT=8080
 grep '^MAKER_PRIVATE_KEY=' .env | cut -d= -f2- | railway variable set --service maker --stdin MAKER_PRIVATE_KEY
 ```
 
-A volume keeps the keeper's scan cursors across deploys (optional; without it the keeper rescans):
+A volume keeps the keeper's scan cursors across deploys (optional; without it the keeper rescans).
+Railway mounts volumes as root while the images run as the `node` user, so set `RAILWAY_RUN_UID=0` on a
+service with a volume, or its state and health writes fail with `EACCES`:
 
 ```sh
 railway service link keeper
 railway volume add --mount-path /data
+railway variable set --service keeper RAILWAY_RUN_UID=0
 ```
+
+The `railway.json` next to each Dockerfile holds the build and deploy settings. When a service's config file
+path is not set in the dashboard, the same settings can be applied from the command line: `railway
+environment edit` reads them as JSON on stdin (`{"services": {"<service id>": {"build": {...}, "deploy":
+{...}}}}`). The watchdog's `railway.json` adds `"cronSchedule": "*/10 * * * *"` and `"restartPolicyType":
+"NEVER"`: it runs once, checks, alerts and exits.
 
 Deploy (uploads the checkout without anything gitignored, so `.env` and `internal/` never leave the
 machine), then watch:
@@ -216,12 +307,14 @@ What to look at:
 
 ## Watching it from outside
 
-The [watchdog](../services/watchdog) checks the protocol from the chain every 30 minutes on GitHub
-Actions (`.github/workflows/liveness.yml`): vault solvency, YES and NO supply, settlement lag,
-graduations about to be missed, and both services' MON balances. Any problem opens one issue
-labelled `liveness`, which closes itself when the next run is healthy.
+The [watchdog](../services/watchdog) checks the protocol from the chain: vault solvency, YES and NO supply,
+settlement lag, graduations about to be missed, both services' MON balances and, when their URLs are set,
+their `/health`. It runs in two places (see [Who rings when something stops](#who-rings-when-something-stops)):
+every 10 minutes as a Railway cron, and on GitHub Actions (`.github/workflows/liveness.yml`) for both
+networks, which GitHub schedules every 30 minutes but in practice runs hours apart. On GitHub any problem
+opens one issue per network labelled `liveness`, which closes itself when that network is healthy again.
 
-To have it check the services' health too, make the `/health` endpoints reachable from the internet
-(Railway gives each service a public URL) and set the repository variables `KEEPER_HEALTH_URL` and
-`MAKER_HEALTH_URL`. For alerts beyond GitHub notifications, set the `WATCHDOG_WEBHOOK` secret.
-Run the same checks by hand with `pnpm --filter @hunch-book/watchdog check`.
+Repository settings the workflow reads: the variables `KEEPER_HEALTH_URL`, `MAKER_HEALTH_URL` (testnet) and
+`KEEPER_HEALTH_URL_MAINNET`, `MAKER_HEALTH_URL_MAINNET`, and the secrets `WATCHDOG_WEBHOOK` (an ntfy topic
+URL pushes to a phone), `WATCHDOG_RPC_URL` and `WATCHDOG_RPC_URL_MAINNET` (keyed RPCs, optional).
+Run the same checks by hand with `WATCHDOG_NETWORK=monad-mainnet pnpm --filter @hunch-book/watchdog check`.

@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
-import { deployments, type Network } from "@hunch-book/shared";
-import { evaluate, toMarkdown, worst } from "./checks.js";
+import { alertRequest, deployments, type Network } from "@hunch-book/shared";
+import { evaluate, toMarkdown, toPhoneText, worst } from "./checks.js";
 import { readSnapshot } from "./read.js";
 import { EXIT_RATE_LIMITED, isRateLimited, makeClient, watchdogRpcUrls } from "./rpc.js";
 
@@ -11,11 +11,28 @@ import { EXIT_RATE_LIMITED, isRateLimited, makeClient, watchdogRpcUrls } from ".
 //                         deployment's public RPCs follow it, each retried with backoff
 //   KEEPER_HEALTH_URL     optional: the keeper's /health URL
 //   MAKER_HEALTH_URL      optional: the maker's /health URL
-//   WATCHDOG_WEBHOOK      optional: receives a JSON POST {level, text} when the result is not ok
+//   WATCHDOG_WEBHOOK      optional: receives a JSON POST {level, text} when the result is not ok, or
+//                         when the check cannot run; an ntfy topic (https://ntfy.sh/<topic>) gets a short
+//                         titled text instead, pushed to a phone ("fail" rings as urgent)
 // Exit code: 0 ok, 1 warn, 2 fail, 3 the check itself could not run, 4 every RPC rate-limited the
 // read (a soft warning: the chain was not read, nothing is known to be wrong).
 
 const NETWORKS: Network[] = ["monad-testnet", "monad-mainnet"];
+
+/** Posts to WATCHDOG_WEBHOOK, when set. A failed post is logged, never thrown. */
+async function notify(network: string, level: string, markdown: string, phoneText: string, click?: string) {
+  const webhook = process.env.WATCHDOG_WEBHOOK?.trim();
+  if (!webhook) return;
+  const init = alertRequest(webhook, JSON.stringify({ level, text: markdown }), {
+    title: `Hunch Book liveness (${network}): ${level.toUpperCase()}`,
+    text: phoneText,
+    level,
+    click,
+  });
+  await fetch(webhook, { ...init, signal: AbortSignal.timeout(10_000) }).catch((error: unknown) =>
+    console.error(JSON.stringify({ event: "webhook-failed", error: String(error) })),
+  );
+}
 
 async function main(): Promise<number> {
   const network = (process.env.WATCHDOG_NETWORK?.trim() || "monad-testnet") as Network;
@@ -38,15 +55,13 @@ async function main(): Promise<number> {
   if (mdIndex > 0 && process.argv[mdIndex + 1])
     writeFileSync(process.argv[mdIndex + 1] as string, `${markdown}\n`);
 
-  const webhook = process.env.WATCHDOG_WEBHOOK?.trim();
-  if (webhook && level !== "ok") {
-    await fetch(webhook, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ level, text: markdown }),
-      signal: AbortSignal.timeout(10_000),
-    }).catch((error: unknown) =>
-      console.error(JSON.stringify({ event: "webhook-failed", error: String(error) })),
+  if (level !== "ok") {
+    await notify(
+      network,
+      level,
+      markdown,
+      toPhoneText(findings),
+      `${deployment.explorer}/address/${deployment.hunchBook.vault}`,
     );
   }
   console.log(JSON.stringify({ event: "result", network, block: snapshot.block.toString(), level }));
@@ -70,5 +85,8 @@ main().then(
     }
     console.error(JSON.stringify({ event: "error", error: message }));
     process.exitCode = 3;
+    const network = process.env.WATCHDOG_NETWORK?.trim() || "monad-testnet";
+    const text = `The liveness check could not run: ${message.split("\n")[0]}`;
+    return notify(network, "fail", text, text);
   },
 );

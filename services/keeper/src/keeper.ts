@@ -681,6 +681,12 @@ export class Keeper {
     if (result === undefined) return false;
     if (result.status === "success") {
       this.retries.delete(`settle:${m.address}`);
+      void this.alerter.send(
+        `settled:${m.address}`,
+        "settled",
+        { market: m.address, url: `${this.deployment.explorer}/tx/${result.hash}` },
+        "info",
+      );
     } else if (result.status === "dry-run") {
       if (!result.simulation.ok) {
         this.backoff(m.address, `settle would revert: ${result.simulation.reason}`, false, "settle", cap);

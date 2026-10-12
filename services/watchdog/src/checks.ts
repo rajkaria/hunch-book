@@ -39,6 +39,8 @@ export interface ServiceHealth {
   name: "keeper" | "maker";
   /** ISO time of the service's last completed cycle; undefined when the health URL did not answer. */
   lastCycleAt?: string;
+  /** False when the service runs as a dry run (its kill switch is off): it reads and logs, sends nothing. */
+  enabled?: boolean;
   error?: string;
 }
 
@@ -213,6 +215,13 @@ export function checkService(h: ServiceHealth, s: Snapshot, t: Thresholds): Find
       message: `The ${h.name}'s last cycle was ${fmtDuration(age)} ago.`,
     };
   }
+  if (h.enabled === false) {
+    return {
+      level: "warn",
+      check: `${h.name}-health`,
+      message: `The ${h.name} runs as a dry run: it sends nothing until its ${h.name.toUpperCase()}_ENABLED is 1.`,
+    };
+  }
   return {
     level: "ok",
     check: `${h.name}-health`,
@@ -266,4 +275,11 @@ export function toMarkdown(s: Snapshot, findings: Finding[], explorer: string): 
     lines.push(`| ${ICON[f.level]} | ${f.check} | ${f.message}${subject} |`);
   }
   return lines.join("\n");
+}
+
+/** The non-ok findings as short lines, for a phone notification. */
+export function toPhoneText(findings: Finding[]): string {
+  const bad = findings.filter((f) => f.level !== "ok");
+  if (bad.length === 0) return "Every check passed.";
+  return bad.map((f) => `${ICON[f.level]} ${f.check}: ${f.message}`).join("\n");
 }

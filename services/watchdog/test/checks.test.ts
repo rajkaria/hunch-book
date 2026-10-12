@@ -14,6 +14,7 @@ import {
   type Snapshot,
   DEFAULT_THRESHOLDS as T,
   toMarkdown,
+  toPhoneText,
   type VaultSnapshot,
   worst,
 } from "../src/checks.js";
@@ -174,6 +175,11 @@ describe("service health", () => {
     const stale = new Date((NOW - 3600) * 1000).toISOString();
     expect(checkService({ name: "keeper", lastCycleAt: fresh }, s, T).level).toBe("ok");
     expect(checkService({ name: "keeper", lastCycleAt: stale }, s, T).level).toBe("fail");
+    const dry = checkService({ name: "keeper", lastCycleAt: fresh, enabled: false }, s, T);
+    expect(dry.level).toBe("warn");
+    expect(dry.message).toContain("KEEPER_ENABLED");
+    expect(checkService({ name: "keeper", lastCycleAt: fresh, enabled: true }, s, T).level).toBe("ok");
+    expect(checkService({ name: "keeper", lastCycleAt: stale, enabled: false }, s, T).level).toBe("fail");
   });
   it("warns, not fails, when the endpoint does not answer", () => {
     const f = checkService({ name: "maker", error: "TimeoutError" }, s, T);
@@ -210,6 +216,14 @@ describe("evaluate", () => {
     expect(md).toContain("**WARN**");
     expect(md).toContain("https://testnet.monadscan.com/address/0x2A44B99014cF73065BFb89197a08DE09D18d3982");
     expect(md).not.toMatch(/—/);
+  });
+  it("lists only what is wrong, one short line each, for a phone notification", () => {
+    const s = snapshot({ markets: [market({ close: BigInt(NOW - 3 * 3600) })] });
+    const text = toPhoneText(evaluate(s));
+    expect(text.split("\n").every((line) => /^(WARN|FAIL) /.test(line))).toBe(true);
+    expect(text).toContain("settlement");
+    expect(text).not.toContain("|");
+    expect(toPhoneText([{ level: "ok", check: "solvency", message: "fine" }])).toBe("Every check passed.");
   });
 });
 

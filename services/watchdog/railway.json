@@ -1,0 +1,13 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "services/watchdog/Dockerfile",
+    "watchPatterns": ["services/watchdog/**", "packages/shared/**", "deployments/**", "pnpm-lock.yaml"]
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "cronSchedule": "*/10 * * * *",
+    "restartPolicyType": "NEVER"
+  }
+}

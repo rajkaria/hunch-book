@@ -59,6 +59,42 @@ describe("Alerter", () => {
     expect(lines.map((l) => l.event)).toEqual(["alert-failed", "alert-failed"]);
   });
 
+  it("sends an ntfy topic a titled text with a priority, and keeps secrets out of it", async () => {
+    setRedactions(["sk-secret-123456"]);
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchFn = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response("ok");
+    }) as unknown as typeof fetch;
+    const alerter = new Alerter(
+      "https://ntfy.sh/hunch-book-test",
+      { ...BASE, network: "monad-mainnet" },
+      0,
+      fetchFn,
+    );
+    await alerter.send(
+      "settled:0xm",
+      "settled",
+      { market: "0xm", url: "https://monadscan.com/tx/0xh" },
+      "info",
+    );
+    await alerter.send("error:settle:0xm", "job-error", {
+      job: "settle",
+      market: "0xm",
+      error: "sk-secret-123456",
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.init.body).toBe("market: 0xm\nurl: https://monadscan.com/tx/0xh");
+    expect(calls[0]?.init.headers).toMatchObject({
+      Title: "Hunch Book keeper (monad-mainnet): settled",
+      Priority: "default",
+      Click: "https://monadscan.com/tx/0xh",
+    });
+    expect(calls[1]?.init.headers).toMatchObject({ Priority: "urgent" });
+    expect(calls[1]?.init.body).toBe("job: settle\nmarket: 0xm\nerror: [redacted]");
+    expect(calls[1]?.init.signal).toBeDefined();
+  });
+
   it("cuts secrets out of alerts and log lines", async () => {
     setRedactions(["sk-secret-123456", "https://rpc.example.com/key-abcdef"]);
     const { posts, fetchFn } = recorder();

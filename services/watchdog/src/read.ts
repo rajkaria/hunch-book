@@ -52,8 +52,8 @@ async function readHealth(
   try {
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return { name, error: `HTTP ${res.status}` };
-    const body = (await res.json()) as { lastCycleAt?: string };
-    return { name, lastCycleAt: body.lastCycleAt };
+    const body = (await res.json()) as { lastCycleAt?: string; enabled?: boolean };
+    return { name, lastCycleAt: body.lastCycleAt, enabled: body.enabled };
   } catch (error) {
     return { name, error: error instanceof Error ? error.name : "unreachable" };
   }
