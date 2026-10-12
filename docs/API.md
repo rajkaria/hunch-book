@@ -692,6 +692,9 @@ inputs from the address: `/calculator?perp=BTC&side=long&size=0.5&unit=units&hor
 | `NEXT_PUBLIC_HUNCH_NETWORK` | `monad-testnet` | the network the app and the API serve |
 | `HUNCH_API_RPC_URL` | `MONAD_TESTNET_RPC` (or `MONAD_MAINNET_RPC`), else the deployment's public RPC | the server's RPC for API reads |
 | `INDEXER_URL`, `NEXT_PUBLIC_INDEXER_URL` | none | the indexer's GraphQL endpoint, for trade history and activity totals |
+| `NEXT_PUBLIC_INDEXER_URL_MAINNET` | none | the Monad mainnet indexer, for the app's pages on mainnet |
+| `KEEPER_HEALTH_URL`, `MAKER_HEALTH_URL` | none | the keeper's and the maker bot's `/health` on Monad testnet, shown on `/status` (also read with a `NEXT_PUBLIC_` prefix). Unset, `/status` reads the chain instead |
+| `KEEPER_HEALTH_URL_MAINNET`, `MAKER_HEALTH_URL_MAINNET` | none | the same for Monad mainnet's keeper and maker bot |
 | `NEXT_PUBLIC_SITE_URL` | `https://book.playhunch.xyz` | the origin used in links |
 
 ## Tests
