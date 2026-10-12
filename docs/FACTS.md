@@ -34,7 +34,7 @@ change. This page holds the numbers that do not change, and dated snapshots of t
 | Guardian | [0xCaA4…4Bf8](https://monadscan.com/address/0xCaA404541A30c277a05F2A500f3F4430250f4Bf8), a single key separate from the deployer, to be rotated to a multisig | `hunchBook.guardian` |
 | Fee recipient | the deployer, [0xD183…10A8](https://monadscan.com/address/0xD183a7daECF3d539683f37e1111558E3dFC210A8) | `hunchBook.feeRecipient` |
 | Deploy gas | about 3.74 MON for core and periphery, about 1.77 MON for templates 3 to 7 and the registrations | the deployer's balance before and after |
-| Markets | 1, opened 2026-10-12 by us ([Market #1](https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511), below) | `factory.marketCount()` |
+| Markets | 2, both opened 2026-10-12 by us ([Market #1](https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511) and [Market #2](https://monadscan.com/address/0x253BD48a07AEF48A0eb9281ACdfd331F31ED69E7), below) | `factory.marketCount()` |
 
 ### Market #1 on mainnet (ours, seeded by us)
 
@@ -50,6 +50,21 @@ Chainlink BTC/USD [0xc1d4…0546](https://monadscan.com/address/0xc1d4C333163518
 | Pool when seeded | 12 USDC YES, 8 USDC NO, 16 stakers; graduation rule met (10 USDC from 2 wallets) | `market.poolTotals()` |
 | Book | none: Kuru creates mainnet books by hand, so this market settles as a pool | `market.book()` |
 | Gas | 0.487 MON for the approval, the market and the 15 stakes, at 102 gwei | the receipts |
+
+### Market #2 on mainnet (ours)
+
+"Will MON/USD be at or above $0.03 at 2026-11-02 12:00:00 UTC, per Chainlink's MON/USD feed?" (template 2, Chainlink
+MON/USD [0xBcD7…22fb](https://monadscan.com/address/0xBcD78f76005B7515837af6b50c7C52BCf73822fb)). Staking stops at
+2026-11-01 12:00 UTC. We created it with our own 5 USDC on YES and no seed stakes, so its pool does not meet the
+graduation rule yet (it needs at least 10 USDC from 2 wallets with both sides staked).
+
+| Fact | Value | Source |
+|---|---|---|
+| Market | [Market #2](https://monadscan.com/address/0x253BD48a07AEF48A0eb9281ACdfd331F31ED69E7) | `factory.marketAt(1)` |
+| Created | by the deployer with 5 USDC on YES, block 112,671,579 ([tx](https://monadscan.com/tx/0x21e32936d4cdc0ff4e0f64dd97d2f72a1d8f84e844b588722c403e83c71b72d7); [approval](https://monadscan.com/tx/0x467908d3f4d0bca2512b5f5c98637f864c9ae34c69cbfecc66d89ad99670d0dd)) | `MarketCreated` |
+| YES token | HB2-YES [0x1064…9D66](https://monadscan.com/address/0x1064f0bb79443f398512c97c97E8E3E9dFD59D66) | `market.yes()` |
+| Kuru book | none yet. Kuru's router computes [0x35B0…15C0](https://monadscan.com/address/0x35B011c0045c95e5Abae1f6B8754f5D1e96315C0) for our parameters; our keeper posted the `deployProxy` request | `Router.computeAddress`, keeper `book-request` |
+| Gas | 0.132 MON for the approval and the market, at 102 gwei | the receipts |
 
 ### Our seed wallets on mainnet (ours, labelled)
 
