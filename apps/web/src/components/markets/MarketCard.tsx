@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { appDeployment } from "@/lib/config";
 import { formatChance, formatCount } from "@/lib/format";
-import { cardBody, compactUsdc, isUrgent, milestoneShort } from "@/lib/market/explorer";
+import { cardBody, compactUsdc, isUrgent, milestoneShort, sameQuestionWords } from "@/lib/market/explorer";
 import { milestoneText, nextMilestone, phaseGroup, phaseLabel, phaseTone } from "@/lib/market/logic";
 import { templateLabel } from "@/lib/market/params";
 import { marketTitle, type TitleClock } from "@/lib/market/title";
@@ -93,10 +93,13 @@ export function MarketCard({
   m,
   clock,
   now,
+  sameAs,
 }: {
   m: MarketView;
   clock: ChainClock | null;
   now: number | null;
+  /** Tags of other listed markets that ask the same question (lib/market/explorer.ts sameQuestion). */
+  sameAs?: readonly string[];
 }) {
   const milestone = now === null ? null : nextMilestone(m, clock, now);
   const urgent = now !== null && isUrgent(milestone, now);
@@ -126,6 +129,7 @@ export function MarketCard({
           {marketHeadline(m, clock)}
         </Link>
       </h2>
+      {sameAs && sameAs.length > 0 ? <p className={s.sameAs}>{sameQuestionWords(sameAs)}</p> : null}
       <div className={s.body}>
         <CardFigures m={m} />
       </div>

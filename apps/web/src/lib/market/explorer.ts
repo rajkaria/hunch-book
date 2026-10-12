@@ -12,6 +12,7 @@ import {
   priceE18ToBps,
 } from "./logic";
 import { templateLabel } from "./params";
+import { listWords } from "./title";
 import type { MarketView } from "./types";
 
 // The markets list as pure logic: the phase and venue filters read from the URL, their counts, the
@@ -176,6 +177,43 @@ export function listSections<M extends Pick<MarketView, "stack" | "venue" | "kur
     out.push({ id: "fallback", heading: FALLBACK_HEADING, note: FALLBACK_NOTE, markets: fallback });
   }
   return out;
+}
+
+// ---------------------------------------------------------------- same question
+
+/**
+ * Listed markets that ask the same question as another listed market, by lower-case address, each with
+ * the tags of the others ("#12 · Kuru v1"). Two markets can ask the same question: testnet's Kuru v1
+ * markets #11 and #12 were created about a minute apart with the same threshold, and their windows,
+ * 207 blocks apart, read as the same estimated times. They are separate markets with their own pools and
+ * books, so the list says so rather than hiding one.
+ */
+export function sameQuestion<M extends Pick<MarketView, "address" | "marketId" | "stack" | "venue" | "kuruVersion">>(
+  markets: readonly M[],
+  titleOf: (m: M) => string,
+  deployment: Deployment = appDeployment,
+): Map<string, string[]> {
+  const byTitle = new Map<string, M[]>();
+  for (const m of markets) {
+    const key = titleOf(m).trim().toLowerCase();
+    byTitle.set(key, [...(byTitle.get(key) ?? []), m]);
+  }
+  const out = new Map<string, string[]>();
+  for (const group of byTitle.values()) {
+    if (group.length < 2) continue;
+    for (const m of group) {
+      out.set(
+        m.address.toLowerCase(),
+        group.filter((o) => o.address !== m.address).map((o) => marketTag(o, deployment)),
+      );
+    }
+  }
+  return out;
+}
+
+/** The card's line for a market that shares its question with others in the list. */
+export function sameQuestionWords(others: readonly string[]): string {
+  return `A separate market with the same question as ${listWords(others)}.`;
 }
 
 // ---------------------------------------------------------------- search

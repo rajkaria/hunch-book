@@ -21,12 +21,15 @@ import {
   milestoneShort,
   parseVenueFilter,
   priceCents,
+  sameQuestion,
+  sameQuestionWords,
   searchTerms,
   searchText,
   URGENT_SECONDS,
   wholePercent,
 } from "../src/lib/market/explorer";
 import type { Milestone } from "../src/lib/market/logic";
+import { marketTitle, type TitleClock } from "../src/lib/market/title";
 import { marketTag, marketVenue, numberingLabel, venueChipLabel } from "../src/lib/stacks";
 import { deployed } from "./chain";
 import { makeMarket, USDC } from "./fixtures";
@@ -299,6 +302,51 @@ describe("search", () => {
     // The tag finds it too: "#1 · Kuru v2".
     expect(matchesSearch(text, searchTerms("#1 · kuru v2"))).toBe(true);
     expect(matchesSearch(searchText(onPrimary, "Q", threeStacks), searchTerms("kuru v1"))).toBe(true);
+  });
+});
+
+describe("markets that ask the same question", () => {
+  // Testnet's Kuru v1 #11 and #12, word for word: created about a minute apart, windows 207 blocks apart.
+  const rule = (start: number, end: number) =>
+    `Will MON longs pay more than $0.000015 per MON in funding on Perpl (MON Perp, perp 64) between block ${start} and block ${end}?`;
+  const eleven = makeMarket({
+    address: addr(0x11),
+    marketId: 11n,
+    templateId: 1,
+    description: rule(70_078_605, 70_284_309),
+  });
+  const twelve = makeMarket({
+    address: addr(0x12),
+    marketId: 12n,
+    templateId: 1,
+    description: rule(70_078_812, 70_284_516),
+  });
+  const other = makeMarket({ address: addr(0x13), marketId: 13n });
+  const clock: TitleClock = { blockNumber: 70_000_000n, timestamp: 1_791_000_000, msPerBlock: 400 };
+  const title = (m: typeof eleven) => marketTitle(m, threeStacks, clock);
+
+  it("are two markets whose titles read the same once the blocks are times", () => {
+    expect(eleven.description).not.toBe(twelve.description);
+    expect(title(eleven)).toBe(title(twelve));
+  });
+
+  it("each name the other, and a market with its own question names none", () => {
+    const twins = sameQuestion([eleven, twelve, other], title, threeStacks);
+    expect(twins.get(addr(0x11))).toEqual(["#12 · Kuru v1"]);
+    expect(twins.get(addr(0x12))).toEqual(["#11 · Kuru v1"]);
+    expect(twins.has(addr(0x13))).toBe(false);
+    expect(sameQuestionWords(["#12 · Kuru v1"])).toBe(
+      "A separate market with the same question as #12 · Kuru v1.",
+    );
+  });
+
+  it("tells same-numbered markets on different stacks apart too", () => {
+    const v2 = { ...twelve, address: addr(0x21), marketId: 11n, stack: "kuruV2", kuruVersion: 2 as const };
+    const twins = sameQuestion([eleven, v2], title, threeStacks);
+    expect(twins.get(addr(0x11))).toEqual(["#11 · Kuru v2"]);
+    expect(sameQuestionWords(["#12 · Kuru v1", "#11 · Kuru v2"])).toBe(
+      "A separate market with the same question as #12 · Kuru v1 and #11 · Kuru v2.",
+    );
   });
 });
 

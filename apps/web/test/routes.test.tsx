@@ -431,6 +431,32 @@ describe("with contracts deployed", () => {
     expect(screen.queryByText("#4")).toBeNull();
   });
 
+  it("/markets lists two markets with the same question as separate markets, each naming the other", async () => {
+    // Testnet's Kuru v1 #11 and #12: the same question, created about a minute apart. Both are real.
+    const sameRule = "Will MON longs pay more than $0.000015 per MON in funding on Perpl this week?";
+    const eleven = makeMarket({
+      address: "0x00000000000000000000000000000000000000d1",
+      marketId: 11n,
+      description: sameRule,
+    });
+    const twelve = makeMarket({
+      address: "0x00000000000000000000000000000000000000d2",
+      marketId: 12n,
+      description: sameRule,
+    });
+    state.markets = ok({ markets: [twelve, eleven, trading], total: 3 });
+    await renderWithProviders(await MarketsPage(noSearch));
+    const items = screen.getAllByRole("listitem") as HTMLElement[];
+    expect(items).toHaveLength(3);
+    expect(within(items[0] as HTMLElement).getByText(/^A separate market/).textContent).toBe(
+      "A separate market with the same question as #11 · Kuru v1.",
+    );
+    expect(within(items[1] as HTMLElement).getByText(/^A separate market/).textContent).toBe(
+      "A separate market with the same question as #12 · Kuru v1.",
+    );
+    expect(within(items[2] as HTMLElement).queryByText(/^A separate market/)).toBeNull();
+  });
+
   it("/markets lists Kuru's markets first and our fallback book's after, under a heading", async () => {
     state.markets = ok({ markets: [ownBook, pool, trading], total: 3 });
     const all = await renderWithProviders(await MarketsPage(noSearch));

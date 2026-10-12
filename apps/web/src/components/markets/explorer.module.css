@@ -865,6 +865,14 @@
   border-radius: var(--radius-card);
 }
 
+/* A market that asks the same question as another listed one says so under its title. */
+.sameAs {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 /* Pushed to the bottom, so the figures line up across a row of cards. */
 .body {
   margin-top: auto;
