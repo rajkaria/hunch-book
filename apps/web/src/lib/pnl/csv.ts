@@ -44,6 +44,8 @@ export function csvCell(value: string, text = false): string {
 
 export interface MarketLabel {
   number: number | null;
+  /** "#4 · Kuru v1" (lib/stacks.ts marketTag): the number with whose numbering it is in. */
+  tag?: string;
   question: string | null;
 }
 

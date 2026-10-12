@@ -597,7 +597,7 @@ describe("landing page", () => {
     expect(card.getByText("Pool split")).toBeTruthy();
     expect(card.getByText("No book yet")).toBeTruthy();
     // A primary-stack market carries its venue in its tag.
-    expect(card.getByText("Market #3 · Kuru")).toBeTruthy();
+    expect(card.getByText("Market #3 · Kuru v1")).toBeTruthy();
   });
 
   it("names a market on Hunch Book's own order book by its venue", () => {
@@ -613,7 +613,7 @@ describe("landing page", () => {
     });
     render(<Landing live={snapshot({ featured: own })} />);
     const card = within(screen.getByRole("complementary", { name: "Most active market, live" }));
-    expect(card.getByText("Market #3")).toBeTruthy();
+    expect(card.getByText("Market #3 · Hunch book")).toBeTruthy();
     expect(card.getByText("Mid price on the order book")).toBeTruthy();
     expect(card.getByText(/Hunch order book/)).toBeTruthy();
     expect(card.queryByText(/Kuru/)).toBeNull();

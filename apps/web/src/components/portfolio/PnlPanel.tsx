@@ -6,7 +6,7 @@ import { appNetwork } from "@/lib/config";
 import { formatInt, formatUsdc, shortAddress } from "@/lib/format";
 import type { PortfolioEntry } from "@/lib/market/types";
 import { useFriendlyQuestions } from "@/lib/market/useQuestion";
-import { csvFilename, downloadText, historyCsv } from "@/lib/pnl/csv";
+import { csvFilename, downloadText, historyCsv, type MarketLabel } from "@/lib/pnl/csv";
 import { usePortfolioPnl } from "@/lib/pnl/hooks";
 import type { MarketPnl } from "@/lib/pnl/ledger";
 import { SourceTag } from "../indexer/SourceTag";
@@ -26,9 +26,9 @@ function Signed({ value }: { value: bigint | null }) {
 
 /** The row's label with its question's block window read as times. */
 function withFriendly(
-  label: { number: number | null; question: string | null } | undefined,
+  label: MarketLabel | undefined,
   friendly: (q: string | null) => string | null,
-): { number: number | null; question: string | null } | undefined {
+): MarketLabel | undefined {
   return label ? { ...label, question: friendly(label.question) } : undefined;
 }
 
@@ -37,15 +37,16 @@ function Row({
   label,
 }: {
   r: MarketPnl;
-  label: { number: number | null; question: string | null } | undefined;
+  label: MarketLabel | undefined;
 }) {
   return (
     <tr>
       <td className={p.market}>
         <Link href={`/m/${r.market}`} title={label?.question ?? r.market}>
-          {label?.number !== null && label?.number !== undefined
-            ? `#${label.number}`
-            : shortAddress(r.market)}
+          {label?.tag ??
+            (label?.number !== null && label?.number !== undefined
+              ? `#${label.number}`
+              : shortAddress(r.market))}
           {label?.question ? <span className={p.question}> {label.question}</span> : null}
         </Link>
       </td>

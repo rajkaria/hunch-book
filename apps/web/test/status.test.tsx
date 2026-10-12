@@ -579,9 +579,10 @@ describe("status page", () => {
     expect(
       screen.getByRole("heading", { name: "Markets: Stack hunch (Hunch order book, new markets)" }),
     ).toBeTruthy();
-    // Market #1 on each stack, told apart by venue.
-    expect(screen.getByRole("link", { name: "#1 · Kuru" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "#1" })).toBeTruthy();
+    // Market #1 on each stack, told apart by venue: never a bare "#1".
+    expect(screen.getByRole("link", { name: "#1 · Kuru v1" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "#1 · Hunch book" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "#1" })).toBeNull();
   });
 
   it("turns red when the vault is short", async () => {

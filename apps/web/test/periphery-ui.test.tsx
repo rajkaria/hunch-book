@@ -606,7 +606,7 @@ describe("Auto-redeem panel", () => {
     expect(screen.getByText("Covered")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Leave this market out" }));
     expect(state.run).toHaveBeenCalledWith(
-      `Switch off auto-redeem on #${entry.market.marketId} · Kuru`,
+      `Switch off auto-redeem on #${entry.market.marketId} · Kuru v1`,
       expect.objectContaining({ functionName: "setMarketOptOut", args: [entry.market.address, true] }),
       ME,
     );

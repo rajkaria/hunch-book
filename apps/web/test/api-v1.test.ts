@@ -831,6 +831,8 @@ describe("GET /embed/m/{address}", () => {
     expect(html).toContain(`href="https://book.playhunch.xyz/m/${addr(0x1002)}"`);
     expect(html).toContain("Trade on Hunch Book");
     expect(html).toContain("Bid 0.368");
+    // Each stack numbers from 1: the card says whose numbering its number is in.
+    expect(html).toContain('<span class="right">#2 · Kuru v1</span>');
   });
 
   it("shows a settled market's winner, and plain messages for unknown or bad addresses", async () => {
@@ -899,6 +901,7 @@ describe("markets on Hunch Book's own order book", () => {
     markets = [own(2, "trading")];
     const html = await (await getEmbed(req("/embed/m/x"), addr(0x1102), withStacks())).text();
     expect(html).toContain("chance of YES, Hunch order book mid");
+    expect(html).toContain('<span class="right">#2 · Hunch book</span>');
     expect(html).not.toContain("Kuru");
     const trades = await (await getTrades(req("/x?blocks=50"), addr(0x1102), withStacks())).json();
     expect(trades.note).toBe(

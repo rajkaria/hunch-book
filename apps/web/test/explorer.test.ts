@@ -27,7 +27,7 @@ import {
   wholePercent,
 } from "../src/lib/market/explorer";
 import type { Milestone } from "../src/lib/market/logic";
-import { marketVenue, venueChipLabel } from "../src/lib/stacks";
+import { marketTag, marketVenue, numberingLabel, venueChipLabel } from "../src/lib/stacks";
 import { deployed } from "./chain";
 import { makeMarket, USDC } from "./fixtures";
 
@@ -296,6 +296,38 @@ describe("search", () => {
     expect(matchesSearch(text, searchTerms("pool"))).toBe(true);
     expect(matchesSearch(text, searchTerms("btc eth"))).toBe(false);
     expect(matchesSearch(text, [])).toBe(true);
+    // The tag finds it too: "#1 · Kuru v2".
+    expect(matchesSearch(text, searchTerms("#1 · kuru v2"))).toBe(true);
+    expect(matchesSearch(searchText(onPrimary, "Q", threeStacks), searchTerms("kuru v1"))).toBe(true);
+  });
+});
+
+describe("market numbers", () => {
+  it("never shows a bare number: each stack's market 1 says whose numbering it is", () => {
+    const tags = [onPrimary, onKuruV2, onHunch].map((m) => marketTag(m, threeStacks));
+    expect(tags).toEqual(["#1 · Kuru v1", "#1 · Kuru v2", "#1 · Hunch book"]);
+    expect(new Set(tags).size).toBe(3);
+  });
+
+  it("reads rows that carry venue fields and no stack name, as the status page's do", () => {
+    expect(marketTag({ marketId: 4n }, threeStacks)).toBe("#4 · Kuru v1");
+    expect(marketTag({ marketId: 4n, kuruVersion: 2 }, threeStacks)).toBe("#4 · Kuru v2");
+    expect(marketTag({ marketId: 4n, venue: "hunch", kuruVersion: 1 }, threeStacks)).toBe("#4 · Hunch book");
+  });
+
+  it("labels Monad mainnet's numbering as its own", () => {
+    const mainnet = deployments["monad-mainnet"];
+    expect(marketTag(makeMarket({ marketId: 1n }), mainnet)).toBe("#1 · Mainnet");
+    expect(marketTag({ marketId: 1n, stack: "primary" }, mainnet)).toBe("#1 · Mainnet");
+    // A second mainnet stack would add its venue.
+    const twoStacks: Deployment = {
+      ...mainnet,
+      stacks: { kuruV2: { factory: addr(0xf2), vault: addr(0xa2), kuruVersion: 2 } },
+    };
+    expect(marketTag({ marketId: 1n, stack: "kuruV2", kuruVersion: 2 }, twoStacks)).toBe(
+      "#1 · Mainnet Kuru v2",
+    );
+    expect(numberingLabel({ marketId: 1n, kuruVersion: 2 }, twoStacks)).toBe("Mainnet Kuru v2");
   });
 });
 

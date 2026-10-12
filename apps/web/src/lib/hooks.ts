@@ -2,7 +2,7 @@
 
 import { testUsdcAbi } from "@hunch-book/shared";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Address } from "viem";
 import { getPublicClient, makePublicClient } from "./chain/client";
 import { readBookSnapshot } from "./chain/kuru";
@@ -22,7 +22,7 @@ import { appChain, appDeployment, appNetwork, isDeployed, usdcOf } from "./confi
 import { planSettlement } from "./market/settle";
 import type { ChainClock, MarketView } from "./market/types";
 import { type MarketsRead, marketsRead, marketsServedFirst } from "./served/fetch";
-import { defaultStack, deployBlockOf, routerOf } from "./stacks";
+import { defaultStack, deployBlockOf, marketTag, routerOf } from "./stacks";
 import { findSettlementTx, runVerification } from "./verify/read";
 
 // React Query hooks over the read layer. Query keys never hold bigints.
@@ -86,6 +86,19 @@ export function useMarkets() {
     enabled: deployed(),
     refetchInterval: 15_000,
   });
+}
+
+/**
+ * Each listed market's tag ("#4 · Kuru v1", lib/stacks.ts marketTag) by lower-case address, from the
+ * shared markets read: for rows that carry only a factory's number (the indexer's), which alone could be
+ * any stack's market.
+ */
+export function useMarketTags(): ReadonlyMap<string, string> {
+  const markets = useMarkets();
+  return useMemo(() => {
+    const list = markets.data?.status === "ok" ? markets.data.data.markets : [];
+    return new Map(list.map((m) => [m.address.toLowerCase(), marketTag(m)]));
+  }, [markets.data]);
 }
 
 export function useMarket(address: Address) {

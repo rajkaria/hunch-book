@@ -1,7 +1,7 @@
 import { BPS, type Deployment, Phase, USDC_DECIMALS } from "@hunch-book/shared";
 import { appDeployment } from "../config";
 import { formatDuration, formatFixed, formatUsdc } from "../format";
-import { marketVenue, onFallbackBook, venueChipLabel } from "../stacks";
+import { marketTag, marketVenue, onFallbackBook, venueChipLabel } from "../stacks";
 import {
   type Milestone,
   marketChance,
@@ -185,7 +185,7 @@ export function searchTerms(query: string): string[] {
   return query.toLowerCase().split(/\s+/).filter(Boolean);
 }
 
-/** Everything a search looks through for one market: its title, template, number, venue and phase. */
+/** Everything a search looks through for one market: its title, template, tagged number ("#4 · Kuru v1"), venue and phase. */
 export function searchText(
   m: Pick<MarketView, "marketId" | "templateId" | "phase" | "stack" | "venue" | "kuruVersion">,
   title: string,
@@ -194,7 +194,7 @@ export function searchText(
   return [
     title,
     templateLabel(m.templateId),
-    `#${m.marketId.toString()}`,
+    marketTag(m, deployment),
     venueChipLabel(m, deployment),
     phaseLabel(m.phase),
   ]

@@ -6,6 +6,7 @@ import { milestoneText, nextMilestone, phaseGroup, phaseLabel, phaseTone } from 
 import { templateLabel } from "@/lib/market/params";
 import { marketTitle, type TitleClock } from "@/lib/market/title";
 import type { ChainClock, MarketView } from "@/lib/market/types";
+import { marketTag } from "@/lib/stacks";
 import { CardHealth } from "../health/Health";
 import { cx } from "../ui";
 import s from "./explorer.module.css";
@@ -134,7 +135,7 @@ export function MarketCard({
         <CardHealth m={m} clock={clock} now={now} variant="text" className={s.footHealth} />
         <span className={s.footEnd}>
           <span className={s.footTemplate}>{templateLabel(m.templateId)}</span>
-          <span className={s.footItem}>#{m.marketId.toString()}</span>
+          <span className={s.footItem}>{marketTag(m)}</span>
         </span>
       </div>
     </li>

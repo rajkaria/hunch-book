@@ -1,8 +1,9 @@
-import { Outcome, Phase } from "@hunch-book/shared";
+import { type Deployment, Outcome, Phase } from "@hunch-book/shared";
 import type { Address, Hex } from "viem";
 import { address, big, bigOrNull, hash } from "../indexer/parse";
 import type { ProofResult } from "../indexer/queries";
 import type { MarketView } from "../market/types";
+import { marketTag } from "../stacks";
 
 // The proof page's figures (docs/ROADMAP.md, How we measure progress): one model, filled from the
 // indexer when it is live, or from what the chain answers directly. A figure the chain alone cannot
@@ -66,6 +67,8 @@ export interface Timing {
 export interface SettlementTiming {
   market: Address;
   number: number | null;
+  /** "#4 · Kuru v1" (lib/stacks.ts marketTag), where the market's stack is known. */
+  tag?: string;
   question: string | null;
   voided: boolean;
   outcome: "Yes" | "No" | null;
@@ -83,6 +86,8 @@ export interface SettlementTiming {
 export interface MarketSolvency {
   market: Address;
   number: number | null;
+  /** "#4 · Kuru v1" (lib/stacks.ts marketTag), where the market's stack is known. */
+  tag?: string;
   question: string | null;
   stage: string;
   /** What the vault still owes for this market: its pool plus its sets. */
@@ -147,6 +152,27 @@ export function shareBps(part: bigint | number, whole: bigint | number): number 
   const p = BigInt(part);
   const w = BigInt(whole);
   return w === 0n ? 0 : Number((p * 10_000n) / w);
+}
+
+/**
+ * Rows with each market's tag ("#4 · Kuru v1") from a market list that names its stack. Rows whose market
+ * the list does not have keep their plain number.
+ */
+export function withTags<R extends { market: Address; tag?: string }>(
+  rows: readonly R[],
+  markets: readonly MarketView[],
+  deployment: Deployment,
+): R[] {
+  const tags = new Map(markets.map((m) => [m.address.toLowerCase(), marketTag(m, deployment)]));
+  return rows.map((r) => {
+    const tag = r.tag ?? tags.get(r.market.toLowerCase());
+    return tag ? { ...r, tag } : r;
+  });
+}
+
+/** A row's market as people read it: its tag, else "#4", else null (the caller shows the address). */
+export function rowLabel(r: { number: number | null; tag?: string }): string | null {
+  return r.tag ?? (r.number !== null ? `#${r.number}` : null);
 }
 
 export function vaultBalance(balance: bigint, obligations: bigint): VaultBalance {

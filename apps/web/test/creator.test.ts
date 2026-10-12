@@ -108,7 +108,7 @@ describe("creatorFromChain", () => {
     expect(mine.markets).toHaveLength(3);
     expect(mine.markets[0]).toMatchObject({
       number: 2,
-      tag: "#2 · Kuru",
+      tag: "#2 · Kuru v1",
       stage: "Pool",
       pool: USDC(400),
       stakers: 4,

@@ -12,6 +12,7 @@ import { MULTICALL3 } from "../chain/client";
 import { readVaultBooks } from "../chain/landing";
 import { listMarkets } from "../chain/reads";
 import type { MarketView, ReadResult } from "../market/types";
+import { marketTag } from "../stacks";
 import { findSettlementTx, type VerifyClient } from "../verify/read";
 import {
   countMarkets,
@@ -22,6 +23,7 @@ import {
   type SettlementTiming,
   type VaultBalance,
   vaultBalance,
+  withTags,
 } from "./metrics";
 
 // The proof page from the chain alone: market counts from the factory, the vault's books, and each
@@ -130,7 +132,7 @@ export async function readProofFromChain(
     timing: null,
     settlements: [],
     vault,
-    perMarket,
+    perMarket: withTags(perMarket, markets, deployment),
     daily: [],
     negative: [],
     listed: markets,
@@ -231,6 +233,7 @@ export async function measureSettlement(
   return {
     market: m.address,
     number: Number(m.marketId),
+    tag: marketTag(m, deployment),
     question: m.description,
     voided: tx.kind === "voided",
     outcome:

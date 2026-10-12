@@ -4,7 +4,7 @@ import { PROOF_QUERY, type ProofResult } from "../indexer/queries";
 import { type Sourced, withIndexer } from "../indexer/source";
 import type { MarketView, ReadResult } from "../market/types";
 import { type ProofClient, readProofFromChain, readVault } from "./chain";
-import { type ProofData, proofFromIndexer, type VaultBalance } from "./metrics";
+import { type ProofData, proofFromIndexer, type VaultBalance, withTags } from "./metrics";
 
 // The proof page's read, with no browser state: the server runs it for /api/read/proof and the browser
 // runs it itself only if that request fails.
@@ -38,7 +38,7 @@ export async function readProofFrom({
   return withIndexer<ProofView>({
     indexer,
     fromIndexer: async (connected) => {
-      const [result, liveVault] = await Promise.all([
+      const [result, liveVault, list] = await Promise.all([
         connected.query<ProofResult>(PROOF_QUERY, {
           chainId: String(deployment.chainId),
           chain: deployment.chainId,
@@ -47,9 +47,20 @@ export async function readProofFrom({
           settlements: 50,
         }),
         readVault(client, deployment).catch(() => null),
+        // The indexer's rows carry each factory's number; the market list (when given) names each stack.
+        readList ? readList().catch(() => null) : Promise.resolve(null),
       ]);
       if (!result.ProtocolStats_by_pk) throw new Error("The indexer has no totals for this chain yet.");
-      return { ...proofFromIndexer(result), liveVault, listed: null };
+      const data = proofFromIndexer(result);
+      const markets = list?.status === "ok" ? list.data.markets : [];
+      return {
+        ...data,
+        perMarket: withTags(data.perMarket, markets, deployment),
+        settlements: withTags(data.settlements, markets, deployment),
+        negative: withTags(data.negative, markets, deployment),
+        liveVault,
+        listed: null,
+      };
     },
     fromChain: async () => {
       const data = await readProofFromChain(client, deployment, readList);

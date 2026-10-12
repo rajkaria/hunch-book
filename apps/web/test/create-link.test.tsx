@@ -469,7 +469,7 @@ describe("the create form, filled from a link", () => {
       <CreateFlow initialTemplate={6} link={{ templateId: 6, params, from: "parlay" }} />,
     );
     expect(await screen.findByText(/can no longer be a leg/)).toBeTruthy();
-    expect(screen.getByText(/: #3\./)).toBeTruthy();
+    expect(screen.getByText(/: #3 · Kuru v1\./)).toBeTruthy();
     expect(screen.getByText("Legs: 2 of 2 to 5 chosen")).toBeTruthy();
   });
 
