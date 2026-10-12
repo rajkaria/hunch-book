@@ -1,6 +1,6 @@
 import { addressUrl, type Deployment, defaultStackOf, deployments, stacksOf } from "@hunch-book/shared";
 import type { ReactNode } from "react";
-import { appDeployment, appNetworkLabel, isDeployed, REPO_URL } from "@/lib/config";
+import { appDeployment, appNetworkLabel, mainnetLiveHref, REPO_URL } from "@/lib/config";
 import { Badge, ButtonLink } from "../ui";
 import s from "./landing.module.css";
 
@@ -18,6 +18,8 @@ export interface KuruCard {
   status: "live" | "building" | "planned";
   /** The badge: the status word, with the network or what it waits on. */
   badge: string;
+  /** Where the badge links: the evidence for a "live" claim (an explorer page). */
+  href?: string;
   body: string;
   facts: ReactNode[];
 }
@@ -36,7 +38,7 @@ export function kuruCards(
   const v2Factory = v2?.contracts.factory;
   const v2Built = Boolean(v2?.contracts.graduator && v2Factory);
   const v1TakesNew = v1 !== undefined && defaultStackOf(deployment)?.name === v1.name;
-  const mainnetLive = isDeployed(mainnet);
+  const mainnetHref = mainnetLiveHref(mainnet);
   return [
     {
       key: "v1",
@@ -76,15 +78,21 @@ export function kuruCards(
     {
       key: "mainnet",
       title: "Monad mainnet",
-      status: mainnetLive ? "live" : "planned",
-      badge: mainnetLive ? "Contracts live" : "Planned",
+      status: mainnetHref ? "live" : "planned",
+      badge: mainnetHref ? "Live" : "Planned",
+      ...(mainnetHref ? { href: mainnetHref } : {}),
       body: "The Kuru stack, with Circle USDC. Only Kuru's owner can create books there, so Kuru creates each YES/USDC book and anyone registers it with the Graduator, which checks it first. Until then a market stays a pool.",
       facts: [
         "Kuru creates each book",
+        mainnetHref ? (
+          <a key="first" href={mainnetHref} target="_blank" rel="noreferrer">
+            market #1, created by us
+          </a>
+        ) : null,
         <a key="rehearsal" href={MAINNET_REHEARSAL} target="_blank" rel="noreferrer">
           rehearsed on a mainnet fork
         </a>,
-      ],
+      ].filter(Boolean),
     },
   ];
 }
@@ -112,7 +120,7 @@ export function OnKuru() {
             <li className={s.stage} key={card.key}>
               <div className={s.stageHead}>
                 <h3 className={s.stageTitle}>{card.title}</h3>
-                <Badge tone={card.status === "live" ? "accent" : "warn"} dot>
+                <Badge tone={card.status === "live" ? "accent" : "warn"} dot href={card.href}>
                   {card.badge}
                 </Badge>
               </div>

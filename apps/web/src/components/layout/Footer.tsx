@@ -1,6 +1,6 @@
 import { deployments } from "@hunch-book/shared";
 import Link from "next/link";
-import { isDeployed, REPO_URL } from "@/lib/config";
+import { isDeployed, mainnetLiveHref, REPO_URL } from "@/lib/config";
 import { BUILT_ON, DESCRIPTION } from "@/lib/copy";
 import { Badge } from "../ui";
 import { BrandTile } from "./Brand";
@@ -10,7 +10,8 @@ import { DOCS_URL, MORE_LINKS, NAV_LINKS } from "./nav";
 
 export function Footer() {
   const testnetLive = isDeployed(deployments["monad-testnet"]);
-  const mainnetLive = isDeployed(deployments["monad-mainnet"]);
+  // Links to mainnet's first market on the explorer, its evidence (CLAUDE.md Rule 4).
+  const mainnetHref = mainnetLiveHref();
   return (
     <footer className={s.footer}>
       <div className={s.footerInner}>
@@ -27,9 +28,15 @@ export function Footer() {
               <Badge tone={testnetLive ? "accent" : "muted"} dot>
                 Monad testnet: {testnetLive ? "live" : "building"}
               </Badge>
-              <Badge tone="muted" dot>
-                Monad mainnet: {mainnetLive ? "contracts live" : "planned"}
-              </Badge>
+              {mainnetHref ? (
+                <Badge tone="muted" dot href={mainnetHref}>
+                  Monad mainnet: live
+                </Badge>
+              ) : (
+                <Badge tone="muted" dot>
+                  Monad mainnet: planned
+                </Badge>
+              )}
             </div>
           </div>
 

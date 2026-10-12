@@ -1,4 +1,5 @@
 import {
+  addressUrl,
   chainsByNetwork,
   collateralOf,
   type Deployment,
@@ -68,6 +69,25 @@ export const SITE_URL = "https://book.playhunch.xyz";
 
 /** How a mainnet deployment ships, linked while mainnet is still planned. */
 export const DEPLOY_DOCS_URL = `${REPO_URL}/blob/main/docs/DEPLOY.md`;
+
+// ---------- Monad mainnet's first market ----------
+
+/**
+ * Monad mainnet's market #1: `marketAt(0)` on the mainnet factory in deployments/monad-mainnet.json,
+ * created by us on 2026-10-12 and seeded by our labelled wallets. A market address is not a deployment
+ * address, so it lives here, in this one place, rather than in the deployments file. The opt-in live
+ * test (test/mainnet.live.test.ts, HUNCH_LIVE_TESTS=1) reads the factory and checks it.
+ */
+export const MAINNET_FIRST_MARKET: Address = "0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511";
+
+/**
+ * The evidence for "Live on Monad mainnet": the first mainnet market on the explorer, or null while the
+ * mainnet factory is not deployed. The app opens markets on the network the visitor chose, so a link
+ * from a testnet page goes to the explorer, which shows the market on mainnet whatever the app's network.
+ */
+export function mainnetLiveHref(mainnet: Deployment = deployments["monad-mainnet"]): string | null {
+  return isDeployed(mainnet) ? addressUrl(mainnet, MAINNET_FIRST_MARKET) : null;
+}
 
 // ---------- network selection ----------
 

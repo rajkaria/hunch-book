@@ -1,4 +1,4 @@
-import { deployments, Outcome, Phase } from "@hunch-book/shared";
+import { addressUrl, deployments, Outcome, Phase } from "@hunch-book/shared";
 import { render, screen, within } from "@testing-library/react";
 import type { Address } from "viem";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +16,8 @@ import {
   StageTrack,
 } from "../src/components/landing/Landing";
 import { graduatedHint, vaultHint } from "../src/components/landing/LiveNumbers";
+import { Footer } from "../src/components/layout/Footer";
+import { MAINNET_FIRST_MARKET, mainnetLiveHref } from "../src/lib/config";
 import {
   isSeededByUs,
   type LandingRead,
@@ -479,6 +481,27 @@ describe("words and stages", () => {
     expect(kuruFaqNotes({ ...testnet, stacks: undefined })).toEqual([]);
   });
 
+  it("calls mainnet live once it has a market, and links the badge to that market", () => {
+    const [, , mainnet] = kuruCards(deployments["monad-testnet"], deployments["monad-mainnet"]);
+    expect(mainnet).toMatchObject({ status: "live", badge: "Live", href: "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511" });
+    render(<Landing live={snapshot()} />);
+    const kuru = within(
+      screen.getByRole("region", { name: "New markets graduate to Kuru's onchain order book" }),
+    );
+    expect(kuru.getByRole("link", { name: "Live" }).getAttribute("href")).toBe("https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511");
+    expect(kuru.getByRole("link", { name: "market #1, created by us" }).getAttribute("href")).toBe(
+      "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
+    );
+    // The footer on every page says the same, with the same link.
+    const footer = render(<Footer />);
+    expect(
+      within(footer.container).getByRole("link", { name: "Monad mainnet: live" }).getAttribute("href"),
+    ).toBe("https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511");
+    expect(within(footer.container).queryByText(/contracts live/)).toBeNull();
+    expect(mainnetLiveHref()).toBe(addressUrl(deployments["monad-mainnet"], MAINNET_FIRST_MARKET));
+    expect(mainnetLiveHref({ ...deployments["monad-mainnet"], hunchBook: {} })).toBeNull();
+  });
+
   it("calls a stage live only when the contracts behind it are deployed", () => {
     const none = { ...deployments["monad-testnet"], hunchBook: {}, stacks: undefined };
     expect(lifecycleSteps(RULE, null, none).map((x) => x.status)).toEqual([
@@ -549,7 +572,11 @@ describe("landing page", () => {
     expect(hero.getByText("Every new market graduates to Kuru")).toBeTruthy();
     expect(hero.queryByText(/third party/)).toBeNull();
     expect(screen.getAllByText("Live on Monad testnet").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Mainnet planned|Contracts live on Monad mainnet/)).toBeTruthy();
+    // Mainnet has its first market, so the badge says live and links to it on the explorer.
+    expect(hero.getByRole("link", { name: "Live on Monad mainnet" }).getAttribute("href")).toBe(
+      "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
+    );
+    expect(screen.queryByText(/Contracts live/)).toBeNull();
   });
 
   it("has every section, in order, under one h1", () => {
@@ -694,7 +721,10 @@ describe("landing page", () => {
     expect(Array.from(items).every((d) => !d.open)).toBe(true);
     expect(screen.getByText(/at most 1.94 cents/)).toBeTruthy();
     expect(screen.getByText(/redeems for 0.50 USDC, so someone who bought YES at 0.80/)).toBeTruthy();
-    expect(screen.getByText(/The contracts are live on Monad mainnet with Circle USDC/)).toBeTruthy();
+    expect(screen.getByText(/Monad mainnet is live with Circle USDC/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "first market" }).getAttribute("href")).toBe(
+      "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
+    );
   });
 
   it("labels a market our wallets created as seeded by Hunch Book", () => {

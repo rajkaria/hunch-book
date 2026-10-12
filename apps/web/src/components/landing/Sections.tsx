@@ -3,7 +3,14 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Address } from "viem";
 import type { VaultBooks } from "@/lib/chain/landing";
-import { appDeployment, appNetwork, appNetworkLabel, isDeployed, REPO_URL } from "@/lib/config";
+import {
+  appDeployment,
+  appNetwork,
+  appNetworkLabel,
+  isDeployed,
+  mainnetLiveHref,
+  REPO_URL,
+} from "@/lib/config";
 import { TESTNET_MONEY } from "@/lib/copy";
 import { formatBpsPercent, formatUsdc } from "@/lib/format";
 import { defaultStack, onHunchVenue, venueSentences } from "@/lib/stacks";
@@ -392,7 +399,8 @@ export function kuruFaqNotes(deployment: Deployment = appDeployment): string[] {
 }
 
 export function faqItems(): FaqItem[] {
-  const mainnetLive = isDeployed(deployments["monad-mainnet"]);
+  const mainnetDeployed = isDeployed(deployments["monad-mainnet"]);
+  const mainnetHref = mainnetLiveHref();
   const testnetLive = isDeployed(deployments["monad-testnet"]);
   const creatorShare = formatBpsPercent(CREATOR_SHARE_BPS);
   return [
@@ -445,9 +453,19 @@ export function faqItems(): FaqItem[] {
             ? `On Monad testnet: the contracts, pools, graduation into order books, and trading YES and NO through the router. ${venueSentences(deployments["monad-testnet"]).join(" ")} `
             : "Nothing is deployed yet. "}
           {appNetwork === "monad-testnet" ? `${TESTNET_MONEY} ` : null}
-          {mainnetLive
-            ? "The contracts are live on Monad mainnet with Circle USDC."
-            : "Mainnet with real USDC is planned."}{" "}
+          {mainnetHref ? (
+            <>
+              Monad mainnet is live with Circle USDC. Its{" "}
+              <a href={mainnetHref} target="_blank" rel="noreferrer">
+                first market
+              </a>{" "}
+              was created by us and seeded from our own labelled wallets.
+            </>
+          ) : mainnetDeployed ? (
+            "The contracts are deployed on Monad mainnet with Circle USDC. No market is open there yet."
+          ) : (
+            "Mainnet with real USDC is planned."
+          )}{" "}
           Every address is in{" "}
           <a href={`${REPO_URL}/blob/main/deployments/${appNetwork}.json`} target="_blank" rel="noreferrer">
             deployments/{appNetwork}.json

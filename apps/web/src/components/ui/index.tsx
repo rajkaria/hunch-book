@@ -122,6 +122,7 @@ export function Badge({
   tone = "neutral",
   dot,
   live,
+  href,
   children,
   className,
 }: {
@@ -129,15 +130,30 @@ export function Badge({
   dot?: boolean;
   /** A pulsing dot, for things happening now. */
   live?: boolean;
+  /** Makes the badge a link to its evidence, opened in a new tab (an explorer page, for example). */
+  href?: string;
   children: ReactNode;
   className?: string;
 }) {
-  return (
-    <span className={cx(s.badge, s[`badge-${tone}`], className)}>
+  const inside = (
+    <>
       {live ? <LiveDot /> : dot ? <span className={s.dot} aria-hidden="true" /> : null}
       {children}
-    </span>
+    </>
   );
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className={cx(s.badge, s[`badge-${tone}`], s.badgeLink, className)}
+      >
+        {inside}
+      </a>
+    );
+  }
+  return <span className={cx(s.badge, s[`badge-${tone}`], className)}>{inside}</span>;
 }
 
 /** A small dot that pulses while motion is allowed. Decorative. */
