@@ -10,14 +10,15 @@ import {
   kuruFaqNotes,
   Landing,
   lifecycleSteps,
+  networkRuleFacts,
   PROTOCOL,
   priceWords,
+  rulesDiffer,
   ruleWords,
   StageTrack,
 } from "../src/components/landing/Landing";
 import { graduatedHint, vaultHint } from "../src/components/landing/LiveNumbers";
 import { Footer } from "../src/components/layout/Footer";
-import { MAINNET_FIRST_MARKET, mainnetLiveHref } from "../src/lib/config";
 import {
   isSeededByUs,
   type LandingRead,
@@ -25,8 +26,11 @@ import {
   type LandingStats,
   ourAddresses,
   pickFeatured,
+  readGraduationRule,
   summarize,
+  withNetworkRules,
 } from "../src/lib/chain/landing";
+import { MAINNET_FIRST_MARKET, mainnetLiveHref } from "../src/lib/config";
 import { BOOK, deployed, marketAddr, marketHandlers, notDeployed, stubClient } from "./chain";
 import { FACTORY, makeMarket, RESOLVER, USDC } from "./fixtures";
 
@@ -151,6 +155,8 @@ describe("readLandingSnapshot", () => {
     });
     expect(data.vault).toEqual({ balance: USDC(710), obligations: USDC(700) });
     expect(data.rule).toEqual(RULE);
+    // The read names its own network's rule; the server adds the other networks' (withNetworkRules).
+    expect(data.rules).toEqual([{ network: deployed.network, rule: RULE }]);
     expect(data.msPerBlock).toBe(300);
     expect(data.block).toBe(2_000_000n);
     expect(data.blockTime).toBe(1_000_003_000);
@@ -231,6 +237,109 @@ describe("readLandingSnapshot", () => {
     const slow = withTemplate();
     slow.readContract = vi.fn(() => new Promise(() => {})) as never;
     expect(await readLandingSnapshot(slow, deployed, 20)).toEqual({ status: "error" });
+  });
+});
+
+// Monad mainnet's rule, as its factory answers templateOf(1): 10 USDC from 2 wallets.
+const MAINNET_RULE = { minPool: USDC(10), minStakers: 2, minChanceBps: 300, maxChanceBps: 9_700 };
+
+describe("graduation rules per network", () => {
+  it("reads a network's rule from its default stack's factory, and none where nothing is deployed", async () => {
+    const client = stubClient({ templateOf: () => ({ resolver: RESOLVER, rule: MAINNET_RULE }) });
+    expect(await readGraduationRule(client, deployed)).toEqual(MAINNET_RULE);
+    expect(vi.mocked(client.readContract).mock.calls[0]?.[0]).toMatchObject({
+      functionName: "templateOf",
+      args: [1],
+    });
+    expect(await readGraduationRule(stubClient({}), notDeployed)).toBeNull();
+    const empty = stubClient({
+      templateOf: () => ({
+        resolver: RESOLVER,
+        rule: { minPool: 0n, minStakers: 0, minChanceBps: 0, maxChanceBps: 0 },
+      }),
+    });
+    expect(await readGraduationRule(empty, deployed)).toBeNull();
+  });
+
+  it("adds each other network's rule after the page's own, and leaves out one it cannot read", async () => {
+    const withMainnet = await withNetworkRules(
+      snapshot(),
+      "monad-testnet",
+      ["monad-mainnet"],
+      async () => MAINNET_RULE,
+    );
+    if (withMainnet.status !== "ok") throw new Error("expected ok");
+    expect(withMainnet.data.rules).toEqual([
+      { network: "monad-testnet", rule: RULE },
+      { network: "monad-mainnet", rule: MAINNET_RULE },
+    ]);
+    const failed = await withNetworkRules(snapshot(), "monad-testnet", ["monad-mainnet"], async () => {
+      throw new Error("rpc down");
+    });
+    if (failed.status !== "ok") throw new Error("expected ok");
+    expect(failed.data.rules).toEqual([{ network: "monad-testnet", rule: RULE }]);
+    expect(await withNetworkRules({ status: "error" }, "monad-testnet", [], async () => null)).toEqual({
+      status: "error",
+    });
+  });
+
+  it("states each network's rule by name when they differ, and never one rule for all", () => {
+    const rules = [
+      { network: "monad-testnet" as const, rule: RULE },
+      { network: "monad-mainnet" as const, rule: MAINNET_RULE },
+    ];
+    expect(rulesDiffer(rules)).toBe(true);
+    expect(
+      rulesDiffer([
+        rules[0] as (typeof rules)[0],
+        { ...(rules[0] as (typeof rules)[0]), network: "monad-mainnet" },
+      ]),
+    ).toBe(false);
+    const [, book] = lifecycleSteps(RULE, null, deployed, rules);
+    expect(book?.body).toMatch(
+      /^When the pool meets its network's graduation rule, listed below, anyone can graduate it\./,
+    );
+    expect(book?.body).not.toMatch(/500 USDC/);
+    expect(book?.facts).toEqual([
+      "Monad testnet: pool ≥ 500 USDC, stakers ≥ 10",
+      "Monad mainnet: pool ≥ 10 USDC, stakers ≥ 2",
+      "chance 3% to 97%",
+      "sell YES or NO any time",
+    ]);
+    // Different chance ranges go on each network's line.
+    expect(
+      networkRuleFacts([
+        rules[0] as (typeof rules)[0],
+        { network: "monad-mainnet", rule: { ...MAINNET_RULE, minChanceBps: 500 } },
+      ]),
+    ).toEqual([
+      "Monad testnet: pool ≥ 500 USDC, stakers ≥ 10, chance 3% to 97%",
+      "Monad mainnet: pool ≥ 10 USDC, stakers ≥ 2, chance 5% to 97%",
+    ]);
+    // One rule read: it is named as the page's own network's.
+    expect(lifecycleSteps(RULE, null, deployed, [rules[0] as (typeof rules)[0]])[1]?.body).toMatch(
+      /^When a pool on Monad testnet holds at least 500 USDC from at least 10 wallets/,
+    );
+  });
+
+  it("shows both networks' rules on the page, and no single rule in the drawing", () => {
+    render(
+      <Landing
+        live={snapshot({
+          rules: [
+            { network: "monad-testnet", rule: RULE },
+            { network: "monad-mainnet", rule: MAINNET_RULE },
+          ],
+        })}
+      />,
+    );
+    const how = within(
+      screen.getByRole("region", { name: "A market starts as a pool and grows into a book" }),
+    );
+    expect(how.getByText("Monad testnet: pool ≥ 500 USDC, stakers ≥ 10")).toBeTruthy();
+    expect(how.getByText("Monad mainnet: pool ≥ 10 USDC, stakers ≥ 2")).toBeTruthy();
+    expect(how.queryByText("500 USDC, 10 wallets")).toBeNull();
+    expect(how.getAllByText("its network's rule met")).toHaveLength(2);
   });
 });
 
@@ -483,12 +592,18 @@ describe("words and stages", () => {
 
   it("calls mainnet live once it has a market, and links the badge to that market", () => {
     const [, , mainnet] = kuruCards(deployments["monad-testnet"], deployments["monad-mainnet"]);
-    expect(mainnet).toMatchObject({ status: "live", badge: "Live", href: "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511" });
+    expect(mainnet).toMatchObject({
+      status: "live",
+      badge: "Live",
+      href: "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
+    });
     render(<Landing live={snapshot()} />);
     const kuru = within(
       screen.getByRole("region", { name: "New markets graduate to Kuru's onchain order book" }),
     );
-    expect(kuru.getByRole("link", { name: "Live" }).getAttribute("href")).toBe("https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511");
+    expect(kuru.getByRole("link", { name: "Live" }).getAttribute("href")).toBe(
+      "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
+    );
     expect(kuru.getByRole("link", { name: "market #1, created by us" }).getAttribute("href")).toBe(
       "https://monadscan.com/address/0x11075eeC0d115b7aB754F54bcf79Fc5A5dc0F511",
     );

@@ -1,7 +1,7 @@
 import { addressUrl, type Deployment, defaultStackOf, type GraduationRule } from "@hunch-book/shared";
 import type { ReactNode } from "react";
-import type { LandingStats } from "@/lib/chain/landing";
-import { appDeployment, appNetworkLabel } from "@/lib/config";
+import type { LandingStats, NetworkRule } from "@/lib/chain/landing";
+import { appDeployment, appNetworkLabel, NETWORK_LABEL } from "@/lib/config";
 import { formatBpsPercent, formatInt } from "@/lib/format";
 import { onHunchVenue, type VenueSource } from "@/lib/stacks";
 import { Badge } from "../ui";
@@ -26,14 +26,50 @@ export function graduationOpens(venue: VenueSource | undefined): string {
     : "opens its YES/USDC book on Kuru, Monad's onchain order book";
 }
 
+const sameRule = (a: GraduationRule, b: GraduationRule): boolean =>
+  a.minPool === b.minPool &&
+  a.minStakers === b.minStakers &&
+  a.minChanceBps === b.minChanceBps &&
+  a.maxChanceBps === b.maxChanceBps;
+
+/** True when the networks read have different graduation rules, so one rule cannot speak for all. */
+export function rulesDiffer(rules: readonly NetworkRule[]): boolean {
+  const [first, ...rest] = rules;
+  return first !== undefined && rest.some((r) => !sameRule(r.rule, first.rule));
+}
+
+/** "chance 3% to 97%". */
+const chanceWords = (rule: GraduationRule): string =>
+  `chance ${formatBpsPercent(rule.minChanceBps)} to ${formatBpsPercent(rule.maxChanceBps)}`;
+
+/**
+ * One fact per network, "Monad mainnet: pool ≥ 10 USDC, stakers ≥ 2", then the chance range once if
+ * every network shares it (else on each network's line).
+ */
+export function networkRuleFacts(rules: readonly NetworkRule[]): string[] {
+  const [first] = rules;
+  if (!first) return [];
+  const oneChance = rules.every(
+    (r) => r.rule.minChanceBps === first.rule.minChanceBps && r.rule.maxChanceBps === first.rule.maxChanceBps,
+  );
+  const lines = rules.map(
+    ({ network, rule }) =>
+      `${NETWORK_LABEL[network]}: pool ≥ ${usdcWords(rule.minPool)}, stakers ≥ ${formatInt(rule.minStakers)}${oneChance ? "" : `, ${chanceWords(rule)}`}`,
+  );
+  return oneChance ? [...lines, chanceWords(first.rule)] : lines;
+}
+
 /**
  * The three stages, with the graduation rule and the settled count only when they were read. The stages
- * describe the stack new markets go to (deployments `defaultStack`).
+ * describe the stack new markets go to (deployments `defaultStack`). `rule` is the rule on `deployment`'s
+ * network; `rules`, when they were read, are every deployed network's. Networks set their own rules (Monad
+ * mainnet's is far lower than testnet's), so when they differ the book stage states each one by name.
  */
 export function lifecycleSteps(
   rule: GraduationRule | null,
   stats: LandingStats | null = null,
   deployment: Deployment = appDeployment,
+  rules: readonly NetworkRule[] = [],
 ): Stage[] {
   const stack = defaultStackOf(deployment);
   const contracts = stack?.contracts ?? deployment.hunchBook;
@@ -43,6 +79,8 @@ export function lifecycleSteps(
   const bookLive = Boolean(contracts.graduator && contracts.router);
   const resolversLive = Boolean(perplFunding && priceAtTime);
   const opens = graduationOpens(stack);
+  const perNetwork = rulesDiffer(rules);
+  const after = `One transaction turns it into fully backed YES and NO tokens, keeps every staker's payout the same, and ${opens}.`;
   return [
     {
       key: "pool",
@@ -55,17 +93,21 @@ export function lifecycleSteps(
     {
       key: "book",
       title: "Book",
-      body: rule
-        ? `When the pool holds ${ruleWords(rule)}, anyone can graduate it. One transaction turns it into fully backed YES and NO tokens, keeps every staker's payout the same, and ${opens}.`
-        : `When the pool meets its graduation rule, anyone can graduate it. One transaction turns it into fully backed YES and NO tokens, keeps every staker's payout the same, and ${opens}.`,
-      facts: rule
-        ? [
-            `pool ≥ ${usdcWords(rule.minPool)}`,
-            `stakers ≥ ${formatInt(rule.minStakers)}`,
-            `chance ${formatBpsPercent(rule.minChanceBps)} to ${formatBpsPercent(rule.maxChanceBps)}`,
-            "sell YES or NO any time",
-          ]
-        : ["rule read from the factory", "sell YES or NO any time"],
+      body: perNetwork
+        ? `When the pool meets its network's graduation rule, listed below, anyone can graduate it. ${after}`
+        : rule
+          ? `When a pool on ${NETWORK_LABEL[deployment.network]} holds ${ruleWords(rule)}, anyone can graduate it. ${after}`
+          : `When the pool meets its graduation rule, anyone can graduate it. ${after}`,
+      facts: perNetwork
+        ? [...networkRuleFacts(rules), "sell YES or NO any time"]
+        : rule
+          ? [
+              `pool ≥ ${usdcWords(rule.minPool)}`,
+              `stakers ≥ ${formatInt(rule.minStakers)}`,
+              chanceWords(rule),
+              "sell YES or NO any time",
+            ]
+          : ["rule read from the factory", "sell YES or NO any time"],
       status: bookLive ? "live" : "building",
       more: { href: PROTOCOL.graduation, label: "How graduation works" },
     },
@@ -108,8 +150,19 @@ const statusWords = (status: Stage["status"]): string =>
  * The lifecycle as a picture: Pool, Book, Settle, and the path a pool takes when it never graduates.
  * Two drawings of the same thing, wide for desktop and tall for phones; CSS shows one.
  */
-export function LifecycleDiagram({ rule }: { rule: GraduationRule | null }) {
-  const gradLabel = rule ? `${usdcWords(rule.minPool)}, ${formatInt(rule.minStakers)} wallets` : "rule met";
+export function LifecycleDiagram({
+  rule,
+  rules = [],
+}: {
+  rule: GraduationRule | null;
+  rules?: readonly NetworkRule[];
+}) {
+  // One rule fits the drawing; when networks differ, the book stage below lists each.
+  const gradLabel = rulesDiffer(rules)
+    ? "its network's rule met"
+    : rule
+      ? `${usdcWords(rule.minPool)}, ${formatInt(rule.minStakers)} wallets`
+      : "rule met";
   const label =
     "Lifecycle: a pool graduates into a YES/USDC book on Kuru, Monad's onchain order book, when its rule is met, and the market settles from the chain when the window closes. A pool that never graduates settles as a pool.";
   return (
@@ -252,7 +305,16 @@ export function LifecycleDiagram({ rule }: { rule: GraduationRule | null }) {
   );
 }
 
-export function HowItWorks({ rule, stats }: { rule: GraduationRule | null; stats: LandingStats | null }) {
+export function HowItWorks({
+  rule,
+  rules = [],
+  stats,
+}: {
+  rule: GraduationRule | null;
+  /** Every deployed network's rule that was read (LandingSnapshot.rules). */
+  rules?: readonly NetworkRule[];
+  stats: LandingStats | null;
+}) {
   return (
     <section className={s.section} id="how-it-works" aria-labelledby="how-title">
       <div className={s.wrap}>
@@ -270,9 +332,9 @@ export function HowItWorks({ rule, stats }: { rule: GraduationRule | null; stats
             reading the chain.
           </p>
         </div>
-        <LifecycleDiagram rule={rule} />
+        <LifecycleDiagram rule={rule} rules={rules} />
         <ol className={s.stages}>
-          {lifecycleSteps(rule, stats).map((stage, i) => (
+          {lifecycleSteps(rule, stats, appDeployment, rules).map((stage, i) => (
             <li className={`${s.stage} ${s[`stage-${stage.key}`] ?? ""}`} key={stage.key}>
               <div className={s.stageHead}>
                 <span className={s.stageIndex}>{`0${i + 1}`}</span>

@@ -5,6 +5,7 @@ import {
   defaultStackOf,
   type GraduationRule,
   hunchBookFactoryAbi,
+  type Network,
   Phase,
   stacksOf,
   TemplateId,
@@ -67,12 +68,24 @@ export interface LandingSnapshot {
    * markets go to.
    */
   rule: GraduationRule | null;
+  /**
+   * The same rule on every deployed network whose rule was read, this snapshot's network among them
+   * (withNetworkRules adds the others). Each network sets its own: Monad mainnet's is far lower than
+   * testnet's. Absent from older answers.
+   */
+  rules?: NetworkRule[];
   /** Average block time over the last 10,000 blocks, in milliseconds. */
   msPerBlock: number | null;
   /** The block the snapshot was read at. */
   block: bigint | null;
   /** That block's unix time, so block numbers can be read as estimated clock times. */
   blockTime: number | null;
+}
+
+/** One network's graduation rule for new markets. */
+export interface NetworkRule {
+  network: Network;
+  rule: GraduationRule;
 }
 
 export type LandingRead =
@@ -184,6 +197,68 @@ export function landingClock(
   return { blockNumber: data.block, timestamp: data.blockTime, msPerBlock: data.msPerBlock };
 }
 
+type Uint = bigint | number;
+
+/** A template's rule as the factory returns it, or null when the template is not registered (all zero). */
+function ruleOf(
+  tmpl:
+    | { rule: { minPool: Uint; minStakers: Uint; minChanceBps: Uint; maxChanceBps: Uint } }
+    | null
+    | undefined,
+): GraduationRule | null {
+  if (!tmpl || BigInt(tmpl.rule.minPool) <= 0n) return null;
+  return {
+    minPool: BigInt(tmpl.rule.minPool),
+    minStakers: Number(tmpl.rule.minStakers),
+    minChanceBps: Number(tmpl.rule.minChanceBps),
+    maxChanceBps: Number(tmpl.rule.maxChanceBps),
+  };
+}
+
+/**
+ * The graduation rule new markets on a network get: templateOf(1) on the factory of the stack new
+ * markets go to (every template on a deployment gets template 1's rule, docs/DEPLOY.md). Null when
+ * nothing is deployed or the template is not registered. Throws when the chain does not answer, so a
+ * cache can try again.
+ */
+export async function readGraduationRule(
+  client: Pick<ReadClient, "readContract">,
+  deployment: Deployment,
+): Promise<GraduationRule | null> {
+  const factory = defaultStackOf(deployment)?.contracts.factory;
+  if (!factory) return null;
+  const tmpl = await client.readContract({
+    address: factory,
+    abi: hunchBookFactoryAbi,
+    functionName: "templateOf",
+    args: [TemplateId.PerplFunding],
+  });
+  return ruleOf(tmpl);
+}
+
+/**
+ * The snapshot with the graduation rules of `others` (other deployed networks) after its own network's,
+ * in the order given. A rule that cannot be read, or is not set, is left out: the page then states only
+ * the rules it read.
+ */
+export async function withNetworkRules(
+  read: LandingRead,
+  network: Network,
+  others: readonly Network[],
+  readRule: (network: Network) => Promise<GraduationRule | null>,
+): Promise<LandingRead> {
+  if (read.status !== "ok") return read;
+  const own: NetworkRule[] = read.data.rule ? [{ network, rule: read.data.rule }] : [];
+  const theirs = await Promise.all(
+    others.map(async (n): Promise<NetworkRule | null> => {
+      const rule = await readRule(n).catch(() => null);
+      return rule ? { network: n, rule } : null;
+    }),
+  );
+  const rules = [...own, ...theirs.filter((r): r is NetworkRule => r !== null)];
+  return { status: "ok", data: { ...read.data, rules } };
+}
+
 /** Every stack's vault books, summed (each stack has its own vault). */
 export async function readAllVaultBooks(
   client: ReadClient,
@@ -258,16 +333,7 @@ export async function readLandingSnapshot(
       })(),
       usdc ? readAllVaultBooks(client, deployment, usdc) : Promise.resolve(null),
     ]);
-    const tmpl = settled(template);
-    const rule: GraduationRule | null =
-      tmpl && BigInt(tmpl.rule.minPool) > 0n
-        ? {
-            minPool: BigInt(tmpl.rule.minPool),
-            minStakers: Number(tmpl.rule.minStakers),
-            minChanceBps: Number(tmpl.rule.minChanceBps),
-            maxChanceBps: Number(tmpl.rule.maxChanceBps),
-          }
-        : null;
+    const rule = ruleOf(settled(template));
     const markets = settled(list);
     return {
       status: "ok",
@@ -278,6 +344,7 @@ export async function readLandingSnapshot(
         stats: markets ? summarize(deployment, markets) : null,
         vault: settled(books),
         rule,
+        rules: rule ? [{ network: deployment.network, rule }] : [],
         msPerBlock: settled(pace)?.ms ?? null,
         block: settled(pace)?.block ?? null,
         blockTime: settled(pace)?.time ?? null,

@@ -1,7 +1,19 @@
-import { chainsByNetwork, type Deployment, deployments, type Network } from "@hunch-book/shared";
+import {
+  chainsByNetwork,
+  type Deployment,
+  deployments,
+  type GraduationRule,
+  type Network,
+} from "@hunch-book/shared";
 import { createPublicClient, fallback, http, type PublicClient } from "viem";
-import { type LandingRead, readLandingSnapshot } from "../chain/landing";
+import {
+  type LandingRead,
+  readGraduationRule,
+  readLandingSnapshot,
+  withNetworkRules,
+} from "../chain/landing";
 import { type MarketsSnapshot, measureMsPerBlock, readMarketsSnapshot } from "../chain/reads";
+import { isDeployed, NETWORKS } from "../config";
 import { getIndexerClient } from "../indexer/client";
 import type { Sourced } from "../indexer/source";
 import { type ProofView, readProofFrom } from "../proof/read";
@@ -20,6 +32,10 @@ const clients = new Map<Network, PublicClient>();
 const PACE_TIMES = { freshMs: 600_000, maxStaleMs: 3_600_000 };
 /** How long a cold landing read may take before it gives up (the page then says it could not read). */
 const LANDING_TIMEOUT_MS = 20_000;
+/** A graduation rule changes only when the guardian registers a template: reused for 10 minutes. */
+const RULE_TIMES = { freshMs: 600_000, maxStaleMs: 86_400_000 };
+/** How long the landing page waits for another network's rule before it leaves that rule out. */
+const RULE_TIMEOUT_MS = 5_000;
 
 /** One read client per network: a keyed server-side RPC first, then the public ones, with retries. */
 export function serverClient(network: Network, deployment: Deployment = deployments[network]): PublicClient {
@@ -81,15 +97,44 @@ export function loadProof(
   );
 }
 
-/** The landing panel's live figures, built on the cached markets read; gives up after `timeoutMs`. */
-export function landingRead(
+/** A network's graduation rule for new markets, cached; null if it is not read within RULE_TIMEOUT_MS. */
+export async function networkRule(network: Network): Promise<GraduationRule | null> {
+  const deployment = deployments[network];
+  const read = cache
+    .get(`rule:${network}`, RULE_TIMES, () =>
+      readGraduationRule(serverClient(network, deployment), deployment),
+    )
+    .then((r) => r.served.value);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), RULE_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([read, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The landing panel's live figures, built on the cached markets read; gives up after `timeoutMs`. Every
+ * other deployed network's graduation rule rides along, so the page can state the rule per network.
+ */
+export async function landingRead(
   network: Network,
   deployment: Deployment = deployments[network],
   timeoutMs = LANDING_TIMEOUT_MS,
 ): Promise<LandingRead> {
-  return readLandingSnapshot(serverClient(network, deployment), deployment, timeoutMs, {
-    markets: () => servedMarkets(network, deployment),
-  });
+  const others = NETWORKS.filter((n) => n !== network && isDeployed(deployments[n]));
+  const [read, rules] = await Promise.all([
+    readLandingSnapshot(serverClient(network, deployment), deployment, timeoutMs, {
+      markets: () => servedMarkets(network, deployment),
+    }),
+    // Started with the snapshot, so a slow RPC on the other network costs no extra time.
+    Promise.all(others.map(async (n) => [n, await networkRule(n).catch(() => null)] as const)),
+  ]);
+  const known = new Map(rules);
+  return withNetworkRules(read, network, others, async (n) => known.get(n) ?? null);
 }
 
 /** The landing panel, cached. A failed read is not kept: the next request tries again. */

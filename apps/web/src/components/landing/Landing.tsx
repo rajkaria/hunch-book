@@ -6,7 +6,14 @@ import { OnKuru } from "./OnKuru";
 import { Audiences, Closing, Faq, Safety, WhyMonad } from "./Sections";
 
 export { ContractLinks, Hero, HeroCard, StageTrack, seededWords } from "./Hero";
-export { HowItWorks, LifecycleDiagram, lifecycleSteps, type Stage } from "./HowItWorks";
+export {
+  HowItWorks,
+  LifecycleDiagram,
+  lifecycleSteps,
+  networkRuleFacts,
+  rulesDiffer,
+  type Stage,
+} from "./HowItWorks";
 export { LiveNumbers } from "./LiveNumbers";
 export { KURU_URL, type KuruCard, kuruCards, OnKuru } from "./OnKuru";
 export { Audiences, Closing, Faq, type FaqItem, faqItems, kuruFaqNotes, Safety, WhyMonad } from "./Sections";
@@ -24,7 +31,11 @@ export function Landing({ live }: { live: LandingRead }) {
       <Hero live={live} />
       <LiveNumbers live={live} />
       <OnKuru />
-      <HowItWorks rule={data?.rule ?? data?.featured?.rule ?? null} stats={data?.stats ?? null} />
+      <HowItWorks
+        rule={data?.rule ?? data?.featured?.rule ?? null}
+        rules={data?.rules ?? []}
+        stats={data?.stats ?? null}
+      />
       <Audiences />
       <Safety vault={data?.vault ?? null} />
       <WhyMonad msPerBlock={data?.msPerBlock ?? null} />
